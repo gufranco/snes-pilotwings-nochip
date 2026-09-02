@@ -311,6 +311,22 @@ row of the largest table here.
 Only `$0a` is left to the fallback. The image stays inside plain low addressing,
 so none of the windowed layout is needed.
 
+### Where each row's answer came from
+
+The keys come from the recordings, because only the game says what it asks. The
+answers come from the part wherever the part could be driven to the same state,
+because the recordings were made against snes9x and the two do not always agree.
+
+| | rows |
+|---|---:|
+| answer driven from the part's own program | 108,311 |
+| answer still the one the recording held | 42,345 |
+
+Seventy percent by row. The rest are keys the game asks only after exchange
+200,000, which is where a replay stops staying in step with the part, so they
+keep the recorded answer and are marked as unconfirmed rather than dropped.
+`$04` is the one command at zero percent: all 324 of its rows sit past that point.
+
 A row carries its key as well as its answer, which is what a table keyed on a set
 costs over one keyed on a range: a range table finds its row by arithmetic and
 stores no key at all. Several of these keys are wider than the answer they lead
