@@ -735,6 +735,46 @@ checked rather than carried.
 **What that costs.** 131,072 bytes for `$10` and 262,144 for `$04`, against
 9,069,684 spare in a 96 Mbit image.
 
+## 3g. `$03`, `$13` and `$06`, which are half the traffic between them
+
+**`$01` and `$11` load a matrix; `$03` and `$13` apply it.** The two loaders
+share one handler and the two appliers share another, so which of the pair is
+being run has to reach the handler in the command byte itself, and the recorded
+pairing bears that out: `$03` follows `$01` and `$13` follows `$11`.
+
+Loaded with the first non-zero `$01` the recording contains, `$03` answers the
+columns of a diagonal matrix when fed the unit vectors, and scanning one
+component alone is a straight line all the way:
+
+| input | `$03` |
+|---|---|
+| `$0800`, 0, 0 | 1023, 0, 0 |
+| `$1000`, 0, 0 | 2047, 0, 0 |
+| `$2000`, 0, 0 | 4095, 0, 0 |
+| `$4000`, 0, 0 | 8190, 0, 0 |
+| `$6000`, 0, 0 | 12285, 0, 0 |
+
+**`$03` is exactly a matrix product.** Recovering the three columns by feeding
+the unit vector `$4000` on each axis, the answer for any other vector is the
+product of that matrix with it, shifted right fourteen. On thirty random vectors
+whose components stay under `$1000` it is exact thirty times.
+
+Above that it is not, and that is the next thing to measure rather than a fault
+in the model: the same thirty vectors drawn from the whole sixteen bit range
+match three times, so something saturates and the rule for it is not yet known.
+
+**`$06` is not that.** It has a constant term, which suggested an affine
+transform, and an affine model fails on every input tried, small ones included.
+Scanning the third component moves all three answers in a way no product does.
+At 119 instructions against 26, and given a projection is what its arguments
+look like, it almost certainly divides, which is why it reaches the same
+reciprocal subroutine `$10` does.
+
+**What this is worth.** `$03` and `$13` are 27.6% of everything the cartridge
+asks and they are nine multiplies and six additions once the matrix is in hand.
+Getting the matrix is the work of `$01` and `$11`, which are 6.9%. So a quarter
+of the traffic turns on one command that has not been read yet.
+
 ## 4. Whether the image needs to grow at all
 
 **What is unknown.** The retail cartridge is 512 KB and the replacement is not
