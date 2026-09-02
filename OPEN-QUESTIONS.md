@@ -425,6 +425,40 @@ about the arithmetic around them rather than about the numbers themselves.
 are 2048 words of twenty four bit instructions and the two differ, so a
 disassembly would say where.
 
+## 3c. Which table each command reads, and what else it reads
+
+**Measured, by watching the data ROM while the part runs the game's own command
+stream.** Every read of the part's 1024 word constant store was recorded across
+60,000 exchanges of the European recording, with `$00` agreeing 8,527 times of
+8,542 as the control that the replay stayed in step.
+
+| command | tables it reads |
+|---|---|
+| `$0a` | reciprocal, sine, cosine, arccosine |
+| `$02` | reciprocal, sine, cosine |
+| `$11` | reciprocal, sine, cosine |
+| `$01`, `$0c` | sine, cosine |
+| `$06`, `$0e`, `$10`, `$13`, `$14`, `$28` | reciprocal |
+| `$00`, `$03`, `$0d` | none of the four |
+| `$80` | nothing at all |
+
+`$0a` is the only command that reaches all four, and the only one that touches
+arccosine. It is also the widest reader by far, at 852 distinct seats against 239
+for the next.
+
+**The four tables are not everything the handlers read.** Across 30,000
+exchanges the handlers read 315 of the 1024 words, and 98 of those sit outside
+every table [`tables.py`](tables.py) names, in six stretches: 30 to 59, 98 to
+100, 230 to 279, 536 to 539, 801 to 809, and 811 to 812.
+
+None of the six is monotone, so none is a scalar function of its index the way
+the four named tables are. They are constants and coefficients. A replacement
+therefore needs the four tables and these as well, and a claim that the four are
+what the commands are built from is short by 98 words.
+
+**What this does not say.** A stretch here is what the game read, never a table's
+extent, so the bounds above are floors. Naming what the constants are is open.
+
 ## 4. Whether the image needs to grow at all
 
 **What is unknown.** The retail cartridge is 512 KB and the replacement is not
