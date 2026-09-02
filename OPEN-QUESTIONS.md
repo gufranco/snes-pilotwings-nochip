@@ -600,6 +600,54 @@ what the commands are built from is short by 98 words.
 **What this does not say.** A stretch here is what the game read, never a table's
 extent, so the bounds above are floors. Naming what the constants are is open.
 
+## 3d. The division, and why it becomes a table of one argument
+
+**What `$00D3` is.** The subroutine `$10`, `$04` and `$28` all reach. It sets the
+ROM pointer to word 100, one before the reciprocal table, reads two adjacent
+entries, interpolates between them, refines, and saturates to `$7FFF` at two
+separate points. `$003A` before it is the normalisation: it shifts the argument
+left until it overflows, counting as it goes.
+
+**Why reimplementing it directly was abandoned.** The saturation is visible from
+outside. Asked for the reciprocal of an exact power of two, the part answers a
+mantissa of `$7FFF` with one less in the exponent, where ideal arithmetic gives
+`$4000`. So an implementation that computes the right answer is wrong here, and
+matching it means reproducing an interpolation and a refinement step whose exact
+rounding depends on ALU behaviour this project has not measured. Guessing at
+that is how the two faults in `$00` and `$08` happened, and those were far
+simpler.
+
+**What `$10` is, measured rather than read.** It is deterministic and carries no
+state: the same arguments answer the same way on a part that has just been
+reset and on one that has been driven through other commands first.
+
+Given a first word `a` and a second word `b`, it answers the reciprocal of
+`a * 2^b` in two words, a mantissa and an exponent. Two properties were measured
+across the input range and both hold everywhere tried:
+
+| property | measured |
+|---|---|
+| the mantissa depends only on `a` | yes, unchanged across seven values of `b` |
+| the exponent is `f(a) - b` | yes, exactly, across six values of `b` |
+
+So the second argument does nothing but shift the exponent, and the whole
+command is a function of one sixteen bit word plus a subtraction.
+
+**What that costs.** A mantissa for every value `a` can take is 65,536 entries of
+two bytes, which is 131,072 bytes and cannot miss: every input has a row. The
+exponent needs no table at all. Sampled across the range it takes eleven values
+between 1 and 47, which is a count of leading zeros and is a few instructions.
+
+**Where the table comes from.** Not from a formula, because the values are the
+part's own approximation rather than a function anybody can write down. Not
+checked in either, because that is a copy of the part's behaviour and the
+standard here is that nothing assembled or extracted is committed. It is
+generated at build time by driving the part the person building already has,
+the same part `tables.py` already checks the four scalar tables against.
+
+**What is still open.** Whether `$04` and `$28` decompose the same way. Both
+reach the same subroutine, so the same shape is likely and is not yet measured.
+
 ## 4. Whether the image needs to grow at all
 
 **What is unknown.** The retail cartridge is 512 KB and the replacement is not
