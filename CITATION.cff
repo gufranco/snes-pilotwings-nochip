@@ -1,0 +1,28 @@
+cff-version: 1.2.0
+title: snes-pilotwings-nochip
+message: >-
+  If you use this work, or the measurements it publishes, please cite it.
+type: software
+authors:
+  - given-names: Gustavo
+    family-names: Franco
+    alias: gufranco
+repository-code: https://github.com/gufranco/snes-pilotwings-nochip
+url: https://github.com/gufranco/snes-pilotwings-nochip
+abstract: >-
+  Removes the DSP-1 from Pilotwings for the Super Nintendo, in all three of its
+  regional releases, by replacing what the coprocessor computed with tables and
+  65816 routines that run on the console itself. The retail cartridges are the
+  only authority on what the game asks, and the part's own microcode is the only
+  authority on what the answer is. Publishes the measurement that decides which
+  commands can be tabulated and which must be computed.
+keywords:
+  - super-nintendo
+  - pilotwings
+  - dsp1
+  - upd7725
+  - rom-hacking
+  - 65816
+  - conformance
+license: MIT
+version: 0.1.0

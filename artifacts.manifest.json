@@ -1,0 +1,123 @@
+{
+  "canonical": {
+    "form": "one file, no copier header, exactly 524288 bytes",
+    "note": "A 512 byte copier header describes the same bytes. Strip it first, then compare. Every digest below is of the bare file."
+  },
+  "decides": "sha256",
+  "artifacts": [
+    {
+      "name": "Pilotwings, USA",
+      "release": null,
+      "region": "USA",
+      "filename": "pilotwings-usa.sfc",
+      "declares": {
+        "title": "PILOTWINGS",
+        "map": "0x20",
+        "chipset": "0x03",
+        "coprocessor": "DSP-1",
+        "rom_size": "0x09",
+        "sram_size": "0x00",
+        "country": "0x01",
+        "version": "0x00"
+      },
+      "accepted": [
+        {
+          "size": 524288,
+          "crc32": "266C44ED",
+          "md5": "8dcb216beed58c798b25df55f62218d0",
+          "sha1": "fe941ba251acf329f028a1603a43562db2c75e51",
+          "sha256": "03d0127f5de3237e22ad00de0c20763274da7b71142dde693240ac96d10983a3"
+        }
+      ],
+      "provenance": "Measured on this machine from a bare file with no copier header. No-Intro names this dump Pilotwings (USA). The header's version field reads 0x00 and no later revision of this region is present in the set the digests were taken from."
+    },
+    {
+      "name": "Pilotwings, Japan",
+      "release": null,
+      "region": "Japan",
+      "filename": "pilotwings-jp.sfc",
+      "declares": {
+        "title": "PILOTWINGS",
+        "map": "0x20",
+        "chipset": "0x03",
+        "coprocessor": "DSP-1",
+        "rom_size": "0x09",
+        "sram_size": "0x00",
+        "country": "0x00",
+        "version": "0x00"
+      },
+      "accepted": [
+        {
+          "size": 524288,
+          "crc32": "77871727",
+          "md5": "55b2db1758dcfb0582ccafe6b0a763ec",
+          "sha1": "76832034269723dc0aa7b9019faa5e8f39181e9d",
+          "sha256": "d1845de22c3c7f2606bda20e09c8f7a78f92f5cbbb6bfe01f96a1d1e84b30394"
+        }
+      ],
+      "provenance": "Measured on this machine from a bare file with no copier header. No-Intro names this dump Pilotwings (Japan). The header's version field reads 0x00 and no later revision of this region is present in the set the digests were taken from."
+    },
+    {
+      "name": "Pilotwings, Europe",
+      "release": null,
+      "region": "Europe",
+      "filename": "pilotwings-eur.sfc",
+      "declares": {
+        "title": "PILOTWINGS",
+        "map": "0x20",
+        "chipset": "0x03",
+        "coprocessor": "DSP-1",
+        "rom_size": "0x09",
+        "sram_size": "0x00",
+        "country": "0x02",
+        "version": "0x00"
+      },
+      "accepted": [
+        {
+          "size": 524288,
+          "crc32": "DEF45776",
+          "md5": "b1e59f8246f1ab07670e5f1015189b3a",
+          "sha1": "d450d6d580d163fdfcc4f58d5bf8fafd7f510750",
+          "sha256": "f70a72f3d3a65497cdc4d849877a29cf4f7bd10439bb7f5cb8675cdfc0e706d4"
+        }
+      ],
+      "provenance": "Measured on this machine from a bare file with no copier header. No-Intro names this dump Pilotwings (Europe). This is the PAL release: the header's country field reads 0x02 and the console it runs on counts a different number of cycles per frame, which every timing figure here states separately rather than folding into one number. The header's version field reads 0x00 and no later revision of this region is present in the set the digests were taken from."
+    }
+  ],
+  "through": [
+    {
+      "name": "DSP-1 microcode",
+      "sibling": "snes-dsp-python",
+      "why": "The part answers by running its own program. That program belongs to whoever made the part, is never carried in any repository here, and is supplied by whoever runs this. The digests are published by the sibling that loads it, and repeated here so a reader can confirm they hold the same image without leaving this repository.",
+      "images": [
+        {
+          "model": "dsp1",
+          "size": 8192,
+          "crc32": "27124599",
+          "md5": "4865ac61cd758b0f9383fe3d4d3b8694",
+          "sha1": "4870e3b1636938c85347e20c56a81284fdfaf46e",
+          "sha256": "5f2e5ed06b362be023b978b5978813ecb9a07c76592454b45c2a1ed17a0de349"
+        },
+        {
+          "model": "dsp1b",
+          "size": 8192,
+          "crc32": "588279B4",
+          "md5": "c8bfb983703a96e1c3d4683105112bc0",
+          "sha1": "1e0112ba3b130c770dab342f6cfe47ac53b278f0",
+          "sha256": "4d42db0f36faef263d6b93f508e8c1c4ae8fc2605fd35e3390ecc02905cd420c"
+        }
+      ]
+    }
+  ],
+  "known_bad": [],
+  "not_this": [
+    {
+      "name": "An image this project already produced",
+      "why": "A build output declares no coprocessor and is larger than the retail dump. Feeding one back in is a mistake, not a dump, and the build says so rather than patching it twice."
+    },
+    {
+      "name": "Campus Challenge '92 - Pilotwings (USA)",
+      "why": "A competition cartridge built on this game. It is the same 524288 bytes, declares the same chipset 0x03, and carries the same internal title PILOTWINGS, so neither a filename, a size, a title nor a chipset tells it apart from a retail dump. Its map byte reads 0x00 where the retail releases read 0x20, and its digests are none of the three above. This entry is why identification is by digest and by nothing else."
+    }
+  ]
+}

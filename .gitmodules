@@ -1,0 +1,15 @@
+[submodule "mos65xx-python"]
+	path = mos65xx-python
+	url = https://github.com/gufranco/mos65xx-python.git
+[submodule "snes-dsp-python"]
+	path = snes-dsp-python
+	url = https://github.com/gufranco/snes-dsp-python.git
+[submodule "snes-mapper-python"]
+	path = snes-mapper-python
+	url = https://github.com/gufranco/snes-mapper-python.git
+[submodule "snes-rom-image-python"]
+	path = snes-rom-image-python
+	url = https://github.com/gufranco/snes-rom-image-python.git
+[submodule "snes-driver-python"]
+	path = snes-driver-python
+	url = https://github.com/gufranco/snes-driver-python.git
