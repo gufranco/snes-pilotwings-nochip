@@ -257,6 +257,24 @@ it. It needs either the scalar decomposition, where each function takes one
 argument and 65,536 rows covers it outright, or a recording that covers more of
 the game.
 
+### The part keeps state, so arguments alone are not the key
+
+Seven of the sixteen commands that answer give different answers for identical
+arguments, because the part keeps state and a command reading a matrix another
+command loaded is not a function of its own arguments. Command `$0e` takes one
+argument set in every recording and answers it 6,260 different ways, which had
+made it look like the cheapest table here at eight bytes.
+
+Six of the seven become deterministic once the key carries one earlier command's
+arguments as well: `$03` on the last `$14`, `$06`, `$0d` and `$0e` on the last
+`$02`, `$13` and `$1b` on the last `$11`. Keyed that way nothing is ambiguous,
+the whole table is 301,308 bytes and the image 825,596.
+
+`$0a` is not tabulatable from these runs on any key tried. It streams 176 reads
+of four words from a matrix loaded earlier, so its answer is the matrix rather
+than a row, and a build that tables it on arguments alone is wrong rather than
+incomplete.
+
 ### What a recording can and cannot say
 
 A recording says what the game did. It cannot say what the game can do. Most of

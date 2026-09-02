@@ -295,6 +295,119 @@ class SpanTest(unittest.TestCase):
         self.assertIn("10..40", repr(exchanges.Span(0, 10, 40, 2)))
 
 
+class ReadingTest(unittest.TestCase):
+    def test_a_command_whose_arguments_decide_it_is_pure(self) -> None:
+        trace = (
+            issued(COMMAND_SITE, 0x28)
+            + argued(ARGUMENT_SITE, 1)
+            + answered(ANSWER_SITE, 9)
+            + issued(ANOTHER_SITE, 0x28)
+            + argued(ARGUMENT_SITE, 1)
+            + answered(ANSWER_SITE, 9)
+        )
+
+        self.assertTrue(exchanges.readings((exchanges.taken(trace),), 0x28).pure)
+
+    def test_a_command_answering_two_ways_for_one_set_is_not(self) -> None:
+        trace = (
+            issued(COMMAND_SITE, 0x06)
+            + argued(ARGUMENT_SITE, 1)
+            + answered(ANSWER_SITE, 9)
+            + issued(ANOTHER_SITE, 0x06)
+            + argued(ARGUMENT_SITE, 1)
+            + answered(ANSWER_SITE, 8)
+        )
+
+        self.assertFalse(exchanges.readings((exchanges.taken(trace),), 0x06).pure)
+
+    def test_a_carrier_that_settles_it_is_found(self) -> None:
+        trace = (
+            issued(COMMAND_SITE, 0x02)
+            + argued(ARGUMENT_SITE, 100)
+            + answered(ANSWER_SITE, 1)
+            + issued(ANOTHER_SITE, 0x06)
+            + argued(ARGUMENT_SITE, 1)
+            + answered(ANSWER_SITE, 9)
+            + issued(COMMAND_SITE, 0x02)
+            + argued(ARGUMENT_SITE, 200)
+            + answered(ANSWER_SITE, 1)
+            + issued(ANOTHER_SITE, 0x06)
+            + argued(ARGUMENT_SITE, 1)
+            + answered(ANSWER_SITE, 8)
+        )
+
+        self.assertEqual(exchanges.readings((exchanges.taken(trace),), 0x06).carrier, 0x02)
+
+    def test_a_command_settled_by_a_carrier_is_tabulatable(self) -> None:
+        trace = (
+            issued(COMMAND_SITE, 0x02)
+            + argued(ARGUMENT_SITE, 100)
+            + answered(ANSWER_SITE, 1)
+            + issued(ANOTHER_SITE, 0x06)
+            + argued(ARGUMENT_SITE, 1)
+            + answered(ANSWER_SITE, 9)
+            + issued(COMMAND_SITE, 0x02)
+            + argued(ARGUMENT_SITE, 200)
+            + answered(ANSWER_SITE, 1)
+            + issued(ANOTHER_SITE, 0x06)
+            + argued(ARGUMENT_SITE, 1)
+            + answered(ANSWER_SITE, 8)
+        )
+
+        self.assertTrue(exchanges.readings((exchanges.taken(trace),), 0x06).tabulatable)
+
+    def test_a_command_nothing_settles_says_so(self) -> None:
+        trace = (
+            issued(COMMAND_SITE, 0x06)
+            + argued(ARGUMENT_SITE, 1)
+            + answered(ANSWER_SITE, 9)
+            + issued(ANOTHER_SITE, 0x06)
+            + argued(ARGUMENT_SITE, 1)
+            + answered(ANSWER_SITE, 8)
+            + issued(COMMAND_SITE, 0x06)
+            + argued(ARGUMENT_SITE, 1)
+            + answered(ANSWER_SITE, 7)
+        )
+
+        self.assertFalse(exchanges.readings((exchanges.taken(trace),), 0x06).tabulatable)
+
+    def test_a_command_carrying_its_own_state_is_allowed_to(self) -> None:
+        trace = (
+            issued(COMMAND_SITE, 0x06)
+            + argued(ARGUMENT_SITE, 1)
+            + answered(ANSWER_SITE, 9)
+            + issued(ANOTHER_SITE, 0x06)
+            + argued(ARGUMENT_SITE, 2)
+            + answered(ANSWER_SITE, 8)
+            + issued(COMMAND_SITE, 0x06)
+            + argued(ARGUMENT_SITE, 1)
+            + answered(ANSWER_SITE, 7)
+        )
+
+        self.assertEqual(exchanges.readings((exchanges.taken(trace),), 0x06).carrier, 0x06)
+
+    def test_a_pure_command_reports_a_row_per_set(self) -> None:
+        trace = (
+            issued(COMMAND_SITE, 0x28)
+            + argued(ARGUMENT_SITE, 1)
+            + answered(ANSWER_SITE, 9)
+            + issued(ANOTHER_SITE, 0x28)
+            + argued(ARGUMENT_SITE, 2)
+            + answered(ANSWER_SITE, 8)
+        )
+
+        self.assertEqual(exchanges.readings((exchanges.taken(trace),), 0x28).rows, 2)
+
+    def test_a_command_with_no_answer_is_pure_over_nothing(self) -> None:
+        self.assertEqual(exchanges.readings(((),), 0x99).rows, 0)
+
+    def test_the_reading_names_what_it_is_keyed_on(self) -> None:
+        self.assertIn("arguments", repr(exchanges.Reading(0x06, None, 3, 0)))
+
+    def test_a_keyed_reading_names_the_carrier(self) -> None:
+        self.assertIn("$02", repr(exchanges.Reading(0x06, 0x02, 3, 0)))
+
+
 class TierTest(unittest.TestCase):
     def test_a_command_asking_for_little_is_answered_in_line(self) -> None:
         self.assertEqual(exchanges.tier_of(0x13, 3), exchanges.INLINE)

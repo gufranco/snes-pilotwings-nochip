@@ -252,6 +252,71 @@ def index_bits(taken_census: Census, command: int) -> int:
     return sum(one.bits for one in spans(taken_census, command))
 
 
+class Reading:
+    """What a command's answers depend on, measured from a run."""
+
+    __slots__ = ("ambiguous", "carrier", "command", "rows")
+
+    def __init__(self, command: int, carrier: int | None, rows: int, ambiguous: int) -> None:
+        self.command = command
+        self.carrier = carrier
+        self.rows = rows
+        self.ambiguous = ambiguous
+
+    @property
+    def pure(self) -> bool:
+        """Whether the arguments alone decide the answer."""
+        return self.carrier is None and self.ambiguous == 0
+
+    @property
+    def tabulatable(self) -> bool:
+        """Whether some key seen here decides the answer for every row."""
+        return self.ambiguous == 0
+
+    @override
+    def __repr__(self) -> str:
+        held = (
+            "arguments" if self.carrier is None else f"arguments and the last ${self.carrier:02x}"
+        )
+        return f"<Reading ${self.command:02x} on {held}, {self.rows} rows>"
+
+
+def readings(runs: tuple[tuple[Exchange, ...], ...], command: int) -> Reading:
+    """What decides that command's answer, taking the simplest key that works.
+
+    A table answers a command only when the key it is indexed on decides the
+    answer. The arguments alone do not always: this part keeps state, so a
+    command that reads a matrix another command loaded gives different answers
+    for the same arguments and a table keyed on them would return whichever row
+    was written last.
+
+    So the arguments are tried first and the answer is a pure function or it is
+    not. When it is not, each command seen earlier in the run is tried as the
+    thing carrying the state, and the one that leaves nothing ambiguous is the
+    key. A command where nothing does is not tabulatable from this run and says
+    so rather than being tabulated wrongly.
+    """
+    plain: dict[tuple[int, ...], set[tuple[int, ...]]] = defaultdict(set)
+    keyed: dict[int, dict[Any, set[tuple[int, ...]]]] = defaultdict(lambda: defaultdict(set))
+    for run in runs:
+        last: dict[int, tuple[int, ...]] = {}
+        for one in run:
+            if one.command == command and one.answer:
+                plain[one.words].add(one.answer)
+                for prior, words in last.items():
+                    keyed[prior][(one.words, words)].add(one.answer)
+            last[one.command] = one.words
+    loose = sum(1 for one in plain.values() if len(one) > 1)
+    if loose == 0:
+        return Reading(command, None, len(plain), 0)
+    best = Reading(command, None, len(plain), loose)
+    for prior, table in keyed.items():
+        bad = sum(1 for one in table.values() if len(one) > 1)
+        if bad < best.ambiguous:
+            best = Reading(command, prior, len(table), bad)
+    return best
+
+
 def read(path: Path | str) -> Census:
     return census(Path(path).read_bytes())
 

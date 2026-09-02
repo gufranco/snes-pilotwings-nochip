@@ -1,7 +1,7 @@
 # Open questions
 
 Every place a claim in this repository is narrower than it looks, with the measurement that would
-close it. Twelve entries. The closed ones are kept, because what closed them is worth reading and
+close it. Thirteen entries. The closed ones are kept, because what closed them is worth reading and
 because two of them were closed once already with an answer that turned out to be wrong.
 
 A question is closed by evidence, never by a decision to stop asking. Until then the narrow claim
@@ -267,6 +267,51 @@ does not happen.
 
 **Until then.** Four commands cannot reach the fallback. Fifteen can, and a build
 reports how often they did rather than claiming they did not.
+
+## 2i. The part keeps state, and a table keyed on arguments alone answers wrongly
+
+**Measured, and it changes what a table has to be keyed on.** Seven of the
+sixteen commands that answer give different answers for identical arguments. The
+part keeps state, so a command reading a matrix another command loaded is not a
+function of its own arguments, and a table keyed on them would return whichever
+row happened to be written last.
+
+| command | sets ambiguous on arguments alone | worst |
+|---|---:|---:|
+| `$06` | 137 of 3,551 | 2,798 answers for one set |
+| `$0a` | 2 of 2 | 10,968 |
+| `$0e` | 1 of 1 | 6,260 |
+| `$03` | 412 of 2,775 | 12 |
+| `$13` | 10 of 14 | 22 |
+| `$0d` | 3 of 6,287 | 2 |
+| `$1b` | 1 of 2,980 | 2 |
+
+`$0e` is the one worth looking at twice. It takes exactly one argument set in
+every recording, which made it the cheapest table in this repository's sizing at
+eight bytes, and it answers that one set 6,260 different ways.
+
+**What settles it.** Six of the seven become fully deterministic once the key
+carries the arguments of one earlier command as well:
+
+| command | keyed on | rows | ambiguous |
+|---|---|---:|---:|
+| `$03` | its arguments and the last `$14` | 5,268 | 0 |
+| `$06` | its arguments and the last `$02` | 75,278 | 0 |
+| `$0d` | its arguments and the last `$02` | 6,557 | 0 |
+| `$0e` | its arguments and the last `$02` | 6,980 | 0 |
+| `$13` | its arguments and the last `$11` | 244 | 0 |
+| `$1b` | its arguments and the last `$11` | 2,986 | 0 |
+
+Keyed that way the whole table is 301,308 bytes and the image 825,596, against
+12,582,912 in a 96 Mbit cartridge.
+
+**What is left.** `$0a` is not tabulatable from these runs whatever it is keyed
+on. It is the streaming command, answering 176 reads of four words from a matrix
+loaded earlier, so its answer is the matrix rather than a row.
+
+**Until then.** Eighteen of nineteen commands have a key that decides their
+answer. `$0a` has none, and a build that tables it on arguments alone is wrong
+rather than incomplete.
 
 ## 3. Which scalar functions the commands are built from
 
