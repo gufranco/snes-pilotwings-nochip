@@ -275,6 +275,41 @@ of four words from a matrix loaded earlier, so its answer is the matrix rather
 than a row, and a build that tables it on arguments alone is wrong rather than
 incomplete.
 
+### What the table actually encodes to
+
+[`lut.py`](lut.py) emits each command's rows as a cartridge would hold them: a
+row count, the key and answer widths, then the keys sorted so a replacement finds
+a row by halving the range rather than walking it. Seventeen compares reach any
+row of the largest table here.
+
+| command | keyed on | rows | key words | answer words | bytes |
+|---|---|---:|---:|---:|---:|
+| `$06` | arguments and last `$02` | 75,278 | 10 | 3 | 1,957,236 |
+| `$0d` | arguments and last `$02` | 6,557 | 10 | 3 | 170,490 |
+| `$00` | arguments | 26,487 | 2 | 1 | 158,930 |
+| `$02` | arguments | 6,980 | 7 | 4 | 153,568 |
+| `$0e` | arguments and last `$02` | 6,980 | 9 | 2 | 153,568 |
+| `$03` | arguments and last `$14` | 5,268 | 9 | 3 | 126,440 |
+| the other 9 | | 22,904 | | | 268,708 |
+
+| | bytes |
+|---|---:|
+| the table, settled commands only | 2,988,940 |
+| the game inside it | 524,288 |
+| the image it makes | 3,513,228 |
+| a 96 Mbit cartridge | 12,582,912 |
+| **headroom** | **9,069,684** |
+| what plain low addressing reaches | 4,194,304 |
+
+Only `$0a` is left to the fallback. The image stays inside plain low addressing,
+so none of the windowed layout is needed.
+
+A row carries its key as well as its answer, which is what a table keyed on a set
+costs over one keyed on a range: a range table finds its row by arithmetic and
+stores no key at all. Several of these keys are wider than the answer they lead
+to, `$06` at ten words of key for three of answer, and that is the price of a
+part that keeps state.
+
 ### What a recording can and cannot say
 
 A recording says what the game did. It cannot say what the game can do. Most of

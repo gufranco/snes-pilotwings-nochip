@@ -257,6 +257,112 @@ def planned_bytes(choices: tuple[Choice, ...]) -> int:
     return sum(one.bytes_ for one in choices)
 
 
+KEY_WORD_BYTES = 2
+
+
+class Table:
+    """One command's rows, as a cartridge would hold them.
+
+    Keys sorted, so a replacement finds a row by halving the range rather than
+    walking it: seventeen compares reaches any row of the largest table here,
+    against seventy five thousand for a walk.
+
+    A row carries its key as well as its answer, which is what a table keyed on a
+    set costs over one keyed on a range: the range table finds a row by
+    arithmetic on the argument and stores no key at all. Several of these keys
+    are wider than the answer they lead to.
+    """
+
+    __slots__ = ("answer_words", "answers", "command", "key_words", "keys")
+
+    def __init__(
+        self,
+        command: int,
+        keys: tuple[tuple[int, ...], ...],
+        answers: tuple[tuple[int, ...], ...],
+        key_words: int,
+        answer_words: int,
+    ) -> None:
+        self.command = command
+        self.keys = keys
+        self.answers = answers
+        self.key_words = key_words
+        self.answer_words = answer_words
+
+    @property
+    def rows(self) -> int:
+        return len(self.keys)
+
+    @property
+    def size(self) -> int:
+        return self.rows * (self.key_words + self.answer_words) * KEY_WORD_BYTES
+
+    @override
+    def __repr__(self) -> str:
+        return f"<Table ${self.command:02x} {self.rows:,} rows, {self.size:,} bytes>"
+
+
+def gather(
+    runs: tuple[tuple[Any, ...], ...], command: int, carrier: int | None
+) -> dict[tuple[int, ...], tuple[int, ...]]:
+    """Every row a set of runs holds for that command, under that key.
+
+    The answers come from the recordings rather than from driving the part,
+    because a recording already holds what the part answered. Driving it again
+    would reproduce those answers at best and diverge from them at worst.
+    """
+    found: dict[tuple[int, ...], tuple[int, ...]] = {}
+    for run in runs:
+        last: dict[int, tuple[int, ...]] = {}
+        for one in run:
+            if one.command == command and one.answer:
+                held = last.get(carrier, ()) if carrier is not None else ()
+                found[(*one.words, *held)] = one.answer
+            last[one.command] = one.words
+    return found
+
+
+def table(runs: tuple[tuple[Any, ...], ...], command: int, carrier: int | None) -> Table:
+    """That command's rows, padded to one width and sorted for a binary search."""
+    held = gather(runs, command, carrier)
+    if not held:
+        return Table(command, (), (), 0, 0)
+    key_words = max(len(one) for one in held)
+    answer_words = max(len(one) for one in held.values())
+    rows = sorted(
+        (
+            tuple(key) + (0,) * (key_words - len(key)),
+            tuple(answer) + (0,) * (answer_words - len(answer)),
+        )
+        for key, answer in held.items()
+    )
+    return Table(
+        command,
+        tuple(one for one, _ in rows),
+        tuple(one for _, one in rows),
+        key_words,
+        answer_words,
+    )
+
+
+def encode(built: Table) -> bytes:
+    """That table as the cartridge holds it: a count, then keys, then answers.
+
+    Every field is wider than it looks like it needs to be, and each was widened
+    after the narrow one overflowed on real data. The count is thirty two bits
+    because `$06` keyed on its arguments and the last `$02` holds 75,278 rows,
+    and sixteen bits wrap to 9,742. The two widths are sixteen bits each because
+    `$0a` answers 704 words in one exchange, and eight bits wrap to 192.
+    """
+    out = bytearray()
+    out += struct.pack(">IHH", built.rows, built.key_words, built.answer_words)
+    for one in built.keys:
+        out += struct.pack(f">{len(one)}H", *one)
+    for one in built.answers:
+        out += struct.pack(f">{len(one)}H", *one)
+    return bytes(out)
+
+
 def main(argv: tuple[str, ...] | list[str] = (), say: Any = print) -> int:
     count = int(argv[0]) if argv else FULL_DOMAIN
     for line in report(count):

@@ -212,6 +212,112 @@ class PlanTest(unittest.TestCase):
         self.assertIn("$13", repr(lut.plan(census, 0x13)))
 
 
+def run_of(
+    pairs: list[tuple[int, tuple[int, ...], tuple[int, ...]]],
+) -> tuple[exchanges.Exchange, ...]:
+    return tuple(
+        exchanges.Exchange(0x10, command, words, answer) for command, words, answer in pairs
+    )
+
+
+class TableTest(unittest.TestCase):
+    def test_a_command_with_no_row_makes_an_empty_table(self) -> None:
+        self.assertEqual(lut.table(((),), 0x13, None).rows, 0)
+
+    def test_a_row_is_kept_for_every_key_the_run_held(self) -> None:
+        run = run_of([(0x13, (1,), (9,)), (0x13, (2,), (8,))])
+
+        self.assertEqual(lut.table((run,), 0x13, None).rows, 2)
+
+    def test_the_same_key_twice_is_one_row(self) -> None:
+        run = run_of([(0x13, (1,), (9,)), (0x13, (1,), (9,))])
+
+        self.assertEqual(lut.table((run,), 0x13, None).rows, 1)
+
+    def test_the_keys_come_out_sorted_for_a_binary_search(self) -> None:
+        run = run_of([(0x13, (5,), (9,)), (0x13, (1,), (8,))])
+
+        self.assertEqual(lut.table((run,), 0x13, None).keys, ((1,), (5,)))
+
+    def test_the_answer_stays_with_its_key_through_the_sort(self) -> None:
+        run = run_of([(0x13, (5,), (9,)), (0x13, (1,), (8,))])
+
+        self.assertEqual(lut.table((run,), 0x13, None).answers, ((8,), (9,)))
+
+    def test_a_carrier_widens_the_key(self) -> None:
+        run = run_of([(0x02, (7,), (1,)), (0x13, (1,), (9,))])
+
+        self.assertEqual(lut.table((run,), 0x13, 0x02).keys, ((1, 7),))
+
+    def test_a_carrier_never_seen_leaves_the_key_narrow(self) -> None:
+        run = run_of([(0x13, (1,), (9,))])
+
+        self.assertEqual(lut.table((run,), 0x13, 0x02).keys, ((1,),))
+
+    def test_a_short_key_is_padded_to_the_widest(self) -> None:
+        run = run_of([(0x13, (1,), (9,)), (0x13, (2, 3), (8,))])
+        built = lut.table((run,), 0x13, None)
+
+        self.assertEqual(built.key_words, 2)
+
+    def test_a_short_answer_is_padded_too(self) -> None:
+        run = run_of([(0x13, (1,), (9,)), (0x13, (2,), (8, 7))])
+
+        self.assertEqual(lut.table((run,), 0x13, None).answer_words, 2)
+
+    def test_the_size_counts_keys_and_answers(self) -> None:
+        run = run_of([(0x13, (1,), (9,)), (0x13, (2,), (8,))])
+        built = lut.table((run,), 0x13, None)
+
+        self.assertEqual(built.size, 2 * (1 + 1) * lut.KEY_WORD_BYTES)
+
+    def test_a_table_names_its_command_and_size(self) -> None:
+        run = run_of([(0x13, (1,), (9,))])
+
+        self.assertIn("$13", repr(lut.table((run,), 0x13, None)))
+
+
+class EncodeTest(unittest.TestCase):
+    def test_the_encoding_opens_with_the_row_count(self) -> None:
+        run = run_of([(0x13, (1,), (9,)), (0x13, (2,), (8,))])
+        raw = lut.encode(lut.table((run,), 0x13, None))
+
+        self.assertEqual(struct.unpack(">I", raw[:4])[0], 2)
+
+    def test_it_then_says_how_wide_a_key_and_an_answer_are(self) -> None:
+        run = run_of([(0x13, (1,), (9,))])
+        raw = lut.encode(lut.table((run,), 0x13, None))
+
+        self.assertEqual(struct.unpack(">HH", raw[4:8]), (1, 1))
+
+    def test_a_width_past_a_byte_survives(self) -> None:
+        run = run_of([(0x0A, (1,), tuple(range(300)))])
+        raw = lut.encode(lut.table((run,), 0x0A, None))
+
+        self.assertEqual(struct.unpack(">H", raw[6:8])[0], 300)
+
+    def test_a_count_past_sixteen_bits_survives(self) -> None:
+        run = run_of([(0x13, (one // 256, one % 256), (1,)) for one in range(70000)])
+        raw = lut.encode(lut.table((run,), 0x13, None))
+
+        self.assertEqual(struct.unpack(">I", raw[:4])[0], 70000)
+
+    def test_the_keys_follow_in_order(self) -> None:
+        run = run_of([(0x13, (5,), (9,)), (0x13, (1,), (8,))])
+        raw = lut.encode(lut.table((run,), 0x13, None))
+
+        self.assertEqual(struct.unpack(">HH", raw[8:12]), (1, 5))
+
+    def test_the_answers_follow_the_keys(self) -> None:
+        run = run_of([(0x13, (5,), (9,)), (0x13, (1,), (8,))])
+        raw = lut.encode(lut.table((run,), 0x13, None))
+
+        self.assertEqual(struct.unpack(">HH", raw[12:16]), (8, 9))
+
+    def test_an_empty_table_still_encodes_a_header(self) -> None:
+        self.assertEqual(len(lut.encode(lut.table(((),), 0x13, None))), 8)
+
+
 class MainTest(unittest.TestCase):
     def test_running_it_prints_the_report(self) -> None:
         said: list[str] = []
