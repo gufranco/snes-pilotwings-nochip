@@ -47,7 +47,8 @@ class ExpandTest(unittest.TestCase):
     def test_the_reciprocal_is_the_table_that_needs_it(self) -> None:
         table = next(one for one in tables.KNOWN if one.name == tables.RECIPROCAL)
 
-        self.assertGreater(table.values()[0], lut.HIGHEST)
+        self.assertGreater(2**22 / 128, lut.HIGHEST)
+        self.assertEqual(table.values()[0], lut.HIGHEST)
 
     def test_the_last_row_is_the_table_s_last_entry(self) -> None:
         table = tables.KNOWN[0]
