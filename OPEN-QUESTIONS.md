@@ -209,6 +209,28 @@ multiply, which wants two words. Skipping that preamble entirely changed not one
 figure, so it is not the cause. Nor is a stale part: the disagreements appear on
 a part that has been driven through the same history the game gave it.
 
+**How far the replay itself can be trusted, measured in blocks of 20,000.**
+
+| exchanges | agreed | differed | rate |
+|---|---:|---:|---:|
+| 0 to 100,000 | 105,741 | 3,024 | 96.7% to 97.4% |
+| 120,000 | 13,719 | 4,918 | 73.6% |
+| 140,000 to 160,000 | 37,071 | 976 | 97.4% |
+| 180,000 | 16,521 | 2,511 | 86.8% |
+| 200,000 onward | 69 | 76,874 | 0.1% |
+
+The replay holds near 97% for 200,000 exchanges, dips twice and recovers, then
+loses the part and never recovers. `$00` is the control, being a signed multiply
+that no state can change: it agrees 8,527 times of 8,542 through the first 60,000
+exchanges and 23,212 of 44,289 over the whole run, which is the same break seen
+from a command that cannot legitimately disagree at all.
+
+So the steady 3% is the divergence and everything past 200,000 is the replay
+rather than the part. Draining the part's output between exchanges was tried as
+the repair and is worse: `$0d` falls from 311 agreed and 1 differed to 0 and 312,
+because the drain consumes words the next exchange legitimately reads. What loses
+the part at 200,000 is not yet known.
+
 **Until then.** Seven commands' recorded answers are confirmed against the
 microcode. Six are not, and `$14` is almost wholly unconfirmed. A table built
 from recorded answers stores snes9x's answer wherever the two differ, so the
