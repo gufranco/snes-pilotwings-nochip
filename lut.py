@@ -303,28 +303,45 @@ class Table:
 
 
 def gather(
-    runs: tuple[tuple[Any, ...], ...], command: int, carrier: int | None
+    runs: tuple[tuple[Any, ...], ...],
+    command: int,
+    carrier: int | None,
+    answers: dict[int, dict[tuple[int, ...], tuple[int, ...]]] | None = None,
 ) -> dict[tuple[int, ...], tuple[int, ...]]:
     """Every row a set of runs holds for that command, under that key.
 
-    The answers come from the recordings rather than from driving the part,
-    because a recording already holds what the part answered. Driving it again
-    would reproduce those answers at best and diverge from them at worst.
+    The keys come from the recordings, because what the game asks for is only
+    answerable by watching the game. The answers do not, and an earlier version
+    of this took them from the recordings on the reasoning that driving the part
+    again would reproduce them at best. Measurement says otherwise: replaying a
+    recording through the part's own program disagrees on 319 of 7,184 answered
+    exchanges, concentrated in six commands, and `$14` disagrees almost
+    everywhere. Where the two differ the recording holds the emulator's answer.
+
+    So `answers` is supplied by a caller that drove the part, and the recorded
+    answer is the fallback for a caller that has no microcode to drive.
     """
+    driven = (answers or {}).get(command, {})
     found: dict[tuple[int, ...], tuple[int, ...]] = {}
     for run in runs:
         last: dict[int, tuple[int, ...]] = {}
         for one in run:
             if one.command == command and one.answer:
                 held = last.get(carrier, ()) if carrier is not None else ()
-                found[(*one.words, *held)] = one.answer
+                key = (*one.words, *held)
+                found[key] = driven.get(key, one.answer)
             last[one.command] = one.words
     return found
 
 
-def table(runs: tuple[tuple[Any, ...], ...], command: int, carrier: int | None) -> Table:
+def table(
+    runs: tuple[tuple[Any, ...], ...],
+    command: int,
+    carrier: int | None,
+    answers: dict[int, dict[tuple[int, ...], tuple[int, ...]]] | None = None,
+) -> Table:
     """That command's rows, padded to one width and sorted for a binary search."""
-    held = gather(runs, command, carrier)
+    held = gather(runs, command, carrier, answers)
     if not held:
         return Table(command, (), (), 0, 0)
     key_words = max(len(one) for one in held)

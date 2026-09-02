@@ -244,6 +244,27 @@ class TableTest(unittest.TestCase):
 
         self.assertEqual(lut.table((run,), 0x13, None).answers, ((8,), (9,)))
 
+    def test_a_driven_answer_replaces_the_recorded_one(self) -> None:
+        run = run_of([(0x13, (1,), (9,))])
+
+        built = lut.table((run,), 0x13, None, {0x13: {(1,): (4,)}})
+
+        self.assertEqual(built.answers, ((4,),))
+
+    def test_a_key_the_part_was_never_driven_on_keeps_the_recorded_answer(self) -> None:
+        run = run_of([(0x13, (1,), (9,))])
+
+        built = lut.table((run,), 0x13, None, {0x13: {(2,): (4,)}})
+
+        self.assertEqual(built.answers, ((9,),))
+
+    def test_a_driven_answer_is_found_under_the_widened_key(self) -> None:
+        run = run_of([(0x02, (7,), (1,)), (0x13, (1,), (9,))])
+
+        built = lut.table((run,), 0x13, 0x02, {0x13: {(1, 7): (4,)}})
+
+        self.assertEqual(built.answers, ((4,),))
+
     def test_a_carrier_widens_the_key(self) -> None:
         run = run_of([(0x02, (7,), (1,)), (0x13, (1,), (9,))])
 
