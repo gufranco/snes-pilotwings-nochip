@@ -32,6 +32,12 @@ the commands are built from, and which functions those are is no longer a guess:
 `2^22 / (128 + k)`, a sine, a cosine and an arccosine, each matching its formula to within one unit.
 There is no square root and no arctangent. All four together are 1,282 bytes.
 
+Those four are not everything the handlers read. Watching the data ROM while the part runs the game's
+own command stream, the handlers touch 315 of the 1024 words across 30,000 exchanges and 98 of those
+sit outside all four, in six stretches, none of them monotone. They are constants rather than a fifth
+scalar function, and a replacement needs them as well. Which command reads which table is in entry 3c
+of [OPEN-QUESTIONS.md](OPEN-QUESTIONS.md); `$0a` is the only one that reaches all four.
+
 Tabulating those four over their whole sixteen bit input is 524,288 bytes, which is exhaustive rather
 than merely large: every value an argument can hold has a row, so a lookup cannot miss. Products need
 no table at all, because the console has a hardware multiplier.
