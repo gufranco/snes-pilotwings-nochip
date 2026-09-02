@@ -96,6 +96,31 @@ it always could. A slower answer beats a stopped machine.
 A fallback nobody measured is a fallback nobody has. Its cost is stated in cycles
 and a build reports how often it fired, rather than asserting it did not.
 
+## Ask the three questions in the order the standard gives
+
+The standard names them and this repository has got two of them wrong, so they
+are worth restating with what the measurement here showed.
+
+Which calculations the game can ask for is answered by reading the whole image.
+[`commands.py`](commands.py) reads 20 command bytes out of every region, and the
+recordings only ever produced 18 or 19, so the image reaches further than any run.
+
+What range each argument takes is answered by [`exchanges.py`](exchanges.py),
+which reports the lowest, the highest and the count of distinct values at every
+position. Both figures go together: twelve of the nineteen commands hold a
+position spanning the whole sixteen bit word while using a few thousand values
+inside it, so a width without a distinct count reads as dense when it is sparse.
+
+Which exact values are asked for is answered only by running the game, and it
+does not close. Of the argument words written to the port, 7% are immediates
+fixed in the image and 93% come from direct page, indexed or absolute reads, so
+the image holds almost none of them.
+
+Two mistakes made here are named in the standard and both were made in that
+order. The first sized against the part's input domain, which made a feasible
+table look impossible. The second called a run time value unknowable and stopped,
+when its ends were one query away.
+
 ## What must never enter this repository
 
 No cartridge dump, no microcode image, no fragment of either, no intermediate built from either, and

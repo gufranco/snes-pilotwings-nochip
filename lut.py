@@ -30,6 +30,7 @@ coverage argument, which is about the shape of the table and not its values.
 import struct
 from typing import Any, override
 
+import exchanges
 import tables
 
 FULL_DOMAIN = 65536
@@ -162,6 +163,98 @@ def report(count: int = FULL_DOMAIN) -> list[str]:
         f"  {holes(count)} inputs have no row, so no input can miss and the fallback is unreachable"
     )
     return lines
+
+
+ON_RANGE = "indexed on the range the game used, so no input inside it can miss"
+
+ON_SET = "indexed on the set that was recorded, so an unseen argument misses"
+
+
+class Choice:
+    """How one command is answered, and what that costs."""
+
+    __slots__ = ("bytes_", "command", "complete", "rows", "why")
+
+    def __init__(self, command: int, why: str, rows: int, bytes_: int, complete: bool) -> None:
+        self.command = command
+        self.why = why
+        self.rows = rows
+        self.bytes_ = bytes_
+        self.complete = complete
+
+    @override
+    def __repr__(self) -> str:
+        return f"<Choice ${self.command:02x} {self.rows:,} rows, {self.bytes_:,} bytes>"
+
+
+def plan(census: exchanges.Census, command: int, out: int = 1, budget: int = CEILING) -> Choice:
+    """Whether that command gets a table over its range or over its set.
+
+    The range is preferred wherever it fits, and it is preferred even when it is
+    the larger of the two. A table over the range answers every argument between
+    the ends the game was seen to use, so the fallback behind it is unreachable
+    for anything inside them; a table over the set answers only the arguments a
+    recording happened to catch, and the fallback behind that one is reached the
+    first time a player produces a set the recording did not.
+
+    Paying for the wider table is the whole point of having the budget.
+    """
+    spans = exchanges.spans(census, command)
+    rows = 1 << sum(one.bits for one in spans) if spans else 1
+    dense = rows * out * BYTES_PER_ROW
+    held = census.distinct(command)
+    sparse = held * out * BYTES_PER_ROW
+    if dense <= budget:
+        return Choice(command, ON_RANGE, rows, dense, True)
+    return Choice(command, ON_SET, held, sparse, False)
+
+
+def planned(
+    census: exchanges.Census,
+    widths: dict[int, int] | None = None,
+    budget: int = CEILING - GAME_BYTES,
+) -> tuple[Choice, ...]:
+    """A choice for every command, sharing one budget between them all.
+
+    The budget belongs to the cartridge rather than to each command, and treating
+    it as each command's is how a plan comes back larger than the cartridge it
+    was made for. Command `$0a` answers twelve words at a time, so a table over
+    its range is 12,582,912 bytes on its own, which is affordable only if nothing
+    else needs anything.
+
+    Every command starts on a table over the set that was recorded, which is the
+    cheap and incomplete option, and the budget is then spent widening as many as
+    it reaches to a table over the range. Cheapest widening first, because that
+    buys completeness for the most commands, and completeness is the whole reason
+    to spend: a command answered over its range cannot reach the fallback for any
+    argument between the ends the game was seen to use.
+    """
+    widths = widths or {}
+    over_set = {
+        one: Choice(
+            one,
+            ON_SET,
+            census.distinct(one),
+            census.distinct(one) * widths.get(one, 1) * BYTES_PER_ROW,
+            False,
+        )
+        for one in census.commands
+    }
+    over_range = {
+        one: plan(census, one, widths.get(one, 1), budget=budget) for one in census.commands
+    }
+    chosen = dict(over_set)
+    left = budget - sum(one.bytes_ for one in over_set.values())
+    for command in sorted(census.commands, key=lambda one: over_range[one].bytes_):
+        wider = over_range[command].bytes_ - over_set[command].bytes_
+        if over_range[command].complete and wider <= left:
+            chosen[command] = over_range[command]
+            left -= wider
+    return tuple(chosen[one] for one in census.commands)
+
+
+def planned_bytes(choices: tuple[Choice, ...]) -> int:
+    return sum(one.bytes_ for one in choices)
 
 
 def main(argv: tuple[str, ...] | list[str] = (), say: Any = print) -> int:

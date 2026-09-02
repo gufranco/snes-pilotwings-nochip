@@ -1,5 +1,7 @@
+import struct
 import unittest
 
+import exchanges
 import lut
 import tables
 
@@ -124,6 +126,90 @@ class ReportTest(unittest.TestCase):
         said = "\n".join(lut.report())
 
         self.assertTrue(all(one.name in said for one in lut.KERNELS))
+
+
+def recording(command: int, sets: list[tuple[int, ...]]) -> exchanges.Census:
+    out = b""
+    for at, words in enumerate(sets):
+        site = 0x10 + (at % 2)
+        out += struct.pack("<IIHBB", 0, site, exchanges.DATA_PORT, 0, command)
+        for word in words:
+            out += struct.pack("<IIHBB", 0, 0x40, exchanges.DATA_PORT, 0, word & 0xFF)
+            out += struct.pack("<IIHBB", 0, 0x40, exchanges.DATA_PORT + 1, 0, word >> 8)
+    return exchanges.census(out)
+
+
+class PlanTest(unittest.TestCase):
+    def test_a_narrow_range_is_answered_over_the_range(self) -> None:
+        census = recording(0x13, [(1,), (2,), (3,)])
+
+        self.assertEqual(lut.plan(census, 0x13).why, lut.ON_RANGE)
+
+    def test_that_choice_says_no_input_inside_it_can_miss(self) -> None:
+        census = recording(0x13, [(1,), (2,), (3,)])
+
+        self.assertTrue(lut.plan(census, 0x13).complete)
+
+    def test_a_range_too_wide_for_the_budget_falls_back_to_the_set(self) -> None:
+        census = recording(0x13, [(0,), (65535,), (1000,)])
+
+        self.assertEqual(lut.plan(census, 0x13, budget=1024).why, lut.ON_SET)
+
+    def test_that_choice_says_an_unseen_argument_misses(self) -> None:
+        census = recording(0x13, [(0,), (65535,), (1000,)])
+
+        self.assertFalse(lut.plan(census, 0x13, budget=1024).complete)
+
+    def test_the_range_is_preferred_even_when_it_costs_more(self) -> None:
+        census = recording(0x13, [(0,), (255,)])
+
+        self.assertEqual(lut.plan(census, 0x13).rows, 256)
+
+    def test_a_wider_answer_costs_more_rows_worth_of_bytes(self) -> None:
+        census = recording(0x13, [(0,), (255,)])
+
+        self.assertEqual(lut.plan(census, 0x13, out=4).bytes_, 256 * 4 * lut.BYTES_PER_ROW)
+
+    def test_a_command_with_no_arguments_still_gets_a_row(self) -> None:
+        census = recording(0x80, [()])
+
+        self.assertEqual(lut.plan(census, 0x80).rows, 1)
+
+    def test_every_command_the_recording_saw_gets_a_choice(self) -> None:
+        census = recording(0x13, [(1,), (2,)])
+
+        self.assertEqual(len(lut.planned(census)), len(census.commands))
+
+    def test_the_plan_adds_up_what_the_choices_cost(self) -> None:
+        census = recording(0x13, [(1,), (2,)])
+        choices = lut.planned(census)
+
+        self.assertEqual(lut.planned_bytes(choices), sum(one.bytes_ for one in choices))
+
+    def test_a_wider_answer_is_taken_from_the_widths_given(self) -> None:
+        census = recording(0x13, [(0,), (255,)])
+
+        self.assertEqual(lut.planned(census, widths={0x13: 4})[0].bytes_, 256 * 4 * 2)
+
+    def test_a_budget_too_small_for_the_wider_table_keeps_the_set(self) -> None:
+        census = recording(0x13, [(0,), (65535,)])
+
+        self.assertFalse(lut.planned(census, budget=64)[0].complete)
+
+    def test_a_budget_that_covers_it_takes_the_wider_table(self) -> None:
+        census = recording(0x13, [(0,), (255,)])
+
+        self.assertTrue(lut.planned(census, budget=4096)[0].complete)
+
+    def test_the_plan_never_costs_more_than_the_budget(self) -> None:
+        census = recording(0x13, [(0,), (65535,)])
+
+        self.assertLessEqual(lut.planned_bytes(lut.planned(census, budget=4096)), 4096)
+
+    def test_a_choice_names_the_command_and_its_size(self) -> None:
+        census = recording(0x13, [(1,), (2,)])
+
+        self.assertIn("$13", repr(lut.plan(census, 0x13)))
 
 
 class MainTest(unittest.TestCase):

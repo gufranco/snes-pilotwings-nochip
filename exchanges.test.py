@@ -225,6 +225,76 @@ class CensusTest(unittest.TestCase):
         self.assertIn("$13", repr(exchanges.taken(self.trace)[0]))
 
 
+class SpanTest(unittest.TestCase):
+    def test_a_command_never_issued_has_no_spans(self) -> None:
+        self.assertEqual(exchanges.spans(exchanges.census(b""), 0x13), ())
+
+    def test_a_position_reports_the_ends_it_was_given(self) -> None:
+        trace = (
+            issued(COMMAND_SITE, 0x13)
+            + argued(ARGUMENT_SITE, 10)
+            + issued(ANOTHER_SITE, 0x13)
+            + argued(ARGUMENT_SITE, 40)
+        )
+        found = exchanges.spans(exchanges.census(trace), 0x13)
+
+        self.assertEqual((found[0].lowest, found[0].highest), (10, 40))
+
+    def test_a_position_reports_how_many_values_it_saw(self) -> None:
+        trace = (
+            issued(COMMAND_SITE, 0x13)
+            + argued(ARGUMENT_SITE, 10)
+            + issued(ANOTHER_SITE, 0x13)
+            + argued(ARGUMENT_SITE, 40)
+        )
+        found = exchanges.spans(exchanges.census(trace), 0x13)
+
+        self.assertEqual(found[0].distinct, 2)
+
+    def test_the_width_counts_both_ends(self) -> None:
+        self.assertEqual(exchanges.Span(0, 10, 40, 2).width, 31)
+
+    def test_the_bits_are_what_an_index_into_that_width_needs(self) -> None:
+        self.assertEqual(exchanges.Span(0, 0, 255, 256).bits, 8)
+
+    def test_a_single_value_still_needs_a_bit(self) -> None:
+        self.assertEqual(exchanges.Span(0, 7, 7, 1).bits, 1)
+
+    def test_a_position_filling_its_range_is_dense(self) -> None:
+        self.assertTrue(exchanges.Span(0, 0, 9, 10).dense)
+
+    def test_a_position_scattered_through_a_wide_range_is_not(self) -> None:
+        self.assertFalse(exchanges.Span(0, 0, 65535, 12).dense)
+
+    def test_every_position_of_a_command_is_reported(self) -> None:
+        trace = issued(COMMAND_SITE, 0x00) + argued(ARGUMENT_SITE, 7) + argued(ARGUMENT_SITE, 8)
+
+        self.assertEqual(len(exchanges.spans(exchanges.census(trace), 0x00)), 2)
+
+    def test_the_index_adds_the_bits_of_every_position(self) -> None:
+        trace = issued(COMMAND_SITE, 0x00) + argued(ARGUMENT_SITE, 7) + argued(ARGUMENT_SITE, 8)
+
+        self.assertEqual(exchanges.index_bits(exchanges.census(trace), 0x00), 2)
+
+    def test_a_command_never_issued_needs_no_index(self) -> None:
+        self.assertEqual(exchanges.index_bits(exchanges.census(b""), 0x99), 0)
+
+    def test_a_position_no_set_reached_is_left_out(self) -> None:
+        trace = (
+            issued(COMMAND_SITE, 0x13)
+            + argued(ARGUMENT_SITE, 5)
+            + argued(ARGUMENT_SITE, 6)
+            + issued(ANOTHER_SITE, 0x13)
+            + argued(ARGUMENT_SITE, 5)
+        )
+        found = exchanges.spans(exchanges.census(trace), 0x13)
+
+        self.assertEqual([one.position for one in found], [0, 1])
+
+    def test_a_span_names_the_position_and_its_ends(self) -> None:
+        self.assertIn("10..40", repr(exchanges.Span(0, 10, 40, 2)))
+
+
 class TierTest(unittest.TestCase):
     def test_a_command_asking_for_little_is_answered_in_line(self) -> None:
         self.assertEqual(exchanges.tier_of(0x13, 3), exchanges.INLINE)

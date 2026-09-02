@@ -193,6 +193,65 @@ def census(trace: bytes) -> Census:
     return Census(dict(seen), dict(where))
 
 
+class Span:
+    """What one argument position of one command was ever given."""
+
+    __slots__ = ("distinct", "highest", "lowest", "position")
+
+    def __init__(self, position: int, lowest: int, highest: int, distinct: int) -> None:
+        self.position = position
+        self.lowest = lowest
+        self.highest = highest
+        self.distinct = distinct
+
+    @property
+    def width(self) -> int:
+        """How many values lie between the two ends, both included."""
+        return self.highest - self.lowest + 1
+
+    @property
+    def bits(self) -> int:
+        """How many bits an index into that width needs."""
+        return max(1, (self.width - 1).bit_length())
+
+    @property
+    def dense(self) -> bool:
+        """Whether the values fill their range or are scattered through it.
+
+        The distinction decides which table is possible. A position that fills
+        its range can be indexed directly, and one that scatters through a wide
+        range cannot: the rows between the values it used would be rows for
+        inputs nobody has seen, which is the whole of the difference between a
+        table sized against a range and one sized against a set.
+        """
+        return self.distinct * 2 >= self.width
+
+    @override
+    def __repr__(self) -> str:
+        return f"<Span {self.position} {self.lowest}..{self.highest}, {self.distinct} used>"
+
+
+def spans(taken_census: Census, command: int) -> tuple[Span, ...]:
+    """The reach of each argument position of that command, as recorded.
+
+    A floor like everything else a recording gives: the ends are the ends of what
+    was seen, and a run that went further would widen them.
+    """
+    words = [one for one in taken_census.seen.get(command, ()) if one]
+    if not words:
+        return ()
+    found = []
+    for position in range(max(len(one) for one in words)):
+        values = {one[position] for one in words if len(one) > position}
+        found.append(Span(position, min(values), max(values), len(values)))
+    return tuple(found)
+
+
+def index_bits(taken_census: Census, command: int) -> int:
+    """How many bits a table indexed on those spans would need."""
+    return sum(one.bits for one in spans(taken_census, command))
+
+
 def read(path: Path | str) -> Census:
     return census(Path(path).read_bytes())
 

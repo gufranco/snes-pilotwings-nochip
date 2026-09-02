@@ -205,6 +205,58 @@ the part carries needs about a kilobyte, not 131,072 bytes per function, and
 interpolating the way the microcode does is also the only way to be exactly right
 rather than close.
 
+### What range each argument takes
+
+An argument computed at run time still has ends, and the ends decide what shape
+of table is possible. [`exchanges.py`](exchanges.py) reports the lowest, the
+highest and the count of distinct values at every argument position:
+
+| what the positions look like | commands | what a table indexes on |
+|---|---:|---|
+| one or a handful of values | 5 | the values, in line |
+| a few thousand, filling their range | 2 | the range, 2^18 and 2^20 rows |
+| at least one spanning the whole word | 12 | nothing dense |
+
+The third row is why a width on its own misleads. Command `$0d` takes about four
+thousand distinct values at each of three positions and each position runs the
+full 0 to 65,535, so the values are scattered rather than dense and a table on the
+range would be 2^48 rows almost all of which answer inputs nobody sends. Both
+figures are reported together for that reason.
+
+### What a table built from those ranges costs
+
+[`lut.py`](lut.py) plans one table per command and shares a single cartridge
+budget between them. Each starts on a table over the set that was recorded, which
+is cheap and can miss, and the budget is then spent widening as many as it reaches
+to a table over the range, cheapest widening first. A command answered over its
+range cannot reach the fallback for any argument between the ends the game used.
+
+| command | rows | bytes | indexed on |
+|---|---:|---:|---|
+| `$04` | 1,048,576 | 2,097,152 | the range, complete |
+| `$10` | 262,144 | 524,288 | the range, complete |
+| `$0e` | 4 | 8 | the range, complete |
+| `$80` | 1 | 2 | the range, complete |
+| the other 15 | 74,020 | 140,878 | the set, so they can miss |
+
+| | bytes |
+|---|---:|
+| the whole table | 2,762,528 |
+| the game inside it | 524,288 |
+| the image it makes | 3,286,816 |
+| a 96 Mbit cartridge | 12,582,912 |
+| **headroom** | **9,296,096** |
+
+Four of the nineteen are complete over the range the game used. The other fifteen
+hold a position spanning the whole sixteen bit word, so a table over their range
+is 2^32 rows or more and nothing holds it; those are answered from the recorded
+set and are where the fallback can be reached.
+
+Widening those fifteen is not a budget problem and more cartridge does not fix
+it. It needs either the scalar decomposition, where each function takes one
+argument and 65,536 rows covers it outright, or a recording that covers more of
+the game.
+
 ### What a recording can and cannot say
 
 A recording says what the game did. It cannot say what the game can do. Most of

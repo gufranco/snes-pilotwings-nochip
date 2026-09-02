@@ -1,7 +1,7 @@
 # Open questions
 
 Every place a claim in this repository is narrower than it looks, with the measurement that would
-close it. Nine entries. The closed ones are kept, because what closed them is worth reading and
+close it. Twelve entries. The closed ones are kept, because what closed them is worth reading and
 because two of them were closed once already with an answer that turned out to be wrong.
 
 A question is closed by evidence, never by a decision to stop asking. Until then the narrow claim
@@ -192,6 +192,81 @@ answer. Where the two agree the recording stands; where they differ it does not.
 
 **Until then.** A figure from a recording says what the game did against snes9x.
 Nothing here has checked how much of that is the part.
+
+## 2f. What range each argument takes, and what that allows
+
+**Measured, and it splits the commands three ways.** An argument computed at run
+time still has ends, and [`exchanges.py`](exchanges.py) reports the lowest, the
+highest and the number of distinct values at every argument position.
+
+| what the positions look like | commands | what a table can be indexed on |
+|---|---:|---|
+| every position holds one or a handful of values | `$0a`, `$0e`, `$11`, `$13`, `$18` | the values themselves, in line |
+| positions span a few thousand and fill them | `$04`, `$10` | the range, at 2^20 and 2^18 rows |
+| at least one position spans the whole sixteen bit word | `$01`, `$02`, `$03`, `$06`, `$08`, `$0c`, `$0d`, `$14`, `$1b`, `$28` | nothing dense |
+
+The last group is the one that matters and the reason a width alone misleads.
+Command `$0d` holds about four thousand distinct values at each of three
+positions, and each of those positions runs from 0 to 65,535. The values are
+scattered through the range rather than filling it, so a table indexed on the
+range would be 2^48 rows of which all but twelve thousand answer inputs nobody
+sends. Only a table indexed on the set works there, and a set is what a recording
+gives, which is entry 2.
+
+**Where this leaves the sizing.** Five commands need no table. Two can be indexed
+on their range, `$10` in 524,288 bytes and `$04` in 2 MB. The other twelve are
+sparse and are either a set lookup or the scalar decomposition of entry 3.
+
+**What is still narrow.** These ends are the ends of what was recorded. A run
+that went further would widen them, so they are a floor like everything else a
+recording gives.
+
+## 2g. Driving the game rather than watching it
+
+**Attempted, and it did not reach a lesson.** The recorder takes an input script,
+so a run was made with menu presses followed by 384 varied stick and button
+changes over 12,000 frames of the European image.
+
+It moved 23,490,058 bytes through the port against the demo's 18,054,439, so it
+was doing more, and it produced 134,317 exchanges against 280,622 and 86 distinct
+argument sets against 73,341. It also never issued six commands the demo issues.
+More traffic and a narrower set is what a menu looks like, not a lesson.
+
+**Why it matters here.** Entry 2 says the observed set has to come from the whole
+game. A script written without seeing the screen cannot be steered into a lesson,
+so this is the wrong instrument rather than a finished measurement.
+
+**What would close it.** An input script built against what the screen shows,
+which the recorder can already produce and nothing here reads yet, or a saved
+state that starts inside a lesson.
+
+**Until then.** The observed set is the attract demo's, and the 68 sets this run
+added are the only evidence here of what input does to it.
+
+## 2h. Which commands a table can be complete for
+
+**Measured.** [`lut.py`](lut.py) plans a table per command against one shared
+cartridge budget, starting every command on the recorded set and spending the
+budget to widen as many as it reaches to the range.
+
+Four of nineteen come out complete over the range the game used: `$04` at
+2,097,152 bytes, `$10` at 524,288, `$0e` at 8 and `$80` at 2. The whole table is
+2,762,528 bytes, the image 3,286,816, and a 96 Mbit cartridge leaves 9,296,096
+spare.
+
+**What the headroom cannot buy.** The other fifteen each hold an argument
+position spanning the whole sixteen bit word, so a table over their range is 2^32
+rows at best and 2^96 at worst. That is not a budget away. Those fifteen are
+answered from the recorded set, and they are exactly where the fallback is
+reachable.
+
+**What would close it.** Either the scalar decomposition of entry 3, where every
+function takes one argument and 65,536 rows covers it outright, or a recording
+that covers enough of the game that the sets stop growing, which entry 2 says
+does not happen.
+
+**Until then.** Four commands cannot reach the fallback. Fifteen can, and a build
+reports how often they did rather than claiming they did not.
 
 ## 3. Which scalar functions the commands are built from
 
