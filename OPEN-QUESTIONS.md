@@ -683,6 +683,58 @@ rather than to a percentage, and the same table treatment probably applies, sinc
 it too is a function of one quantity, the sum of squares. `$04` needs `$0132`
 read first.
 
+## 3f. `$0132` and `$04`, and the shape all three share
+
+**What `$0132` is.** It sets the ROM pointer to word 541 and walks backwards
+from there, reading four entries and interpolating between them, clamping to
+`$8001` and `$7FFF` at the ends. Word 541 sits one before the arccosine and just
+past the cosine, in the stretch entry 3c reported as belonging to no named
+table. So the seats that looked unaccounted for are this routine's, and it is
+the trigonometric lookup rather than a fifth table.
+
+**What `$04` is.** Polar to rectangular. Given an angle and a magnitude it
+answers the magnitude times the sine and the magnitude times the cosine, in that
+order. The angle is a whole turn per 65,536, so `$4000` is a quarter turn:
+
+| angle | `$04` with magnitude 1000 | sine, cosine of that angle |
+|---|---|---|
+| `$0000` | 0, 999 | 0, 1000 |
+| `$1000` | 382, 923 | 382, 923 |
+| `$2000` | 707, 707 | 707, 707 |
+| `$4000` | 999, 0 | 1000, 0 |
+| `$8000` | 0, -1000 | 0, -1000 |
+| `$C000` | -1000, 0 | -1000, 0 |
+
+The ones that are short by one are the chip truncating rather than rounding,
+which is the same fractional multiply `$00` answers with.
+
+**All three commands have one shape.** `$10`, `$04` and `$28` each turn out to
+be a table over a single sixteen bit word plus fixed arithmetic:
+
+| command | the table | the arithmetic around it |
+|---|---|---|
+| `$10` | a mantissa per input, 65,536 entries | the exponent is a count of leading zeros, less the second argument |
+| `$04` | a sine and a cosine per angle, 65,536 each | one fractional multiply by the magnitude, per half |
+| `$28` | not yet reduced, but it is a square root of one quantity | the sum of three squares, which `$08` already answers |
+
+For `$04` the table holds more precision than the command hands back. Asked with
+a magnitude of `$7FFF` it returns a value one short of what it multiplies by
+internally, so the table is recovered by asking with several magnitudes and
+keeping the one value that explains them all. Across 65 angles sampled over the
+whole range, exactly one value did, every time, and never further than one from
+what the command returned.
+
+**Why a table rather than the routine.** These are approximations the chip makes,
+not functions anybody can write down, and matching them means matching an
+interpolation and a clamp whose rounding is not something this project has
+measured. A table holds the chip's own answers, so it is exact by construction
+and no input can miss it. It is generated at build time from the part the
+builder already has, never checked in, the same way the four scalar tables are
+checked rather than carried.
+
+**What that costs.** 131,072 bytes for `$10` and 262,144 for `$04`, against
+9,069,684 spare in a 96 Mbit image.
+
 ## 4. Whether the image needs to grow at all
 
 **What is unknown.** The retail cartridge is 512 KB and the replacement is not
