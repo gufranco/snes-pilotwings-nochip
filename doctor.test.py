@@ -1,4 +1,5 @@
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from typing import Any, ClassVar
@@ -366,15 +367,16 @@ class DefaultBeneathTest(unittest.TestCase):
         self.assertTrue(all(len(one) == 2 for one in found))
 
     def test_a_directory_not_yet_on_the_import_path_is_put_there(self) -> None:
-        where = ROOT / "conformance"
-        sys.path[:] = [one for one in sys.path if one != str(where)]
+        with tempfile.TemporaryDirectory() as made:
+            where = Path(made)
+            self.addCleanup(lambda: sys.path.remove(str(where)) if str(where) in sys.path else None)
 
-        def absent(name: str) -> Any:
-            raise ModuleNotFoundError(name)
+            def absent(name: str) -> Any:
+                raise ModuleNotFoundError(name)
 
-        doctor._ask_each(["conformance"], lambda name: where, absent)
+            doctor._ask_each([where.name], lambda name: where, absent)
 
-        self.assertIn(str(where), sys.path)
+            self.assertIn(str(where), sys.path)
 
 
 if __name__ == "__main__":
