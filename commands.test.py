@@ -14,6 +14,13 @@ def instruction(program: bytes) -> object:
     return DISASSEMBLE(program, 0, 0x8000, count=1)[0]
 
 
+def reaching(program: bytes, at: int = 0) -> commands.Access:
+    """The access at that offset, refusing to carry on if there is none."""
+    found = commands.access_at(program, at)
+    assert found is not None
+    return found
+
+
 def nothing(*_args: object, **_named: object) -> list[object]:
     """A disassembler that decodes nothing, which is what one out of bytes does."""
     return []
@@ -124,6 +131,88 @@ class StoreTest(unittest.TestCase):
 
     def test_an_absolute_store_running_off_the_end_is_not_one(self) -> None:
         self.assertIsNone(commands.store_at(bytes([0x8D, 0x00]), 0))
+
+
+class AccessTest(unittest.TestCase):
+    def test_a_long_store_to_the_data_port_is_found(self) -> None:
+        one = reaching(bytes([0x8F, 0x00, 0x80, 0x3F]))
+
+        self.assertEqual((one.mnemonic, one.register, one.way), ("sta", commands.DATA, "write"))
+
+    def test_a_long_load_from_the_status_register_is_found(self) -> None:
+        one = reaching(bytes([0xAF, 0x00, 0xC0, 0x3F]))
+
+        self.assertEqual((one.mnemonic, one.register, one.way), ("lda", commands.STATUS, "read"))
+
+    def test_an_absolute_accumulate_from_the_port_is_a_read(self) -> None:
+        one = reaching(bytes([0x6D, 0x00, 0x80]))
+
+        self.assertEqual((one.mnemonic, one.way), ("adc", "read"))
+
+    def test_an_absolute_bit_test_of_the_status_register_is_a_read(self) -> None:
+        one = reaching(bytes([0x2C, 0x00, 0xC0]))
+
+        self.assertEqual((one.mnemonic, one.register), ("bit", commands.STATUS))
+
+    def test_an_absolute_store_through_an_index_register_is_a_write(self) -> None:
+        one = reaching(bytes([0x8C, 0x00, 0x80]))
+
+        self.assertEqual((one.mnemonic, one.way), ("sty", "write"))
+
+    def test_the_long_form_says_it_spelled_its_bank(self) -> None:
+        self.assertTrue(reaching(bytes([0x8F, 0x00, 0x80, 0x3F])).long)
+
+    def test_the_absolute_form_says_it_did_not(self) -> None:
+        self.assertFalse(reaching(bytes([0x8D, 0x00, 0x80])).long)
+
+    def test_a_long_access_naming_another_bank_reaches_nothing(self) -> None:
+        self.assertIsNone(commands.access_at(bytes([0xAF, 0x00, 0x80, 0x20]), 0))
+
+    def test_an_access_to_an_address_that_is_neither_register_reaches_nothing(self) -> None:
+        self.assertIsNone(commands.access_at(bytes([0xAD, 0x00, 0x90]), 0))
+
+    def test_an_instruction_that_reaches_no_port_is_not_an_access(self) -> None:
+        self.assertIsNone(commands.access_at(bytes([0xEA, 0x00, 0x80]), 0))
+
+    def test_an_access_running_off_the_end_is_not_one(self) -> None:
+        self.assertIsNone(commands.access_at(bytes([0xAF, 0x00, 0x80]), 0))
+
+    def test_an_offset_past_the_end_is_not_one(self) -> None:
+        self.assertIsNone(commands.access_at(bytes([0x8D, 0x00, 0x80]), 9))
+
+    def test_the_repr_names_the_offset_and_the_form(self) -> None:
+        said = repr(reaching(bytes([0x8F, 0x00, 0x80, 0x3F])))
+
+        self.assertIn("long", said)
+
+    def test_the_repr_of_an_absolute_access_says_so(self) -> None:
+        said = repr(reaching(bytes([0x8D, 0x00, 0x80])))
+
+        self.assertIn("absolute", said)
+
+
+class AccessesTest(unittest.TestCase):
+    def test_an_image_that_reaches_nothing_has_no_accesses(self) -> None:
+        self.assertEqual(commands.accesses(bytes(64)), ())
+
+    def test_reads_and_writes_are_both_found(self) -> None:
+        program = bytes([0x8D, 0x00, 0x80]) + bytes([0xAD, 0x00, 0x80])
+
+        ways = {one.way for one in commands.accesses(program)}
+
+        self.assertEqual(ways, {"read", "write"})
+
+    def test_both_registers_are_found(self) -> None:
+        program = bytes([0xAD, 0x00, 0x80]) + bytes([0x2C, 0x00, 0xC0])
+
+        registers = {one.register for one in commands.accesses(program)}
+
+        self.assertEqual(registers, {commands.DATA, commands.STATUS})
+
+    def test_the_access_is_reported_at_the_offset_it_sits_at(self) -> None:
+        program = bytes(4) + bytes([0x8F, 0x00, 0x80, 0x3F])
+
+        self.assertEqual(commands.accesses(program)[0].offset, 4)
 
 
 class StoresTest(unittest.TestCase):

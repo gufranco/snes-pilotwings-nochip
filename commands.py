@@ -228,6 +228,117 @@ def stores(rom: bytes) -> tuple[int, ...]:
     return tuple(at for at in range(len(rom)) if store_at(rom, at) is not None)
 
 
+STATUS_PORT = 0xC000
+"""Where the part's ready bit answers, on the same board and the same banks."""
+
+DATA = "data"
+
+STATUS = "status"
+
+ABSOLUTE_READS = {
+    0xAD: "lda",
+    0xAE: "ldx",
+    0xAC: "ldy",
+    0x6D: "adc",
+    0xED: "sbc",
+    0x2D: "and",
+    0x0D: "ora",
+    0x4D: "eor",
+    0xCD: "cmp",
+    0x2C: "bit",
+}
+"""Every absolute instruction this driver takes a value from the part with.
+
+A read is not only a load here. The cartridge collects an answer straight into
+an accumulate with `adc $8000`, tests the ready bit with `bit $c000`, and steps
+an index with `ldx $8000`, so a search for loads alone finds a fraction of the
+read side. These are the ten the recording exercised plus the arithmetic and
+logical forms that share the encoding, which cost nothing to accept and would
+otherwise be a hole exactly like the one absolute addressing already was.
+"""
+
+LONG_READS = {
+    0xAF: "lda",
+    0x6F: "adc",
+    0xEF: "sbc",
+    0x2F: "and",
+    0x0F: "ora",
+    0x4F: "eor",
+    0xCF: "cmp",
+}
+"""The same instructions in the form that spells its own bank.
+
+There is no long `ldx`, `ldy` or `bit`, which is why the absolute table is longer
+than this one rather than a mirror of it.
+"""
+
+PORTS = {DATA_PORT: DATA, STATUS_PORT: STATUS}
+
+
+class Access:
+    """One instruction that reaches the part, and which way it goes."""
+
+    __slots__ = ("mnemonic", "offset", "register", "size", "way")
+
+    def __init__(self, offset: int, mnemonic: str, size: int, register: str, way: str) -> None:
+        self.offset = offset
+        self.mnemonic = mnemonic
+        self.size = size
+        self.register = register
+        self.way = way
+
+    @property
+    def long(self) -> bool:
+        """Whether the instruction spelled the bank it reached."""
+        return self.size == 4
+
+    @override
+    def __repr__(self) -> str:
+        form = "long" if self.long else "absolute"
+        return f"<Access ${self.offset:05x} {self.mnemonic} {self.register} {self.way} {form}>"
+
+
+def access_at(rom: bytes, at: int) -> Access | None:
+    """The access to either of the part's registers that starts here.
+
+    Reads and writes, both addressing forms, both registers. `store_at` answers
+    the narrower question the command reading needs; this one answers what a
+    replacement needs, which is every instruction it has to stand in for.
+    """
+    if at >= len(rom):
+        return None
+    opcode = rom[at]
+    long_form = opcode == LONG_STORE or opcode in LONG_READS
+    size = 4 if long_form else 3
+    if at + size > len(rom):
+        return None
+    if long_form and rom[at + 3] != DATA_BANK:
+        return None
+    register = PORTS.get(rom[at + 1] | rom[at + 2] << 8)
+    if register is None:
+        return None
+    if opcode == LONG_STORE:
+        return Access(at, "sta", 4, register, WRITING)
+    if opcode in LONG_READS:
+        return Access(at, LONG_READS[opcode], 4, register, READING)
+    if opcode in ABSOLUTE_STORES:
+        return Access(at, ABSOLUTE_STORES[opcode], 3, register, WRITING)
+    if opcode in ABSOLUTE_READS:
+        return Access(at, ABSOLUTE_READS[opcode], 3, register, READING)
+    return None
+
+
+def accesses(rom: bytes) -> tuple[Access, ...]:
+    """Every offset whose bytes spell an access to either register.
+
+    A search by encoding again, with the same caveat: an image holds bytes that
+    spell one without ever being run as one. What separates those is the same
+    thing that separates them for a store, which is whether a decode reaches it.
+    """
+    found = (access_at(rom, at) for at in range(len(rom)))
+    return tuple(one for one in found if one is not None)
+
+
 class _Decode:
     """What one forward decode knows by the time it lands on a store."""
 
