@@ -17,11 +17,11 @@ def image_of(words: dict[int, list[int]]) -> bytes:
 
 
 def sine(count: int = 128) -> list[int]:
-    return [round(math.sin(math.pi * k / 128) * 32767) for k in range(count)]
+    return [tables.toward_zero(math.sin(math.pi * k / 128) * 32768) for k in range(count)]
 
 
 def cosine(count: int = 128) -> list[int]:
-    return [round(math.cos(math.pi * k / 128) * 32767) for k in range(count)]
+    return [tables.toward_zero(math.cos(math.pi * k / 128) * 32768) for k in range(count)]
 
 
 def written_image() -> Path:
@@ -61,7 +61,17 @@ class KnownTest(unittest.TestCase):
     def test_the_reciprocal_is_the_one_the_part_indexes_from_128(self) -> None:
         found = next(one for one in tables.KNOWN if one.name == tables.RECIPROCAL)
 
-        self.assertEqual(found.values()[0], 32768)
+        self.assertEqual(found.values()[1], round(2**22 / 129))
+
+    def test_the_reciprocals_first_entry_is_clamped_rather_than_wrapped(self) -> None:
+        found = next(one for one in tables.KNOWN if one.name == tables.RECIPROCAL)
+
+        self.assertEqual(found.values()[0], tables.HIGHEST)
+
+    def test_the_reciprocal_holds_the_128_words_the_part_holds(self) -> None:
+        found = next(one for one in tables.KNOWN if one.name == tables.RECIPROCAL)
+
+        self.assertEqual(found.count, 128)
 
 
 class FindTest(unittest.TestCase):
@@ -75,11 +85,11 @@ class FindTest(unittest.TestCase):
 
         self.assertIsNone(tables.find(tables.words(image_of({})), found))
 
-    def test_a_table_off_by_one_unit_is_still_found(self) -> None:
+    def test_a_table_off_by_one_unit_is_not_that_table(self) -> None:
         found = next(one for one in tables.KNOWN if one.name == tables.SINE)
         nudged = [one - 1 for one in sine()]
 
-        self.assertEqual(tables.find(tables.words(image_of({300: nudged})), found), 300)
+        self.assertIsNone(tables.find(tables.words(image_of({300: nudged})), found))
 
     def test_a_table_off_by_more_than_the_tolerance_is_not_found(self) -> None:
         found = next(one for one in tables.KNOWN if one.name == tables.SINE)

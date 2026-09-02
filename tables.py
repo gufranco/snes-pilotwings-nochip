@@ -11,8 +11,8 @@ Four numeric tables are in it, each reproduced here from its formula and searche
 for rather than recognised by eye:
 
     reciprocal    129 words   2^22 / (128 + k)
-    sine          128 words   sin(pi k / 128) x 32767
-    cosine        128 words   cos(pi k / 128) x 32767
+    sine          128 words   sin(pi k / 128) x 32768, fraction cut off
+    cosine        128 words   cos(pi k / 128) x 32768, fraction cut off
     arccosine     256 words   acos(k / 256) x 32768 / pi
 
 There is no square root and no arctangent, and nothing expected an arccosine.
@@ -45,13 +45,18 @@ TABLE_BYTES_PER_WORD = 2
 
 IMAGE_BYTES = PROGRAM_WORDS * PROGRAM_BYTES_PER_WORD + TABLE_WORDS * TABLE_BYTES_PER_WORD
 
-TOLERANCE = 1
+TOLERANCE = 0
 """How far a word may sit from the formula and still be that formula.
 
-One unit. The part's tables were rounded from real arithmetic, and rounding is
-the only difference this should forgive. Two would start accepting a table that
-is nearly the same function, which is exactly the mistake this module exists to
-stop being made by eye.
+Nothing. Every one of the 641 words is reproduced exactly by the formula beside
+it, so any difference at all means a different function and is reported as one.
+
+This was one unit, on the reasoning that the part's tables were rounded from
+real arithmetic and rounding was the only difference worth forgiving. One unit
+turned out to be exactly enough to hide two mistakes at once: a scale of 32768
+read as 32767, and a fraction cut off read as rounded. Under the earlier pair of
+formulas 84 of the 256 sine and cosine words were wrong and the search still
+reported a match, which is the failure a tolerance invites.
 """
 
 WHOLE_INPUT_BYTES = 65536 * 2
@@ -86,13 +91,46 @@ class Table:
         return f"<Table {self.name} {self.count} words, {self.formula}>"
 
 
+HIGHEST = 32767
+"""The largest value a signed sixteen bit word holds."""
+
+LOWEST = -32768
+
+
+def toward_zero(value: float) -> int:
+    """Cut the fraction off and clamp, which is what the part's own words show.
+
+    Cutting the fraction off is not what floor does. The two agree on positive
+    values and differ by a whole unit on every negative one that is not already
+    whole, so this decides half the cosine. Floor takes -804.6 to -805; the part
+    holds -804, which is what a cast to an integer gives in C and is a hint
+    about how these were produced.
+
+    The clamp matters at exactly one entry per table: a sine or cosine of one
+    scaled by 32768 is 32768, which is one past what a signed word holds. The
+    part stores 32767 there rather than wrapping to a negative number.
+    """
+    return min(HIGHEST, max(LOWEST, int(value)))
+
+
 KNOWN = (
-    Table(RECIPROCAL, 129, "2^22 / (128 + k)", lambda k: round(2**22 / (128 + k))),
     Table(
-        SINE, 128, "sin(pi k / 128) x 32767", lambda k: round(math.sin(math.pi * k / 128) * 32767)
+        RECIPROCAL,
+        128,
+        "2^22 / (128 + k), rounded and clamped",
+        lambda k: min(HIGHEST, round(2**22 / (128 + k))),
     ),
     Table(
-        COSINE, 128, "cos(pi k / 128) x 32767", lambda k: round(math.cos(math.pi * k / 128) * 32767)
+        SINE,
+        128,
+        "sin(pi k / 128) x 32768, fraction cut off",
+        lambda k: toward_zero(math.sin(math.pi * k / 128) * 32768),
+    ),
+    Table(
+        COSINE,
+        128,
+        "cos(pi k / 128) x 32768, fraction cut off",
+        lambda k: toward_zero(math.cos(math.pi * k / 128) * 32768),
     ),
     Table(
         ARCCOSINE,
