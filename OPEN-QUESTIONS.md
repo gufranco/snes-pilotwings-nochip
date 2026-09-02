@@ -225,6 +225,19 @@ that no state can change: it agrees 8,527 times of 8,542 through the first 60,00
 exchanges and 23,212 of 44,289 over the whole run, which is the same break seen
 from a command that cannot legitimately disagree at all.
 
+**Why it cannot be repaired, and why 70% is the ceiling.** Restarting the replay
+at exchange 240,000 on a fresh part scores 6.3%. Priming it first with the 200
+exchanges before that point scores 6.7%, and priming with 5,000 scores 6.7% as
+well, the same number to the answer. State saturates almost at once and is still
+wrong, so no amount of priming reaches it.
+
+That names the mechanism. The game computes its next arguments from the answer it
+was given, and it was given snes9x's. Wherever the two parts differ, every
+argument after that point is one the real part would never have been asked. The
+recorded stream stops being a stream the part could have produced, so a replay
+cannot follow it however it is started. Rows whose keys appear only past that
+point can never take an answer from the part, and they are 30% of the table.
+
 So the steady 3% is the divergence and everything past 200,000 is the replay
 rather than the part. Draining the part's output between exchanges was tried as
 the repair and is worse: `$0d` falls from 311 agreed and 1 differed to 0 and 312,
@@ -380,6 +393,44 @@ because every value the reciprocal takes has a row.
 
 **Until then.** Fifteen of sixteen commands answer from a table keyed on
 recorded values. `$0a` answers from the scalar tables, which are exhaustive.
+
+## 2j. A key that indexes an answer is not the state that produces it
+
+**Measured.** The six state-dependent commands are keyed on their arguments plus
+one earlier command's, and that key leaves nothing ambiguous across all three
+recordings. So the key indexes the recorded answers correctly.
+
+It does not follow that the key holds the state the part needs, and it does not.
+Driving each key in isolation, resetting the part, writing the carrier command
+with its recorded arguments, then writing the target command, reproduces the
+answer the same part gave during a replay only for the commands that carry no
+state at all:
+
+| command | isolated drive reproduced the replay |
+|---|---:|
+| `$00`, `$08`, `$0c`, `$13`, `$18`, `$1b`, `$28` | 100% |
+| `$06` | 92% |
+| `$10` | 83% |
+| `$02`, `$0e` | 78% |
+| `$0d` | 51% |
+| `$03` | 5% |
+| `$14` | 0% |
+
+`$13` and `$1b` are the interesting rows. Both are keyed on a carrier, and both
+reproduce perfectly, so a carrier in the key does not by itself mean the part
+needs more than the key. `$14` is the opposite extreme: it carries no carrier in
+its key and reproduces nothing, so a key with no carrier does not mean the
+command is stateless.
+
+**What this changes and what it does not.** It does not make the table wrong. A
+table stores what the part answered, and the key is what finds the row. It does
+mean the key cannot be used to regenerate a row: a row missing from the table
+cannot be filled in by driving the part on its key alone, because the part will
+not be in the state that produced it.
+
+**Why that matters here.** It closes the cheapest route to raising the share of
+rows whose answer came from the part rather than from the recording. That share
+is bounded by how far a replay stays in step, which is entry 2e.
 
 ## 3. Which scalar functions the commands are built from
 
