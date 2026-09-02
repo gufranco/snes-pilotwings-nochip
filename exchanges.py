@@ -2,12 +2,10 @@
 
 `census.py` cuts an exchange where the byte stream looks like it ends: a run of
 writes, closed by the first read. That reading works for a command written whole
-and answered whole, and command `$0a` is not one. It answers with a stream the
-cartridge reads 176 times over and the part swallows writes during that stream
-rather than treating them as a new command, so a read in the middle of one
-exchange looks exactly like the end of it. A tenth of the runs counted that way
-held writes from code more than 32 bytes apart, which is two routines' traffic
-joined into one.
+and answered whole, and command `$0a` is not one. It answers with a stream four
+instructions read 191 times over, 764 words, and the cartridge writes four more
+words once the stream is done, so a read in the middle of one exchange looks
+exactly like the end of it.
 
 The recording carries the program counter of every access, and that settles it
 without any reading of the stream at all. A command byte is the one thing this
@@ -15,6 +13,12 @@ cartridge writes eight bits at a time, so a counter that only ever touches the
 low half of the port issued commands and one that touches both halves wrote
 argument words. An exchange therefore runs from one command site to the next, and
 a read inside it is an answer rather than a boundary.
+
+Cut that way, every one of the nineteen commands takes one fixed number of
+argument words in all three regions. Five of them read as taking two counts
+before the writes that follow an answer were separated out, and the two counts
+always differed by the same four words, which is what a driver does not look
+like.
 
 What that buys over the byte-stream rule is a count that does not depend on the
 protocol being uniform. What it costs is a recording: this cannot be run against
@@ -66,17 +70,28 @@ COMPUTED = "computed"
 
 
 class Exchange:
-    """One command the cartridge issued, with what it sent and what came back."""
+    """One command the cartridge issued, with what it sent and what came back.
 
-    __slots__ = ("answer", "command", "site", "words")
+    `words` are the writes the answer could have depended on and `later` the
+    writes that followed it, which it cannot have. A key is built from the first
+    and never from the second.
+    """
+
+    __slots__ = ("answer", "command", "later", "site", "words")
 
     def __init__(
-        self, site: int, command: int, words: tuple[int, ...], answer: tuple[int, ...]
+        self,
+        site: int,
+        command: int,
+        words: tuple[int, ...],
+        answer: tuple[int, ...],
+        later: tuple[int, ...] = (),
     ) -> None:
         self.site = site
         self.command = command
         self.words = words
         self.answer = answer
+        self.later = later
 
     @override
     def __repr__(self) -> str:
@@ -112,18 +127,31 @@ def issuing(trace: bytes) -> dict[int, int]:
 
 
 def taken(trace: bytes) -> tuple[Exchange, ...]:
-    """Every exchange the recording holds, in the order the cartridge made them."""
+    """Every exchange the recording holds, in the order the cartridge made them.
+
+    A write that follows the answer cannot have decided it, so it is not part of
+    the key a table would be indexed on. Collecting every write of the span into
+    one tuple hides that, and it is why `$0a` read as taking five words: one
+    before its answer and four after. Only the first is an argument.
+
+    Every span in the recording is writes then reads, except `$0a`, which is one
+    word, its stream, and four words more. Both halves are kept, apart, and the
+    split is by position in the span rather than by which command owns them: the
+    trailing four are `$0a`'s, since giving them to the next command turns a
+    uniform six word `$14` into one that is sometimes ten.
+    """
     sites = issuing(trace)
     found: list[Exchange] = []
     site: int | None = None
     command = 0
     written: list[int] = []
     answered: list[int] = []
+    later: list[int] = []
 
     def close() -> None:
         if site is None:
             return
-        found.append(Exchange(site, command, _worded(written), _worded(answered)))
+        found.append(Exchange(site, command, _worded(written), _worded(answered), _worded(later)))
 
     for _, pbpc, address, is_read, byte in _records(trace):
         if address >= STATUS_BOUNDARY:
@@ -131,11 +159,16 @@ def taken(trace: bytes) -> tuple[Exchange, ...]:
         if pbpc in sites:
             close()
             site, command = pbpc, sites[pbpc]
-            written, answered = [], []
+            written, answered, later = [], [], []
             continue
         if site is None:
             continue
-        (answered if is_read else written).append(byte)
+        if is_read:
+            answered.append(byte)
+        elif answered:
+            later.append(byte)
+        else:
+            written.append(byte)
     close()
     return tuple(found)
 

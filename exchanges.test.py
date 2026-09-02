@@ -113,10 +113,11 @@ class CutTest(unittest.TestCase):
             + argued(ARGUMENT_SITE, 0x1111)
             + answered(ANSWER_SITE, 0x2222)
             + argued(ARGUMENT_SITE, 0x3333)
+            + answered(ANSWER_SITE, 0x4444)
             + issued(ANOTHER_SITE, 0x13)
         )
 
-        self.assertEqual(exchanges.taken(trace)[0].words, (0x1111, 0x3333))
+        self.assertEqual(exchanges.taken(trace)[0].answer, (0x2222, 0x4444))
 
     def test_that_is_the_shape_the_old_rule_could_not_read(self) -> None:
         trace = (
@@ -151,6 +152,26 @@ class CutTest(unittest.TestCase):
 
     def test_a_trace_with_no_command_yields_no_exchange(self) -> None:
         self.assertEqual(exchanges.taken(argued(ARGUMENT_SITE, 1)), ())
+
+    def test_a_write_after_the_answer_is_not_an_argument(self) -> None:
+        trace = (
+            issued(COMMAND_SITE, 0x0A)
+            + argued(ARGUMENT_SITE, 0x1111)
+            + answered(ANSWER_SITE, 0x2222)
+            + argued(ARGUMENT_SITE, 0x3333)
+            + issued(COMMAND_SITE + 3, 0x06)
+        )
+
+        first, second = exchanges.taken(trace)
+
+        self.assertEqual(first.words, (0x1111,))
+        self.assertEqual(first.later, (0x3333,))
+        self.assertEqual(second.words, ())
+
+    def test_an_exchange_that_read_nothing_keeps_every_write_as_an_argument(self) -> None:
+        trace = issued(COMMAND_SITE, 0x11) + argued(ARGUMENT_SITE, 0x3333)
+
+        self.assertEqual(exchanges.taken(trace)[0].words, (0x3333,))
 
 
 class CensusTest(unittest.TestCase):
