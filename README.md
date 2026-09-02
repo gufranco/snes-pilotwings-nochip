@@ -31,9 +31,11 @@ Early. What is measured is written down below; what is not built is named in
 | part | state |
 |------|-------|
 | dump identification, all three regions | works, against measured digests |
-| where each cartridge reaches the part | works, against the driver model |
+| where each cartridge reaches the part | works, both forms of the access, checked against a recording |
+| which commands the cartridge can issue | 20 in every image, checked against a recording |
 | what the part answers | works, by running the part's own microcode |
 | whether an answer can be stored instead of computed | measured, per command |
+| how many argument sets each command takes | withdrawn, see [`OPEN-QUESTIONS.md`](OPEN-QUESTIONS.md) entry 2c |
 | the replacement in 65816 | not started |
 | the finished cartridge | not started |
 
@@ -49,20 +51,40 @@ Windows.
 
 ### One replacement covers all three regions
 
-Every instruction in each dump that touches the part was found by asking the driver model, which is
-held to a library of real cartridges rather than to a reading of them.
+The three images reach the part the same way. Reading the code for stores to the data port, in both
+of the two forms the cartridge uses, gives 208 in the USA image, 218 in the Japanese one and 208 in
+the European one, and the twenty command bytes read out of them are the same twenty in all three.
 
-| region | sites | distinct exchanges |
-|--------|------:|-------------------:|
-| USA | 122 | 17 |
-| Japan | 121 | 17 |
-| Europe | 123 | 17 |
-
-The seventeen exchange shapes are the same seventeen in all three. Sixteen of them occur the same
-number of times in each region, and the counts differ only for the bare status poll, which is what
-the three site totals differ by. That is the finding the shape of this project follows from: a
+The long form of the access, the one that spells its own bank, lands on exactly two addresses in
+every region: 84 instructions at `$3f:8000` and 9 at `$3f:c000`, the same counts in all three. It is
+the same driver three times over, which is the finding the shape of this project follows from: a
 replacement written for one region is a replacement for the other two, and the PAL release is not a
 separate problem.
+
+### Most of the driver is invisible to a search for the long form
+
+The obvious way to find where a cartridge reaches a coprocessor is to search for an absolute long
+access, because it carries its own bank and can be matched exactly on four bytes. That search is
+sound and it is not enough here. The hot paths take the data bank once with `pea $003f` and `plb`
+and then use ordinary absolute stores, which spell two bytes and name no bank.
+
+Measured against a recording of the Japanese image, which carries the program counter of every
+access:
+
+| | instructions | long form | absolute | share of bytes moved by the long form |
+|---|---:|---:|---:|---:|
+| writing to the part | 118 | 40 | 78 | 62.2% |
+| reading from it | 47 | 13 | 34 | 7.9% |
+
+So a reader that knows only the long form sees a minority of the writes and almost none of the
+reads. [`commands.py`](commands.py) reads both, and the hottest loop in the game is one it would
+otherwise miss entirely: `sta $8000` after `plb`, followed by 176 passes of poll-and-read.
+
+The same search by encoding also reports bytes that are not instructions. In the USA image 29 of the
+122 long-form matches sit at 29 different addresses scattered across banks `$30` to `$3e`, one match
+each, which is what data that happens to spell an access looks like rather than what a driver looks
+like. Japan has 28 of those and Europe 30, and they are the whole of the difference between the
+three totals.
 
 ### Where a table works, and where it cannot
 
@@ -100,74 +122,94 @@ The table above is about the input domain: what a table would cost if the game
 could send anything. It cannot, and the gap is enormous, so the domain is the wrong
 thing to size against.
 
-[`emu/`](emu/) records every byte the cartridge exchanges with the part.
-Three runs of 12,000 frames, one per region, with no input at all so the attract
-demo flies rather than sitting on a menu:
+[`emu/`](emu/) records every byte the cartridge exchanges with the part, with the
+program counter of the instruction that moved it. That last field is what makes
+the recording checkable against the code, and it is what the numbers below rest
+on: a command byte is the one thing this cartridge writes eight bits at a time,
+so a program counter that only ever touches the low half of the port issued one.
 
-| | |
-|---|---:|
-| port accesses recorded | 49,401,381 |
-| exchanges | 794,616 |
-| command bytes the game used | **19** of 256 |
-| distinct argument sets across all three | **45,991** |
-| a stored answer for every one of them | **367,928 bytes**, 2.9% of a 96 Mbit image |
+From a run of the Japanese image over 10,419 frames with no input at all, so the
+attract demo flies rather than sitting on a menu, 257,189 commands were issued
+from 30 sites. The traffic is not spread evenly:
 
-Every argument set all three runs produced fits in under 360 KB. Sizing against
-the domain said 683 times the image for the smallest two-word command; sizing
-against what the game sends says three per cent of it for all nineteen commands
-together.
+| command | share | issued | sites | what it is |
+|---|---:|---:|---:|---|
+| `$06` | 28.9% | 74,261 | 2 | |
+| `$13` | 25.4% | 65,332 | 1 | |
+| `$00` | 15.0% | 38,668 | 10 | a signed multiply, so computed rather than stored |
+| `$11` | 4.7% | 12,136 | 2 | |
+| `$0a` | 2.7% | 6,946 | 1 | answers with a stream read 176 times over |
+| the other 13 | 23.3% | 59,846 | 14 | |
 
-The distribution matters more than the total, because the traffic is not spread
-evenly:
+Two commands are more than half of everything the cartridge asks for, and the
+multiply is a further sixth of it and needs no table at all, because the console
+has a hardware multiplier.
 
-| command | share of traffic | distinct argument sets | how to answer it |
-|---|---:|---:|---|
-| `$06` | 28.8% | 2,995 | table |
-| `$13` | 25.3% | **3** | inline compare |
-| `$00` | 17.4% | 13,775 | computed, it is a multiply |
-| `$11` | 4.6% | **9** | inline compare |
-| `$0A` | 2.7% | **1** | inline compare |
-| `$0E` | 2.7% | **1** | inline compare |
-| the other 13 | 18.8% | 29,207 | table or computed |
+### The sizing that used to be here has been withdrawn
 
-Six commands take sixteen or fewer argument sets between them. Nineteen rows,
-**152 bytes**, answer **35.3%** of everything the cartridge asks. Command `$13`
-alone is a quarter of all traffic and takes three argument sets, which is
-twenty four bytes.
+An earlier version of this section sized tables against the number of distinct
+argument sets each command was seen to take. Those figures were wrong, and the
+cause was in [`census.py`](census.py) rather than in the recording.
+
+The part answers at two registers, and which address is which is decided by
+`DSP0.boundary`, which snes9x sets to `0xc000` for a low cartridge of this size.
+So `0x8000` and `0x8001` are the two halves of one data port and `0xc000` and
+`0xc001` are the status register. The census split on the lowest bit instead,
+which is the convention some other coprocessors use. Two things followed. Every
+argument word was rebuilt from the low bytes of two different arguments, because
+the high byte of each was dropped as though it were status. And 1,482,010 status
+polls were read as answers, so exchanges ended wherever the cartridge happened to
+look at the ready bit.
+
+The split is fixed. The sizing is not being restated, because a second fault sits
+underneath it: an exchange was taken to be a run of writes ended by a read, and
+command `$0a` breaks that. It answers with a long stream the cartridge reads in a
+loop and takes writes during that stream rather than treating them as a new
+command, so the rule splits one of those exchanges into pieces and joins the tail
+of one to the head of the next. Ten per cent of the runs the old rule called
+exchanges hold writes from code more than 32 bytes apart. Sizing tables from a
+count taken that way would be sizing them from a reading of the byte stream.
+
+What survives is the split the sizing was for, which the per-command counts above
+still support: a handful of commands are most of the traffic, the multiply is
+computed rather than stored, and the rest need measuring again.
 
 ### What a recording can and cannot say
 
-A recording says what the game did. It cannot say what the game can do, and here
-the two are far apart: the set of argument sets was still growing by about 3,600
-per 500 frames when the longest recording ended, and the second half of that run
-produced half of everything it found. Nothing about it had converged.
+A recording says what the game did. It cannot say what the game can do. Most of
+these commands take arguments that come from the aircraft's attitude and take a
+new value on almost every frame, so no recording will ever show their input set
+closing, and a lookup with no entry for an unseen argument has no answer at all.
+The design is therefore a table where the set closes and computation where it
+does not, and never a table alone. Which commands fall on which side is the
+measurement that has been withdrawn.
 
-Splitting the commands by whether their set closes is what the recording is
-actually good for:
+Reading the cartridge's code rather than running it answers the other half.
+[`commands.py`](commands.py) reads 20 command bytes out of every one of the three
+images, and Europe reads one more, `$80`. Against the Japanese recording it
+agrees on 27 of the 30 sites that were actually executed, contradicts none, and
+is silent on three, each for a stated reason. Against the European one it agrees
+on 33 of 36 and again contradicts none, and every command that recording issued
+is one the code reading also finds.
 
-| | commands | what follows |
-|---|---:|---|
-| set unchanged for a whole run | 6 | a table is small and may be complete |
-| set still growing at the end | 13 | the arguments track the aircraft, so no table closes |
+| | commands |
+|---|---:|
+| read out of the code, all three images | 20 |
+| Europe also reads | `$80` |
+| the Japanese recording issued | 18 |
+| the European recording issued | 19 |
+| read but never seen to run | `$21`, `$23` |
 
-So the design is a table where the set closes and computation where it does not,
-and the recording is what says which is which. It is never a table alone: a
-lookup with no entry for an unseen argument has no answer, and the recordings
-prove that unseen arguments exist rather than suggesting it.
-
-Reading the cartridge's code rather than running it gives a second, independent
-bound. Of the 49 exchanges in the USA image, 11 write a command byte the
-instruction carries, which recovers 8 distinct commands including `$21`, which no
-recording produced. The other 20 compute the command at run time, and those are
-exactly the ones only a recording found. Neither method sees what the other
-sees, and their union is 20 command bytes.
+`$80` is not a computation. It sends the part back to waiting for a command, and
+the cartridge writes it 128 times in a row at `$0702a` to flush the part.
 
 ### What growing the image to 96 Mbit buys
 
-Room, and not much is needed. The observed set is 2.9% of the image, and the
-tables for the scalar functions a replacement computes from, a sine, a cosine, a
-reciprocal, a square root, an arctangent, are 131,072 bytes each over their whole
-sixteen bit domain.
+Room. How much of it a replacement needs is not known, because the replacement is
+not written and the sizing that would have bounded it has been withdrawn. What
+can be said is the ceiling: a table for one scalar function a replacement might
+compute from, a sine, a cosine, a reciprocal, a square root, an arctangent, is
+131,072 bytes over its whole sixteen bit domain.
 
 | | bytes |
 |---|---:|
@@ -177,9 +219,13 @@ sixteen bit domain.
 | one table over a whole sixteen bit input | 131,072 |
 | **tables that fit** | **92** |
 
-Products need no table at all: command `$00` is a signed multiply, it has the
-most distinct arguments of any command in every recording, and the console's
-hardware multiplier computes it faster than any lookup.
+Ninety two of those fit, which is far more than a replacement needs, so the
+ceiling is not the constraint and this table settles nothing about which tables
+are wanted.
+
+Products need no table at all: command `$00` is a signed multiply, it is a sixth
+of everything the cartridge asks for, and the console's hardware multiplier
+computes it faster than any lookup.
 
 ## The dumps
 
@@ -271,7 +317,9 @@ Analysis modules in Python, each with its tests beside it.
 |------|------|
 | [`hardware.py`](hardware.py) | puts the pinned hardware models on the import path, and says where the microcode is |
 | [`dumps.py`](dumps.py) | which dumps this project reads, and what makes each one itself |
-| [`sites.py`](sites.py) | where each cartridge reaches the part, and every distinct exchange |
+| [`sites.py`](sites.py) | where each cartridge reaches the part through the long form of the access |
+| [`commands.py`](commands.py) | which command bytes the cartridge's own code can issue, both forms |
+| [`census.py`](census.py) | what a recorded run asked the part for |
 | [`tabulate.py`](tabulate.py) | whether a command's answers can be stored instead of computed |
 | [`doctor.py`](doctor.py) | what is actually on this machine, the whole chain, printed for a bug report |
 | [`version.py`](version.py) | the release number, rewritten by [`scripts/set-version.sh`](scripts/set-version.sh) |
@@ -296,7 +344,7 @@ Analysis modules in Python, each with its tests beside it.
 | Format | `ruff format --check .` |
 | Which dumps are here | `python3 tools/identify.py` |
 
-227 tests across 10 modules. 212 need nothing but a checkout; 15 need a dump or the microcode and
+332 tests across 14 files. 298 need nothing but a checkout; 34 need a dump or the microcode and
 report themselves as skipped without one, so a fresh clone runs the suite green.
 
 The checks that need an artifact live in `*.retail.test.py` files kept out of the coverage
@@ -328,8 +376,14 @@ rather than met.
 - **Whether to store or to compute is a measurement, never a preference.** The table above comes
   from [`tabulate.py`](tabulate.py), which drives the part and counts. Both sides of the line are
   printed, because a single total would hide which commands moved.
-- **What is not known is written down.** [`OPEN-QUESTIONS.md`](OPEN-QUESTIONS.md) carries every place
-  a claim here is narrower than it looks, with the measurement that would settle it.
+- **A reading of the code is checked against a run of it, and the other way round.** Neither is
+  trusted alone. A search by encoding cannot tell an instruction from data that spells one, and a
+  recording cannot see a routine the run never entered. Where the two disagree the disagreement is
+  the finding.
+- **What is not known is written down, and so is what turned out to be wrong.**
+  [`OPEN-QUESTIONS.md`](OPEN-QUESTIONS.md) carries every place a claim here is narrower than it
+  looks, with the measurement that would settle it, and a withdrawn claim stays there with the fault
+  that produced it rather than being quietly deleted.
 
 ## Contributing
 

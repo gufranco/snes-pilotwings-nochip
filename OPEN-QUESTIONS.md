@@ -1,7 +1,7 @@
 # Open questions
 
 Every place a claim in this repository is narrower than it looks, with the measurement that would
-close it. Five entries.
+close it. Seven entries, one of them closed and kept because what closed it is worth reading.
 
 A question is closed by evidence, never by a decision to stop asking. Until then the narrow claim
 stands and the broad one is not made anywhere.
@@ -28,49 +28,119 @@ search.
 **Until then.** Nothing here claims which mask is being reproduced. The doctor reports which masks
 are present on the machine so a reader knows which question a run there could not have answered.
 
-## 2. The recordings are three runs of the attract demo, not the game
+## 2. The recordings are runs of the attract demo, not of the game
 
-**What is unknown.** Everything the census reports comes from three 12,000 frame
-runs, one per region, with no controller input at all. That is the demo the game
-plays to itself, which is a fixed sequence. Nobody has flown a lesson.
+**What is unknown.** Every recording taken so far runs with no controller input
+at all. That is the demo the game plays to itself, which is a fixed sequence.
+Nobody has flown a lesson.
 
-**Why it matters here.** The census is what sizes the tables, and it is a floor
-rather than an answer. The set of distinct argument sets was still growing by
-about 3,600 per 500 frames when the longest run ended, and the second half of
-that run produced half of everything it found. A player working the controls
-produces argument sets the demo never will, because thirteen of the nineteen
-commands take arguments that track the aircraft's attitude and take a new value
-almost every frame.
+**Why it matters here.** Whatever sizes the tables is a floor rather than an
+answer. A player working the controls produces argument sets the demo never
+will, because most of the commands take arguments that track the aircraft's
+attitude and take a new value on almost every frame. The European run reaches
+further into the game than the Japanese one and issues command `$04` 511 times,
+which the shorter run never issues at all: a difference in how far the demo got,
+not in what the cartridge can do.
 
 **What would close it.** It does not close. No recording can enumerate a set
 that is a continuous function of player input. What can be closed is the
-narrower question of which commands have a set that does not grow, and that is
-what the split in the readme reports. Driving real lessons rather than the demo
-would sharpen that split and would not change its nature.
+narrower question of which commands have a set that does not grow. Driving real
+lessons rather than the demo would sharpen that split and would not change its
+nature.
 
 **Until then.** No table is sized against the observed set as though it were
 complete, and the design computes rather than looks up wherever the set grows.
 A lookup with no entry for an unseen argument has no answer at all, which is why
 the observed set is never the whole design.
 
-## 2b. Twenty exchanges choose their command at run time
+## 2b. Whether any exchange chooses its command at run time
 
-**What is unknown.** Reading the cartridge's code recovers the command byte for
-11 of the 49 exchanges in the USA image, because those carry it in the
-instruction. The other 20 load it from a register or a variable, and what values
-those can hold has not been traced.
+**Closed.** None does. Every place the cartridge issues a command byte issues a
+constant, and the reason it looked otherwise was that the search was reading the
+wrong thing in two ways at once.
 
-**Why it matters here.** It is the only route to an upper bound on which
-commands the game can issue. The recordings give a lower bound of 19 commands;
-the code gives 8, one of which no recording produced. Neither is the answer, and
-the union of 20 is still a floor.
+It read only the absolute long form of the access, which is a minority of this
+driver: the hot paths take the data bank with `pea $003f` and `plb` and then use
+ordinary absolute stores, which carry no bank and cannot be matched on four
+bytes. And it looked for an immediate directly in front of a store, which misses
+the idiom this cartridge actually uses, `ldy #$28` once at the top of a routine
+and then `sty $8000` on every pass of the loop.
 
-**What would close it.** Following the value backwards from each of those 20
-sites to where it is set. If they read from a table in the cartridge, that table
-enumerates every command the game can send and the question closes completely.
+[`commands.py`](commands.py) reads both forms and carries the register forward.
+It reads 20 command bytes out of every one of the three images, and `$80` out of
+the European one as well. Checked against a recording of the Japanese image it
+agrees with 27 of the 30 sites that were executed and contradicts none; against
+the European one, 33 of 36 and again none. Every command either recording issued
+is one the code reading also finds, except `$80` in Japan, whose site is real and
+whose register widths are set further back than the decode window reaches.
 
-**Until then.** The command list is stated as what has been observed and what has
-been read, with both counts given, and never as what the game can do.
+**What is still narrow.** The reading is a lower bound on a per-site basis: three
+sites in each image go unread rather than misread, and every store the search
+cannot resolve is reported as unresolved rather than guessed at. A store whose
+bytes are data that happens to spell one cannot be told from an instruction by
+encoding alone, which is why the reading is checked against a recording rather
+than trusted on its own.
+
+## 2c. How large the observed argument sets actually are
+
+**What is unknown.** How many distinct argument sets each command is asked for.
+An earlier answer to this was published and has been withdrawn, because both
+halves of the way it was counted were wrong.
+
+The first half was the port split. The part answers below `DSP0.boundary`, which
+snes9x sets to `0xc000` here, so `0x8000` and `0x8001` are the two halves of the
+data port and `0xc000` and `0xc001` are the status register.
+[`census.py`](census.py) split on the lowest bit instead, so every argument word
+was rebuilt from the low bytes of two different arguments and 1,482,010 status
+polls were counted as answers. That is fixed.
+
+The second half is not. An exchange was taken to be a run of writes ended by a
+read, and command `$0a` breaks that rule: it answers with a stream the cartridge
+reads 176 times over and accepts writes during the stream rather than treating
+them as a new command. Ten per cent of the runs the old rule called exchanges
+hold writes from code more than 32 bytes apart, which is two routines' traffic
+joined into one.
+
+**Why it matters here.** It is what decides, per command, between a table and
+arithmetic. The split itself survives without the numbers, because the
+per-command traffic counts stand on the program counter rather than on the byte
+stream, but the size of each table does not.
+
+**What would close it.** Bounding an exchange by the site that issued it rather
+than by the shape of the byte stream. The recording carries the program counter
+of every access and [`commands.py`](commands.py) says which instruction issues a
+command, so an exchange can be cut at the next command site rather than at the
+next read, which is a rule command `$0a` does not break.
+
+**Until then.** No table is sized, and no figure for the observed set appears
+anywhere here.
+
+## 2d. Two of the three recordings on the bench are not what they say
+
+**What is unknown.** Nothing about the cartridge. This entry records the state of
+the evidence, because a reader who re-runs the analysis here will not reproduce
+what an earlier version of the readme reported.
+
+The published figures were taken over three runs of 12,000 frames. Of the
+recordings that produced them, the USA one is now 128 records long, which is the
+first 1,536 bytes of a run and nothing after it. The Japanese one stops at frame
+10,418 rather than 11,999. The Japanese and idle recordings are both exactly
+188,081,652 bytes, which two independent runs do not produce by accident, so both
+were cut. Only the European run reaches the frame count that was claimed.
+
+**Why it matters here.** A figure in the readme is one somebody ran, and that is
+only worth anything if the run it came from is still there to re-run. Two of
+these are not, and the difference shows: the European run issues command `$04`
+and the Japanese one never does, purely because it got further.
+
+**What would close it.** Recording all three again, at a stated frame count, and
+checking the length of each file against the count before reading it. The
+recorder already prints how many accesses it made, and nothing compared that
+against the file it wrote.
+
+**Until then.** Every figure here names the recording it came from and the number
+of frames that recording actually holds, rather than describing a set of three
+runs as one measurement.
 
 ## 3. Which scalar functions the commands are actually built from
 

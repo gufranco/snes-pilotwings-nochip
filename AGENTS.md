@@ -10,8 +10,9 @@ Pilotwings carries a DSP-1, an NEC uPD77C25 running a program Nintendo masked in
 computes: it rotates and projects coordinates for the mode 7 ground, divides, takes reciprocals, and
 answers the trigonometry the flight model asks for. This project replaces the part with tables and
 65816 routines in the cartridge and points the cartridge's own instructions at them. All three
-regional releases are targets, and one replacement covers all three because all three reach the part
-in the same seventeen ways.
+regional releases are targets, and one replacement covers all three because all three carry the same
+driver: the same twenty command bytes, and the same 84 long-form writes and 9 long-form reads at the
+two addresses it uses.
 
 ## Storing an answer is a measurement, not a preference
 
@@ -89,6 +90,24 @@ Every one of these passes before a change is done. A gate that was not run is a 
 The checks needing a dump or the microcode live in `*.retail.test.py` and are kept out of the
 coverage measurement. A machine holding the artifacts runs one set of paths and a machine without
 them runs the other, so no single build exercises both.
+
+## A search by encoding is not a reading of the driver
+
+Two failures came out of treating one as the other, and both looked right.
+
+The long form of the access spells its own bank, so four bytes match it exactly.
+That makes it the natural thing to search for, and it is a minority of this
+driver: the hot paths take the data bank with `pea $003f` and `plb` and then use
+ordinary absolute stores. Measured against a recording, the long form carries
+62% of the writes and 8% of the reads. Anything that reports where the cartridge
+reaches the part reads both forms, and [`commands.py`](commands.py) is what does.
+
+The same search also reports bytes that were never instructions. Twenty nine of
+the 122 long-form matches in the USA image sit at 29 different addresses, one
+each, scattered across banks `$30` to `$3e`. A driver does not have that shape.
+Those coincidences are the whole of the difference between the three regions'
+site totals, so a claim that the regions differ has to survive dropping them
+first, and this one did not.
 
 ## Conventions that are only true here
 
