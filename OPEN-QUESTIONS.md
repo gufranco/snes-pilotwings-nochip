@@ -33,6 +33,16 @@ So the mask decides one command out of nineteen, and that command is 2.3% of the
 cartridge's traffic. Everything else a replacement answers is the same either
 way. The tables are the same either way too, byte for byte, per entry 3b.
 
+**Which mask snes9x reproduces, measured.** Replaying the European recording
+through both masks and comparing against what snes9x answered, every command
+scores identically on the two except `$28`, which agrees 18 times out of 172 on
+DSP-1 and 172 times out of 172 on DSP-1B. So the emulator the recordings came
+from reproduces the corrected mask on the one command that separates them.
+
+That says what snes9x does. It does not say what a board does, and a replacement
+built to match the recordings would inherit the emulator's choice rather than the
+cartridge's.
+
 **What would close it.** Reading the part number off a retail Pilotwings board,
 for each region. Failing that, driving a working cartridge through `$28` and
 recording which answer comes back: the sibling that models the part records a
@@ -168,30 +178,42 @@ way before a figure is taken from it.
 
 ## 2e. The recordings are the game against snes9x, not against a DSP-1
 
-**What is unknown.** How far snes9x's reimplementation of the part diverges from
-the microcode, and therefore how far the census diverges from what a real board
-would have produced.
+**Measured, by replaying a recording through the part's own microcode.** The
+European recording was driven command for command into `snes-dsp-python`, writing
+what the cartridge wrote and reading as many words as the cartridge read. Over
+the first 7,184 answered exchanges:
 
-The recorder hooks snes9x, whose DSP-1 is C code written from the outside rather
-than the part's own program. Reading the two against each other turns up a
-divergence immediately. The microcode dispatches a command byte through a tree of
-bit tests, and `$80` lands on `$01ab`, which is the signed multiply, the same
-routine `$00` reaches. snes9x sends `$80` to the default arm of its switch, which
-takes no arguments and leaves the part waiting. Those are not the same behaviour,
-and the cartridge writes `$80` 128 times in a row at `$0702a`.
+| mask | agreed | differed |
+|---|---:|---:|
+| DSP-1 | 6,711 | 473 |
+| DSP-1B | 6,865 | 319 |
 
-**Why it matters here.** The census is not a passive observation. The game reads
-the answers and computes its next arguments from them, so an answer that differs
-sends the run down a different path and the argument sets that follow are the
-ones snes9x produced rather than the ones a DSP-1 would. Every figure taken from
-a recording inherits that.
+**The disagreements are not drift.** Not one exchange read a different number of
+words than the recording held, so the two never fell out of step, and agreement
+resumes after every disagreement rather than stopping at the first. They
+concentrate in six commands and leave seven untouched.
 
-**What would close it.** Driving the same command and argument stream through the
-part's own microcode, which `snes-dsp-python` runs, and comparing answer for
-answer. Where the two agree the recording stands; where they differ it does not.
+| command | agreed | differed |
+|---|---:|---:|
+| `$03`, `$0c`, `$13`, `$28` on DSP-1B | all | none |
+| `$00` | 1,287 | 1 |
+| `$0d` | 311 | 1 |
+| `$06` | 2,068 | 12 |
+| `$02`, `$10` | 172 each | 33 each |
+| `$0a`, `$0e` | 172 each | 34 each |
+| `$14` | 1 | 171 |
 
-**Until then.** A figure from a recording says what the game did against snes9x.
-Nothing here has checked how much of that is the part.
+**Two candidate causes were ruled out.** The recording opens with 128 bare `$80`
+writes carrying no arguments, and the microcode routes `$80` to the signed
+multiply, which wants two words. Skipping that preamble entirely changed not one
+figure, so it is not the cause. Nor is a stale part: the disagreements appear on
+a part that has been driven through the same history the game gave it.
+
+**Until then.** Seven commands' recorded answers are confirmed against the
+microcode. Six are not, and `$14` is almost wholly unconfirmed. A table built
+from recorded answers stores snes9x's answer wherever the two differ, so the
+answers are taken from the part rather than from the recording, and the keys
+alone come from the game.
 
 ## 2f. What range each argument takes, and what that allows
 
@@ -245,52 +267,39 @@ added are the only evidence here of what input does to it.
 
 ## 2h. Which commands a table can be complete for
 
-**Measured.** [`lut.py`](lut.py) plans a table per command against one shared
-cartridge budget, starting every command on the recorded set and spending the
-budget to widen as many as it reaches to the range.
+**Measured, on the corrected cut.** Fifteen of the sixteen commands that answer
+have a key that decides every answer they gave, and the table built from those
+keys encodes to 2,988,940 bytes.
 
-Four of nineteen come out complete over the range the game used: `$04` at
-2,097,152 bytes, `$10` at 524,288, `$0e` at 8 and `$80` at 2. The whole table is
-2,762,528 bytes, the image 3,286,816, and a 96 Mbit cartridge leaves 9,296,096
-spare.
+| | bytes |
+|---|---:|
+| the fifteen settled commands | 2,988,940 |
+| the four scalar tables over their whole input | 524,288 |
+| the game image | 4,194,304 |
+| a 96 Mbit cartridge | 12,582,912 |
+| left over | 4,875,380 |
 
-**What the headroom cannot buy.** The other fifteen each hold an argument
-position spanning the whole sixteen bit word, so a table over their range is 2^32
-rows at best and 2^96 at worst. That is not a budget away. Those fifteen are
-answered from the recorded set, and they are exactly where the fallback is
-reachable.
+The largest single table is `$06` keyed on its arguments and the last `$02`, at
+75,278 rows and 1,957,236 bytes. The smallest is `$18` at four rows and 48 bytes.
 
-**What would close it.** Either the scalar decomposition of entry 3, where every
-function takes one argument and 65,536 rows covers it outright, or a recording
-that covers enough of the game that the sets stop growing, which entry 2 says
-does not happen.
+**What the headroom cannot buy.** A table over the whole range of a command
+taking more than one word is 2^32 rows at best, so the fifteen are indexed on the
+set the recordings hold rather than on the range. That is where the fallback is
+reachable, and entry 3 is what removes the reachability: every scalar function
+takes one argument, so 65,536 rows covers each outright and a miss cannot happen.
 
-**Until then.** Four commands cannot reach the fallback. Fifteen can, and a build
-reports how often they did rather than claiming they did not.
+**Until then.** Fifteen commands answer from a table. One does not, and it is
+`$0a`.
 
 ## 2i. The part keeps state, and a table keyed on arguments alone answers wrongly
 
-**Measured, and it changes what a table has to be keyed on.** Seven of the
-sixteen commands that answer give different answers for identical arguments. The
-part keeps state, so a command reading a matrix another command loaded is not a
+**Measured, and it changes what a table has to be keyed on.** Six of the sixteen
+commands that answer give different answers for identical arguments. The part
+keeps state, so a command reading a matrix another command loaded is not a
 function of its own arguments, and a table keyed on them would return whichever
 row happened to be written last.
 
-| command | sets ambiguous on arguments alone | worst |
-|---|---:|---:|
-| `$06` | 137 of 3,551 | 2,798 answers for one set |
-| `$0a` | 2 of 2 | 10,968 |
-| `$0e` | 1 of 1 | 6,260 |
-| `$03` | 412 of 2,775 | 12 |
-| `$13` | 10 of 14 | 22 |
-| `$0d` | 3 of 6,287 | 2 |
-| `$1b` | 1 of 2,980 | 2 |
-
-`$0e` is the one worth looking at twice. It takes exactly one argument set in
-every recording, which made it the cheapest table in this repository's sizing at
-eight bytes, and it answers that one set 6,260 different ways.
-
-**What settles it.** Six of the seven become fully deterministic once the key
+**What settles it.** Five of the six become fully deterministic once the key
 carries the arguments of one earlier command as well:
 
 | command | keyed on | rows | ambiguous |
@@ -302,16 +311,29 @@ carries the arguments of one earlier command as well:
 | `$13` | its arguments and the last `$11` | 244 | 0 |
 | `$1b` | its arguments and the last `$11` | 2,986 | 0 |
 
-Keyed that way the whole table is 301,308 bytes and the image 825,596, against
-12,582,912 in a 96 Mbit cartridge.
+**What is left.** `$0a` is not tabulatable by value from these runs, and that is
+now measured three separate ways rather than asserted once.
 
-**What is left.** `$0a` is not tabulatable from these runs whatever it is keyed
-on. It is the streaming command, answering 176 reads of four words from a matrix
-loaded earlier, so its answer is the matrix rather than a row.
+| what was tried | what it cost |
+|---|---|
+| every single earlier command as the carrier | every row still ambiguous |
+| every pair and triple drawn from `$01`, `$11`, `$80`, `$02`, `$06`, `$0e` | every row still ambiguous |
+| storing each distinct whole answer | 10,970 answers of up to 764 words, 16,762,160 bytes, over a 96 Mbit cartridge on its own |
+| storing the four word steps and indexing them | 538,583 distinct steps, 4,308,664 bytes for the steps before any index array |
 
-**Until then.** Eighteen of nineteen commands have a key that decides their
-answer. `$0a` has none, and a build that tables it on arguments alone is wrong
-rather than incomplete.
+The shape says why. `$0a` writes one word, reads its answer through four
+instructions that each fire 176 or 191 times, and then writes four words more.
+The answer is a per scanline stream rather than a row, and its content comes from
+state accumulated over many earlier commands rather than from anything in the key.
+
+**Where it goes instead.** `$0a` reads the reciprocal table in the part's own
+data ROM, which entry 3 has already tabulated over its whole input. So `$0a` is
+answered from that table by code, and it is the only command that is. That is a
+lookup with a complete table underneath it, not a fallback: a miss cannot happen
+because every value the reciprocal takes has a row.
+
+**Until then.** Fifteen of sixteen commands answer from a table keyed on
+recorded values. `$0a` answers from the scalar tables, which are exhaustive.
 
 ## 3. Which scalar functions the commands are built from
 

@@ -121,6 +121,32 @@ order. The first sized against the part's input domain, which made a feasible
 table look impossible. The second called a run time value unknowable and stopped,
 when its ends were one query away.
 
+## A uniform arity is the check on a protocol read from a trace
+
+A recording gives accesses, never a protocol. Turning one into the other is a
+reading, and a reading needs something outside itself to be checked against.
+Here that check is arity: a driver written by people gives each command a fixed
+number of argument words, so a command that appears to take two different counts
+is a defect in the reading rather than a fact about the part.
+
+The first cut collected every write in a span into one tuple. Under it five of
+the nineteen commands reported two counts, and the two always differed by exactly
+four words. That constant is what gave it away. `$0a` writes one word, reads its
+answer through four instructions that fire 176 or 191 times, and then writes four
+words more, and those trailing four were being attributed to whichever command
+came next.
+
+Both repairs that suggest themselves are wrong, and the wrong one is the tempting
+one. Handing the trailing writes to the next command turns a `$14` that always
+takes six words into one that sometimes takes ten, which is worse than the defect
+it was meant to fix. Keeping them where they are and separating them by position
+leaves every command with one count in all three regions.
+
+The distinction that survives is not about ownership. A write issued after the
+part has begun answering cannot have decided that answer, so it is not part of
+the key a table is indexed on, whoever it belongs to. `words` carries the writes
+that could have decided the answer and `later` the writes that could not.
+
 ## What must never enter this repository
 
 No cartridge dump, no microcode image, no fragment of either, no intermediate built from either, and
