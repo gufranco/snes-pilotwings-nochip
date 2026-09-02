@@ -816,6 +816,38 @@ measured.
 They gate `$03` and `$13`, which are 27.6% of the traffic and are otherwise nine
 multiplies and six additions.
 
+## 3i. `$06`, and the divisor it hides
+
+**It is not a projection and not a transform.** Scaling the whole vector leaves a
+projection unchanged and doubles a transform, and `$06` does neither: the three
+components at `$0200` answer 366, -549, 244 and at `$1000` they answer -255,
+213, -17. Multiplying the answer by the third component is not constant either,
+so it is not a plain divide by that component.
+
+**What the third component does.** Holding the first two and scanning the third:
+
+| third | `$06` |
+|---|---|
+| `$0100` | -320, -35, -21 |
+| `$0400` | -304, 24, -20 |
+| `$1000` | -255, 213, -17 |
+| `$4000` | -155, 596, -10 |
+
+The first and third answers both fall smoothly toward zero, and both roughly
+halve while the third component grows sixty-four fold. A divide by the component
+itself would have fallen sixty-four fold. A divide by a constant plus the
+component fits: solving for that constant from the two ends gives about 14,400,
+and the seventh word `$02` was loaded with in this recording is 14,170.
+
+So `$06` divides by something `$02` set, offset by the third component, which is
+a perspective divide against a near plane rather than against the origin. That is
+why it reaches the same reciprocal subroutine `$10` does, and why 119
+instructions rather than 26.
+
+**What is needed to finish it.** The reciprocal, exactly, which entry 3d already
+shows has to be a table rather than a reimplementation. `$06` is 28.8% of the
+traffic and it is behind that one table, as `$10` is.
+
 ## 4. Whether the image needs to grow at all
 
 **What is unknown.** The retail cartridge is 512 KB and the replacement is not
