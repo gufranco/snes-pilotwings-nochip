@@ -54,10 +54,16 @@ part's own microcode through [snes-dsp-python](https://github.com/gufranco/snes-
 that microcode belongs to whoever made the part, so it is never carried here and is supplied by
 whoever runs this. A check that needs it reports that it had nothing to run rather than passing.
 
-Two masks of the part exist whose answers differ, and which one a retail board carries cannot be
-read out of a dump. Nothing here claims which one is being reproduced. That is the first entry in
-[OPEN-QUESTIONS.md](OPEN-QUESTIONS.md), and a change that assumes an answer to it is wrong even when
-it works.
+This project reproduces the DSP-1, never the DSP-1B. That is not a preference. The DSP-1B corrected
+an arithmetic fault, the attract demo is a recording of button presses rather than a script, and
+nobody re-recorded it, so on the corrected part the plane flies the same inputs into the ground
+instead of landing. An sd2snes picks the DSP-1 for this cartridge and the Virtual Console releases
+emulate this mask for the same reason.
+
+So a routine here that is more accurate than the part is wrong, and visibly so. Entry 1 in
+[OPEN-QUESTIONS.md](OPEN-QUESTIONS.md) carries the measurement: the two masks answer every command
+the game issues identically except `$28`, whose own handler is the same in both and whose
+normalisation subroutines are not.
 
 ## The five models, and why there are five
 

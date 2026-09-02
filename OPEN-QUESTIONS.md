@@ -9,7 +9,11 @@ stands and the broad one is not made anywhere.
 
 ## 1. Which mask a retail Pilotwings board carries
 
-**What is unknown.** The DSP-1 shipped in three masks. The DSP-1B corrected an arithmetic fault and
+**Answered: the DSP-1, and not the DSP-1B.** Kept as an entry because what
+settles it is the game's own behaviour rather than anything in the dump, and
+because the reason matters to every routine this project writes.
+
+**What was unknown.** The DSP-1 shipped in three masks. The DSP-1B corrected an arithmetic fault and
 left the command set alone, so the two answer differently for some inputs while accepting the same
 commands. Which mask a given board carries cannot be determined from a dump: nothing in the ROM
 records it, and all three regions declare the same chipset byte.
@@ -19,6 +23,56 @@ Pilotwings board carries the uncorrected mask and this project reproduces the co
 conversion is arithmetically better than the cartridge and wrong for it. The family standard settles
 which way that goes: a part's defects are modelled rather than corrected, because a model that
 quietly fixes a hardware bug is wrong for the machine that shipped.
+
+**Which mask, answered from outside.** The dump does not say, and the behaviour
+of the game does. Pilotwings carries the DSP-1 or the DSP-1A, never the DSP-1B,
+and the way anybody can check is the attract demo: on a DSP-1 the plane lands,
+and on a DSP-1B it crashes.
+
+The reason is that the DSP-1B is more accurate. Its arithmetic fix changed the
+answers the flight model gets, the demo is a recording of button presses rather
+than a script, and nobody re-recorded it. So a more correct part flies the same
+inputs into the ground. Reported at
+[Nintendo Life](https://www.nintendolife.com/news/2019/05/random_the_captivating_mystery_of_pilotwingsr_crashing_plane)
+and
+[ResetEra](https://www.resetera.com/threads/pilotwings-snes-do-you-own-the-safe-landing-or-plane-crash-version.175182/),
+and acted on by hardware and by Nintendo: an sd2snes picks the DSP-1 for this
+cartridge, and the Virtual Console releases emulate this mask rather than
+reusing the DSP-1 emulation from other games.
+
+**So this project reproduces a part that is wrong on purpose.** The family
+standard already says a part's defects are modelled rather than corrected,
+because a model that quietly fixes a hardware bug is wrong for the machine that
+shipped. This is that rule with a visible consequence: correcting the arithmetic
+crashes the plane.
+
+**Where the difference sits, read out of the program.** Both masks answer every
+command the game issues identically except `$28`, and `$28`'s own handler is the
+same instruction for instruction in both. It reads three words, sums their
+squares, and calls three subroutines, which makes it a vector length. Two of
+those three differ:
+
+| subroutine | what differs |
+|---|---|
+| `$0042` | nothing |
+| `$0077` | the DSP-1 opens with `call $003A` and the DSP-1B does not |
+| `$0123` | reordered, and the DSP-1B reaches a different constant |
+
+So the correction is in the normalisation that follows the sum of squares,
+which is what a length needs and what an accuracy fix would touch.
+
+**What this costs the recordings.** They were made against snes9x, and snes9x
+answers `$28` the way a DSP-1B does, measured at 172 of 172 exchanges against
+18 of 172 for the DSP-1. The recordings are therefore of the crashing demo, not
+the one a cartridge plays. Every argument the game computed after the first
+`$28` it disagreed on is an argument the real machine would not have produced,
+which is the same mechanism entry 2e already reports from the other side and is
+now the more likely reason a replay stops staying in step.
+
+**What is settled and what is not.** That this cartridge wants a DSP-1 is
+settled well enough to build on. Which of the DSP-1 and the DSP-1A a given board
+carries is still not readable from a dump, and does not matter here: the two
+differ in manufacture rather than in program.
 
 **What the cartridge database says, and what it does not.** The DSP model's
 manifest names `dsp1` for all three Pilotwings regions, and says in the same
@@ -86,7 +140,7 @@ divergent input for commands `$04`, `$0b`, `$1b`, `$24`, `$2b` and `$3b`, and th
 measurement above adds `$28` on inputs the game itself sends, which is the easier
 one to reach because the game reaches it unaided.
 
-**Until then.** Nothing here claims which mask is being reproduced. The doctor
+**Until then.** This project reproduces the DSP-1. The doctor
 reports which masks are present on the machine so a reader knows which question a
 run there could not have answered. A replacement may be written for all of it
 except `$28` without the answer.

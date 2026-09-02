@@ -51,6 +51,19 @@ opens this project sees what it is built on without going looking, which is the
 point: each of those is a project in its own right, held to its own oracle.
 """
 
+INSIDE = {
+    "upd7725": ("snesdsp", "nec-upd7725-96050-python"),
+}
+"""Packages that live inside one of the above rather than beside them.
+
+`upd7725` is the processor the DSP model runs on, pinned inside that model. It
+is reached here because reading what a command is made of needs the instruction
+set, while running one needs only the model. Going through the model's own
+checkout rather than pinning it again keeps one version of it rather than two
+that can disagree, and it is why this is a separate table: everything in
+`PACKAGES` is a submodule this repository declares, and this is not.
+"""
+
 
 class UnknownPackage(Exception):
     pass
@@ -59,11 +72,16 @@ class UnknownPackage(Exception):
 def root_of(package: str) -> Path:
     """Where a vendored model lives, by the name it is imported under."""
     directory = PACKAGES.get(package)
-    if directory is None:
-        raise UnknownPackage(
-            f"{package} is not vendored here; this project carries {', '.join(sorted(PACKAGES))}"
-        )
-    return ROOT / directory
+    if directory is not None:
+        return ROOT / directory
+    nested = INSIDE.get(package)
+    if nested is not None:
+        parent, where = nested
+        return root_of(parent) / where
+    raise UnknownPackage(
+        f"{package} is not vendored here; this project carries "
+        f"{', '.join(sorted({**PACKAGES, **INSIDE}))}"
+    )
 
 
 def install(environment: MutableMapping[str, str] | None = None) -> str:
@@ -76,7 +94,7 @@ def install(environment: MutableMapping[str, str] | None = None) -> str:
     adds to whatever was already named rather than replacing it: somebody who set
     the variable meant it.
     """
-    for package in PACKAGES:
+    for package in (*PACKAGES, *INSIDE):
         entry = str(root_of(package))
         if entry not in sys.path:
             sys.path.insert(0, entry)

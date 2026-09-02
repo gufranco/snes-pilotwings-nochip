@@ -20,6 +20,18 @@ class PackagesTest(unittest.TestCase):
         for directory in hardware.PACKAGES.values():
             self.assertIn(f"path = {directory}", declared)
 
+    def test_a_nested_package_resolves_inside_its_parent(self) -> None:
+        for package, (parent, directory) in hardware.INSIDE.items():
+            self.assertEqual(
+                hardware.root_of(package), hardware.root_of(parent) / directory, package
+            )
+
+    def test_a_nested_package_is_not_a_submodule_this_repository_declares(self) -> None:
+        declared = (ROOT / ".gitmodules").read_text()
+
+        for package, (_, directory) in hardware.INSIDE.items():
+            self.assertNotIn(f"path = {directory}", declared, package)
+
     def test_a_package_this_project_does_not_carry_is_refused_by_name(self) -> None:
         with self.assertRaises(hardware.UnknownPackage) as raised:
             hardware.root_of("snesgfx")
