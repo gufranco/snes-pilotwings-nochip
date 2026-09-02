@@ -18,8 +18,9 @@ computes. It rotates and projects coordinates for the mode 7 ground, divides, ta
 answers the trigonometry the flight model asks for. Without it the game does not fly.
 
 This project replaces the part with code and tables in the cartridge, and points the cartridge's own
-instructions at them. The image grows to hold what is stored; nothing about the board changes, and
-there is no coprocessor left to emulate.
+instructions at them. Nothing about the board changes and there is no coprocessor left to emulate.
+Whether the image has to grow at all is measured rather than assumed, and on the evidence so far it
+does not.
 
 You supply the retail dumps. Nothing here contains game data, and nothing ever will.
 
@@ -35,7 +36,9 @@ Early. What is measured is written down below; what is not built is named in
 | which commands the cartridge can issue | 20 in every image, checked against a recording |
 | what the part answers | works, by running the part's own microcode |
 | whether an answer can be stored instead of computed | measured, per command |
-| how many argument sets each command takes | withdrawn, see [`OPEN-QUESTIONS.md`](OPEN-QUESTIONS.md) entry 2c |
+| how many argument sets each command takes | measured, 73,341 across three runs |
+| which tables the part computes from | measured, four of them, 1,282 bytes |
+| whether the image has to grow | no, on the evidence so far |
 | the replacement in 65816 | not started |
 | the finished cartridge | not started |
 
@@ -128,9 +131,11 @@ the recording checkable against the code, and it is what the numbers below rest
 on: a command byte is the one thing this cartridge writes eight bits at a time,
 so a program counter that only ever touches the low half of the port issued one.
 
-From a run of the Japanese image over 10,419 frames with no input at all, so the
+From a run of the Japanese image over 12,000 frames with no input at all, so the
 attract demo flies rather than sitting on a menu, 257,189 commands were issued
-from 30 sites. The traffic is not spread evenly:
+from 30 sites. The NTSC images stop reaching the part after frame 10,418 and the
+PAL one is still flying at 11,999, which is why Europe issues command `$04` and
+the other two never do. The traffic is not spread evenly:
 
 | command | share | issued | sites | what it is |
 |---|---:|---:|---:|---|
@@ -145,34 +150,60 @@ Two commands are more than half of everything the cartridge asks for, and the
 multiply is a further sixth of it and needs no table at all, because the console
 has a hardware multiplier.
 
-### The sizing that used to be here has been withdrawn
+### Where a table works, measured by cutting at the site that issued it
 
-An earlier version of this section sized tables against the number of distinct
-argument sets each command was seen to take. Those figures were wrong, and the
-cause was in [`census.py`](census.py) rather than in the recording.
+An exchange is not a run of writes ended by a read. Command `$0a` answers with a
+stream the cartridge reads 176 times over and the part accepts writes during that
+stream, so a read in the middle of one exchange looks exactly like the end of it.
+Counted that way, a tenth of the runs hold writes from code more than 32 bytes
+apart, which is two routines' traffic joined into one.
 
-The part answers at two registers, and which address is which is decided by
-`DSP0.boundary`, which snes9x sets to `0xc000` for a low cartridge of this size.
-So `0x8000` and `0x8001` are the two halves of one data port and `0xc000` and
-`0xc001` are the status register. The census split on the lowest bit instead,
-which is the convention some other coprocessors use. Two things followed. Every
-argument word was rebuilt from the low bytes of two different arguments, because
-the high byte of each was dropped as though it were status. And 1,482,010 status
-polls were read as answers, so exchanges ended wherever the cartridge happened to
-look at the ready bit.
+[`exchanges.py`](exchanges.py) cuts at the command site instead, which the byte
+stream cannot blur: a program counter that only ever touches the low half of the
+data port issued commands, one that touches both halves wrote argument words, and
+the recording carries the counter of every access.
 
-The split is fixed. The sizing is not being restated, because a second fault sits
-underneath it: an exchange was taken to be a run of writes ended by a read, and
-command `$0a` breaks that. It answers with a long stream the cartridge reads in a
-loop and takes writes during that stream rather than treating them as a new
-command, so the rule splits one of those exchanges into pieces and joins the tail
-of one to the head of the next. Ten per cent of the runs the old rule called
-exchanges hold writes from code more than 32 bytes apart. Sizing tables from a
-count taken that way would be sizing them from a reading of the byte stream.
+Across all three runs, 73,341 distinct argument sets over 19 commands. At one
+stored answer each that is 586,728 bytes, 4.66% of a 96 Mbit image. The split
+that decides how to answer each command:
 
-What survives is the split the sizing was for, which the per-command counts above
-still support: a handful of commands are most of the traffic, the multiply is
-computed rather than stored, and the rest need measuring again.
+| | commands | rows | bytes | share of traffic |
+|---|---:|---:|---:|---:|
+| an inline compare chain | 5 | 22 | **176** | **30.5%** |
+| a table | 13 | 46,832 | 374,656 | 54.3% |
+| computed, being a multiply | 1 | none | 0 | 15.8% |
+
+Twenty two rows and 176 bytes answer three tenths of everything the cartridge
+asks for. `$13` alone is a quarter of the traffic and takes fourteen argument
+sets; `$0e` takes one.
+
+### What the part actually computes from
+
+The list this project expected to tabulate was a sine, a cosine, a reciprocal, a
+square root and an arctangent, and that was what a coprocessor of this kind
+normally carries rather than anything measured. The part settles it itself: the
+uPD77C25 keeps 1024 words of data ROM beside its program, and what a microcode
+interpolates from is written down in there.
+
+[`tables.py`](tables.py) rebuilds each candidate from its formula and searches for
+it. Four are there, each to within one unit, which is rounding:
+
+| table | words | formula | bytes |
+|---|---:|---|---:|
+| reciprocal | 129 | `2^22 / (128 + k)` | 258 |
+| sine | 128 | `sin(pi k / 128) x 32767` | 256 |
+| cosine | 128 | `cos(pi k / 128) x 32767` | 256 |
+| arccosine | 256 | `acos(k / 256) x 32768 / pi` | 512 |
+| | | **total** | **1,282** |
+
+There is no square root and no arctangent, and nothing expected an arccosine.
+Both masks carry the same four byte for byte, the DSP-1B holding three of them
+two words lower, so the correction the DSP-1B made was to the program.
+
+That answers the sizing question by dissolving it. A replacement carrying what
+the part carries needs about a kilobyte, not 131,072 bytes per function, and
+interpolating the way the microcode does is also the only way to be exactly right
+rather than close.
 
 ### What a recording can and cannot say
 
@@ -181,8 +212,9 @@ these commands take arguments that come from the aircraft's attitude and take a
 new value on almost every frame, so no recording will ever show their input set
 closing, and a lookup with no entry for an unseen argument has no answer at all.
 The design is therefore a table where the set closes and computation where it
-does not, and never a table alone. Which commands fall on which side is the
-measurement that has been withdrawn.
+does not, and never a table alone. Which commands fall on which side is measured
+above, and the answer does not close: it is what three runs of the demo produced,
+and a player working the controls produces sets the demo never will.
 
 Reading the cartridge's code rather than running it answers the other half.
 [`commands.py`](commands.py) reads 20 command bytes out of every one of the three
@@ -203,25 +235,30 @@ is one the code reading also finds.
 `$80` is not a computation. It sends the part back to waiting for a command, and
 the cartridge writes it 128 times in a row at `$0702a` to flush the part.
 
-### What growing the image to 96 Mbit buys
+### Whether the image has to grow at all
 
-Room. How much of it a replacement needs is not known, because the replacement is
-not written and the sizing that would have bounded it has been withdrawn. What
-can be said is the ceiling: a table for one scalar function a replacement might
-compute from, a sine, a cosine, a reciprocal, a square root, an arctangent, is
-131,072 bytes over its whole sixteen bit domain.
+Probably nothing, and that is the answer to a question this project was built
+around. The tables are 1,282 bytes and the retail image already has room for
+them, which [`layout.py`](layout.py) measures rather than assumes:
 
-| | bytes |
-|---|---:|
-| the image at 96 Mbit | 12,582,912 |
-| the retail cartridge inside it | 524,288 |
-| left over | 12,058,624 |
-| one table over a whole sixteen bit input | 131,072 |
-| **tables that fit** | **92** |
+| region | free in runs of 256 bytes or more | largest single run |
+|---|---:|---:|
+| USA | 63,122 | 4,249 |
+| Japan | 74,207 | 8,395 |
+| Europe | 63,122 | 4,249 |
 
-Ninety two of those fit, which is far more than a replacement needs, so the
-ceiling is not the constraint and this table settles nothing about which tables
-are wanted.
+Every one of them holds all four tables in one piece with tens of kilobytes to
+spare. A run of one repeated byte is evidence that nothing uses it rather than
+proof, so a candidate run is checked against the driver census before anything
+goes in it, but the shape of the answer is not in doubt: this does not look like
+a cartridge that has to grow.
+
+That matters because growing is not free. An image past the address space needs
+the windowed layout the sibling project uses, which is a substantial piece of work
+and changes which emulators load the result. On the current evidence none of that
+is needed here.
+
+What remains unmeasured is the replacement code itself, which is not written.
 
 Products need no table at all: command `$00` is a signed multiply, it is a sixth
 of everything the cartridge asks for, and the console's hardware multiplier
@@ -318,8 +355,11 @@ Analysis modules in Python, each with its tests beside it.
 | [`hardware.py`](hardware.py) | puts the pinned hardware models on the import path, and says where the microcode is |
 | [`dumps.py`](dumps.py) | which dumps this project reads, and what makes each one itself |
 | [`sites.py`](sites.py) | where each cartridge reaches the part through the long form of the access |
-| [`commands.py`](commands.py) | which command bytes the cartridge's own code can issue, both forms |
-| [`census.py`](census.py) | what a recorded run asked the part for |
+| [`commands.py`](commands.py) | every instruction that reaches the part, and which command bytes the code can issue |
+| [`exchanges.py`](exchanges.py) | what a recorded run asked for, cut at the site that issued it |
+| [`census.py`](census.py) | the same question cut at the byte stream, which command `$0a` breaks |
+| [`tables.py`](tables.py) | which tables the part carries, read out of its own data ROM |
+| [`layout.py`](layout.py) | whether the replacement fits in the image the cartridge already is |
 | [`tabulate.py`](tabulate.py) | whether a command's answers can be stored instead of computed |
 | [`doctor.py`](doctor.py) | what is actually on this machine, the whole chain, printed for a bug report |
 | [`version.py`](version.py) | the release number, rewritten by [`scripts/set-version.sh`](scripts/set-version.sh) |

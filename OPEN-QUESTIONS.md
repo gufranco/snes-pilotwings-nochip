@@ -19,14 +19,30 @@ conversion is arithmetically better than the cartridge and wrong for it. The fam
 which way that goes: a part's defects are modelled rather than corrected, because a model that
 quietly fixes a hardware bug is wrong for the machine that shipped.
 
-**What would close it.** Reading the part number off a retail Pilotwings board, for each region.
-Failing that, driving a working cartridge through an input where the two masks are known to differ
-and recording which answer comes back. The sibling that models the part carries a record of inputs
-where they part company, so the second measurement has a known place to look rather than needing a
-search.
+**How much it matters, measured.** Driving every argument set the three
+recordings produced through both masks, sampled at 200 per command, the two agree
+everywhere except one command:
 
-**Until then.** Nothing here claims which mask is being reproduced. The doctor reports which masks
-are present on the machine so a reader knows which question a run there could not have answered.
+| command | argument sets the game sends | masks agree |
+|---|---:|---|
+| `$28` | 6,182 | no, on 102 of 200 driven |
+| the other 18 | 67,159 | yes, on every set driven |
+
+So the mask decides one command out of nineteen, and that command is 2.3% of the
+cartridge's traffic. Everything else a replacement answers is the same either
+way. The tables are the same either way too, byte for byte, per entry 3b.
+
+**What would close it.** Reading the part number off a retail Pilotwings board,
+for each region. Failing that, driving a working cartridge through `$28` and
+recording which answer comes back: the sibling that models the part records a
+divergent input for commands `$04`, `$0b`, `$1b`, `$24`, `$2b` and `$3b`, and the
+measurement above adds `$28` on inputs the game itself sends, which is the easier
+one to reach because the game reaches it unaided.
+
+**Until then.** Nothing here claims which mask is being reproduced. The doctor
+reports which masks are present on the machine so a reader knows which question a
+run there could not have answered. A replacement may be written for all of it
+except `$28` without the answer.
 
 ## 2. The recordings are runs of the attract demo, not of the game
 
@@ -81,97 +97,123 @@ bytes are data that happens to spell one cannot be told from an instruction by
 encoding alone, which is why the reading is checked against a recording rather
 than trusted on its own.
 
-## 2c. How large the observed argument sets actually are
+## 2c. How large the observed argument sets are
 
-**What is unknown.** How many distinct argument sets each command is asked for.
-An earlier answer to this was published and has been withdrawn, because both
-halves of the way it was counted were wrong.
+**Closed.** 73,341 distinct argument sets across 19 commands, which is 586,728
+bytes at one stored answer each, or 4.66% of a 96 Mbit image.
 
-The first half was the port split. The part answers below `DSP0.boundary`, which
-snes9x sets to `0xc000` here, so `0x8000` and `0x8001` are the two halves of the
-data port and `0xc000` and `0xc001` are the status register.
-[`census.py`](census.py) split on the lowest bit instead, so every argument word
-was rebuilt from the low bytes of two different arguments and 1,482,010 status
-polls were counted as answers. That is fixed.
+The figure published before this one was wrong twice over. The port split was
+wrong, so every argument word was rebuilt from the low bytes of two different
+arguments and 1,482,010 status polls were counted as answers; that was fixed in
+[`census.py`](census.py). Underneath it the exchange boundary was wrong too: a
+run of writes ended by a read is not an exchange, because command `$0a` answers
+with a stream the cartridge reads 176 times over and accepts writes during it.
 
-The second half is not. An exchange was taken to be a run of writes ended by a
-read, and command `$0a` breaks that rule: it answers with a stream the cartridge
-reads 176 times over and accepts writes during the stream rather than treating
-them as a new command. Ten per cent of the runs the old rule called exchanges
-hold writes from code more than 32 bytes apart, which is two routines' traffic
-joined into one.
+[`exchanges.py`](exchanges.py) cuts at the site that issued the command instead,
+which is a boundary the byte stream cannot blur: a program counter that only ever
+touches the low half of the data port issued commands, one that touches both
+halves wrote argument words, and the recording carries the counter of every
+access. A read inside an exchange is then an answer rather than a boundary.
 
-**Why it matters here.** It is what decides, per command, between a table and
-arithmetic. The split itself survives without the numbers, because the
-per-command traffic counts stand on the program counter rather than on the byte
-stream, but the size of each table does not.
+The split that decides table against arithmetic falls out of it:
 
-**What would close it.** Bounding an exchange by the site that issued it rather
-than by the shape of the byte stream. The recording carries the program counter
-of every access and [`commands.py`](commands.py) says which instruction issues a
-command, so an exchange can be cut at the next command site rather than at the
-next read, which is a rule command `$0a` does not break.
+| | commands | rows | bytes | share of traffic |
+|---|---:|---:|---:|---:|
+| answered by an inline compare | 5 | 22 | 176 | 30.5% |
+| answered by a table | 13 | 46,832 | 374,656 | 54.3% |
+| computed, being a multiply | 1 | n/a | 0 | 15.8% |
 
-**Until then.** No table is sized, and no figure for the observed set appears
-anywhere here.
+`$13` is a quarter of all traffic and takes fourteen argument sets. `$0e` takes
+one. The multiply is a sixth of the traffic and needs no table at all.
 
-## 2d. Two of the three recordings on the bench are not what they say
+**What is still narrow.** This is what three runs of the attract demo produced,
+which is entry 2 and does not close.
 
-**What is unknown.** Nothing about the cartridge. This entry records the state of
-the evidence, because a reader who re-runs the analysis here will not reproduce
-what an earlier version of the readme reported.
+## 2d. One of the three recordings on the bench was not a recording
 
-The published figures were taken over three runs of 12,000 frames. Of the
-recordings that produced them, the USA one is now 128 records long, which is the
-first 1,536 bytes of a run and nothing after it. The Japanese one stops at frame
-10,418 rather than 11,999. The Japanese and idle recordings are both exactly
-188,081,652 bytes, which two independent runs do not produce by accident, so both
-were cut. Only the European run reaches the frame count that was claimed.
+**Closed, and the claim that replaced it was wrong too.** An earlier version of
+this entry said two of the three had been cut. Re-running all three at 12,000
+frames settles it: the Japanese and European files are byte for byte identical to
+fresh runs, and `trace-idle.bin` is a USA run rather than a truncated Japanese
+one. Only `trace-usa.bin` was a stub, at 128 records, and it has been re-taken.
 
-**Why it matters here.** A figure in the readme is one somebody ran, and that is
-only worth anything if the run it came from is still there to re-run. Two of
-these are not, and the difference shows: the European run issues command `$04`
-and the Japanese one never does, purely because it got further.
+The two signals that looked like truncation both have ordinary explanations. The
+Japanese and idle files are exactly the same length because a USA and a Japanese
+run make exactly the same number of accesses, 15,673,471. And the Japanese run
+stops at frame 10,418 because the NTSC images make no further access to the part
+after that, not because the file ends: it ran all 12,000 frames. Europe reaches
+11,999 because the PAL demo is still flying there, which is also why it is the
+only run that issues command `$04`.
 
-**What would close it.** Recording all three again, at a stated frame count, and
-checking the length of each file against the count before reading it. The
-recorder already prints how many accesses it made, and nothing compared that
-against the file it wrote.
+**What this cost.** An inference published as a finding. Two circumstantial
+signals were read as proof of truncation when the measurement that settles it,
+running the recorder again and comparing, was one command away.
 
-**Until then.** Every figure here names the recording it came from and the number
-of frames that recording actually holds, rather than describing a set of three
-runs as one measurement.
+**Until then.** The recorder prints the number of accesses it made and nothing
+compared that against the file it wrote. Any future recording is checked that
+way before a figure is taken from it.
 
-## 3. Which scalar functions the commands are actually built from
+## 3. Which scalar functions the commands are built from
 
-**What is unknown.** The measurement says how many words each command takes and gives, and that is
-the outside of the part. It does not say which functions the microcode composes to get there. The
-list this project expects to tabulate, a sine, a cosine, a reciprocal, a square root and an
-arctangent, is what a mathematical coprocessor of this kind normally carries, and normally is not a
-measurement.
+**Closed, and the expected list was wrong in three places.** The part carries
+1024 words of data ROM alongside its program, and what a microcode interpolates
+from is written down in there in plain sixteen bit words.
+[`tables.py`](tables.py) rebuilds each candidate from its formula and searches for
+it rather than recognising it by eye. Four are there, each to within one unit,
+which is rounding:
 
-**Why it matters here.** The tables are the whole speed argument. Tabulating a function the part
-never uses wastes 131,072 bytes and buys nothing; missing one it does use leaves a series in the
-inner loop.
+| table | words | formula | at, DSP-1 | at, DSP-1B |
+|---|---:|---|---:|---:|
+| reciprocal | 129 | `2^22 / (128 + k)` | 101 | 101 |
+| sine | 128 | `sin(pi k / 128) x 32767` | 280 | 278 |
+| cosine | 128 | `cos(pi k / 128) x 32767` | 408 | 406 |
+| arccosine | 256 | `acos(k / 256) x 32768 / pi` | 542 | 540 |
 
-**What would close it.** Disassembling the microcode and reading what it computes, or fitting each
-command's answers against candidate functions across its input domain and seeing which composition
-reproduces them exactly.
+There is no square root and no arctangent, and nothing expected an arccosine.
 
-**Until then.** No table is built. The count of 92 that fit is arithmetic about the image and says
-nothing about which tables are wanted.
+**What it changes.** The whole sizing argument. The four together are 1,282
+bytes, against the 131,072 a single table over a whole sixteen bit input takes,
+so the count of how many such tables a grown image holds was an answer to a
+question the part does not ask. A replacement carries what the part carries,
+about a kilobyte, and interpolates the way the microcode does, which is also the
+only way to be exactly right rather than close.
+
+**What is still narrow.** Which of the four each command composes, and in what
+order, is not read here. That needs the program rather than the data ROM. What is
+settled is the set a replacement must carry, which is what the sizing depended on.
+
+## 3b. What the two masks do with those tables
+
+**What is unknown.** The DSP-1 and DSP-1B carry the same four tables, byte for
+byte, and the DSP-1B holds three of them two words lower. That shift is the whole
+of the difference between their data ROMs, so whatever the DSP-1B corrected it
+corrected in the program.
+
+**Why it matters here.** It narrows entry 1 without closing it. A replacement
+reproducing the tables reproduces both masks' tables, so the mask question is
+about the arithmetic around them rather than about the numbers themselves.
+
+**What would close it.** Reading the two programs against each other. The images
+are 2048 words of twenty four bit instructions and the two differ, so a
+disassembly would say where.
 
 ## 4. Whether the image needs to grow at all
 
-**What is unknown.** The retail cartridge is 512 KB. This project may grow it to hold tables and
-replacement code, up to the 96 Mbit ceiling a flash cartridge in common use will hold. How much is
-actually needed is not known, because the replacement is not written.
+**What is unknown.** The retail cartridge is 512 KB and the replacement is not
+written, so what it costs is not measured. What has changed since this entry was
+written is that the tables are no longer the reason to grow it. The part carries
+1,282 bytes of them, per entry 3, and the argument sets a table would answer from
+are 586,728 bytes at the widest reading, per entry 2c. Neither needs a 96 Mbit
+image, and the smaller of the two fits in what a 512 KB cartridge already has
+spare.
 
-**Why it matters here.** An image that fits the original address space needs no addressing work at
-all. One that does not needs the windowed layout the sibling project uses, which is a substantial
-piece of work and changes which emulators load the result.
+**Why it matters here.** An image that fits the original address space needs no
+addressing work at all. One that does not needs the windowed layout the sibling
+project uses, which is substantial and changes which emulators load the result.
+The evidence now points at the first, which would remove that work entirely.
 
 **What would close it.** Writing the replacement and measuring it.
 
-**Until then.** No layout is committed to and no size is claimed. The 96 Mbit figure in
-[`tabulate.py`](tabulate.py) is a ceiling used to decide what cannot be stored, never a target.
+**Until then.** No layout is committed to and no size is claimed. The 96 Mbit
+figure in [`tabulate.py`](tabulate.py) is a ceiling used to decide what cannot be
+stored, and on the current evidence it is a ceiling nothing here approaches.
