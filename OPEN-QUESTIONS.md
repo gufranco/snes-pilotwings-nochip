@@ -775,6 +775,47 @@ asks and they are nine multiplies and six additions once the matrix is in hand.
 Getting the matrix is the work of `$01` and `$11`, which are 6.9%. So a quarter
 of the traffic turns on one command that has not been read yet.
 
+## 3h. What `$01` and `$11` put in the matrix
+
+**Four words, and each one is now named.** Probed by loading the matrix and then
+reading its columns back through `$03` on the unit vectors:
+
+| word | what it is |
+|---|---|
+| 0 | a scale. The diagonal comes out as a quarter of it: `$1000` gives 1023, `$7FFF` gives 8190 |
+| 1 | a rotation about the third axis. Moves the first two rows, leaves the third |
+| 2 | a rotation about the second axis. Moves the first and third |
+| 3 | a rotation about the first axis. Moves the second and third |
+
+**The angle unit is a whole turn per 65,536**, the same as `$04`. At `$1000`,
+which is a sixteenth of a turn, the entries are 7567 and 3134 against a diagonal
+of 8190, so 0.9239 and 0.3827. Those are the cosine and sine of 22.5 degrees to
+four figures. At `$4000` the matrix is a clean quarter turn.
+
+**The three compose in that order.** With the third-axis rotation at `$1000` and
+the second at `$2000`, the chip's matrix is
+
+    [[5350, -2216, 5792], [3134, 7567, 0], [-5351, 2216, 5791]]
+
+and multiplying the two single-angle matrices in that order, shifted right
+thirteen, gives
+
+    [[5349, -2216, 5790], [3133, 7565, 0], [-5350, 2215, 5789]]
+
+The other order does not resemble it at all. So the order is settled and the
+shift is thirteen.
+
+**Where the ones and twos come from.** The chip builds each entry from its trig
+values and rounds once. Composing two matrices that have each already been
+rounded, as above, rounds twice. So the model is right and reproducing it to the
+bit needs the chip's own sine and cosine at full sixteen bit angle resolution,
+which is the table `$04` needs, and the rounding of each entry, which is not yet
+measured.
+
+**What this leaves.** `$01` and `$11` are structurally solved and not yet exact.
+They gate `$03` and `$13`, which are 27.6% of the traffic and are otherwise nine
+multiplies and six additions.
+
 ## 4. Whether the image needs to grow at all
 
 **What is unknown.** The retail cartridge is 512 KB and the replacement is not
