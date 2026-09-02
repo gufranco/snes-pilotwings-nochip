@@ -648,6 +648,41 @@ the same part `tables.py` already checks the four scalar tables against.
 **What is still open.** Whether `$04` and `$28` decompose the same way. Both
 reach the same subroutine, so the same shape is likely and is not yet measured.
 
+## 3e. What `$28` and `$04` turned out to be
+
+**`$28` is the vector length, and it is inaccurate on purpose.** It reads three
+words, sums their squares, and answers the square root of that sum. Measured
+against the true length:
+
+| input | `$28` | true length | short by |
+|---|---:|---:|---:|
+| 3, 4, 0 | 4 | 5.00 | 20% |
+| 100, 0, 0 | 98 | 100.00 | 2.0% |
+| 300, 400, 0 | 495 | 500.00 | 1.0% |
+| 1000, 1000, 1000 | 1712 | 1732.05 | 1.2% |
+| 32767, 0, 0 | 32508 | 32767.00 | 0.79% |
+
+It is short everywhere and the shortfall settles near eight parts in a thousand
+as the argument grows. That is the square root's own approximation error, and
+`$28` is the one command whose answers differ between the two masks, so this is
+very likely the arithmetic the DSP-1B corrected and the reason the demo's plane
+lands on one mask and crashes on the other. A replacement that computes an
+accurate length here is wrong, and wrong in the way that is visible on screen.
+
+**`$04` is not yet named.** It takes two words and answers two, and neither the
+reverse of `$10` nor a plain shift fits what it returns. Fed a normalised
+mantissa and an exponent it answers the exponent less one in the first word and
+nothing in the second; fed what `$10` hands back it answers something else
+again. It reaches `$0132`, which no other command here reaches, so it is the one
+command whose subroutine is still unread.
+
+**What to do next, in order.** `$10` is ready to build: a table of 65,536
+mantissas generated at build time from the part, plus a leading zero count for
+the exponent. `$28` needs its square root approximation measured to the bit
+rather than to a percentage, and the same table treatment probably applies, since
+it too is a function of one quantity, the sum of squares. `$04` needs `$0132`
+read first.
+
 ## 4. Whether the image needs to grow at all
 
 **What is unknown.** The retail cartridge is 512 KB and the replacement is not
