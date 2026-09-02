@@ -1,7 +1,8 @@
 # Open questions
 
 Every place a claim in this repository is narrower than it looks, with the measurement that would
-close it. Seven entries, one of them closed and kept because what closed it is worth reading.
+close it. Nine entries. The closed ones are kept, because what closed them is worth reading and
+because two of them were closed once already with an answer that turned out to be wrong.
 
 A question is closed by evidence, never by a decision to stop asking. Until then the narrow claim
 stands and the broad one is not made anywhere.
@@ -58,11 +59,23 @@ further into the game than the Japanese one and issues command `$04` 511 times,
 which the shorter run never issues at all: a difference in how far the demo got,
 not in what the cartridge can do.
 
-**What would close it.** It does not close. No recording can enumerate a set
-that is a continuous function of player input. What can be closed is the
-narrower question of which commands have a set that does not grow. Driving real
-lessons rather than the demo would sharpen that split and would not change its
-nature.
+**How far from closing, measured.** Counting distinct argument sets as the
+European run proceeds, the set is still climbing steeply when the run ends:
+
+| frames | distinct sets | new in the last 500 |
+|---:|---:|---:|
+| 4,000 | 23,614 | 4,929 |
+| 8,000 | 42,495 | 6,623 |
+| 12,000 | 73,341 | 6,849 |
+
+The final interval is one of the largest in the whole run. There is no flattening
+anywhere, and this is the demo, which flies a fixed sequence with the controls
+untouched.
+
+**What would close it.** It does not close. No recording can enumerate a set that
+is a continuous function of player input. What can be closed is the narrower
+question of which commands have a set that does not grow. Driving real lessons
+rather than the demo would raise the floor and would not change its nature.
 
 **Until then.** No table is sized against the observed set as though it were
 complete, and the design computes rather than looks up wherever the set grows.
@@ -152,6 +165,33 @@ running the recorder again and comparing, was one command away.
 **Until then.** The recorder prints the number of accesses it made and nothing
 compared that against the file it wrote. Any future recording is checked that
 way before a figure is taken from it.
+
+## 2e. The recordings are the game against snes9x, not against a DSP-1
+
+**What is unknown.** How far snes9x's reimplementation of the part diverges from
+the microcode, and therefore how far the census diverges from what a real board
+would have produced.
+
+The recorder hooks snes9x, whose DSP-1 is C code written from the outside rather
+than the part's own program. Reading the two against each other turns up a
+divergence immediately. The microcode dispatches a command byte through a tree of
+bit tests, and `$80` lands on `$01ab`, which is the signed multiply, the same
+routine `$00` reaches. snes9x sends `$80` to the default arm of its switch, which
+takes no arguments and leaves the part waiting. Those are not the same behaviour,
+and the cartridge writes `$80` 128 times in a row at `$0702a`.
+
+**Why it matters here.** The census is not a passive observation. The game reads
+the answers and computes its next arguments from them, so an answer that differs
+sends the run down a different path and the argument sets that follow are the
+ones snes9x produced rather than the ones a DSP-1 would. Every figure taken from
+a recording inherits that.
+
+**What would close it.** Driving the same command and argument stream through the
+part's own microcode, which `snes-dsp-python` runs, and comparing answer for
+answer. Where the two agree the recording stands; where they differ it does not.
+
+**Until then.** A figure from a recording says what the game did against snes9x.
+Nothing here has checked how much of that is the part.
 
 ## 3. Which scalar functions the commands are built from
 
