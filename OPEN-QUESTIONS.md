@@ -237,6 +237,30 @@ from recorded answers stores snes9x's answer wherever the two differ, so the
 answers are taken from the part rather than from the recording, and the keys
 alone come from the game.
 
+## 2ee. Three recordings, one recording's worth of coverage
+
+**Measured.** The three traces are different files with different digests, and
+two of them ask the part exactly the same questions.
+
+| recording | exchanges | distinct command and argument keys |
+|---|---:|---:|
+| USA | 257,189 | 62,319 |
+| Japan | 257,189 | 62,319 |
+| Europe | 280,622 | 68,951 |
+
+The USA and Japanese key sets are equal, element for element. The European set
+contains both and adds 6,632 keys, and lacks nothing either of them has.
+
+**Why it matters.** Every figure here that says three recordings is really
+reporting one, with the European run the only one that widens anything. A fourth
+recording of the same attract demo in a fourth region would be expected to add
+nothing either, so more regions is not the way to grow the set. Entry 2g's
+driven run is, because it changes what the game does rather than where it was
+sold.
+
+**Until then.** Coverage figures name the European recording rather than the
+count of recordings, because the count of recordings is not what produced them.
+
 ## 2f. What range each argument takes, and what that allows
 
 **Measured, and it splits the commands three ways.** An argument computed at run
