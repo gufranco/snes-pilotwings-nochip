@@ -92,6 +92,35 @@ class ConsoleTest(unittest.TestCase):
         self.assertEqual(memory.read8(routines.PRODUCT), 0)
 
 
+class CartridgeReadTest(unittest.TestCase):
+    def test_an_address_in_a_cartridge_bank_reads_from_the_image(self) -> None:
+        memory = routines.Console(bytes(range(256)) * 4)
+
+        self.assertEqual(memory.read8(0x008000), 0)
+
+    def test_a_later_bank_reads_further_into_the_image(self) -> None:
+        memory = routines.Console(bytes([7]) * 0x20000)
+
+        self.assertEqual(memory.read8(0x018000), 7)
+
+    def test_past_the_end_of_the_image_reads_as_nothing(self) -> None:
+        memory = routines.Console(bytes([7]) * 16)
+
+        self.assertEqual(memory.read8(0x208000), 0)
+
+    def test_something_written_wins_over_the_image(self) -> None:
+        memory = routines.Console(bytes([7]) * 0x10000)
+
+        memory.write8(0x008000, 3)
+
+        self.assertEqual(memory.read8(0x008000), 3)
+
+    def test_below_the_window_reads_as_nothing(self) -> None:
+        memory = routines.Console(bytes([7]) * 0x10000)
+
+        self.assertEqual(memory.read8(0x000123), 0)
+
+
 class RunTest(unittest.TestCase):
     def test_a_routine_that_returns_at_once_answers_nothing(self) -> None:
         found = routines.run(image_of(bytes([RTL])), routines.CODE, (), 0)

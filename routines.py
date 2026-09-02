@@ -52,14 +52,21 @@ PRODUCT = 0x004216
 
 
 class Console:
-    """Flat memory, plus the one piece of console hardware the routines use."""
+    """Flat memory, the one piece of console hardware, and the cartridge itself.
 
-    __slots__ = ("cells", "first", "product")
+    The cartridge is read through rather than copied in. The derived tables are
+    393,216 bytes and a routine touches a handful of them, so copying the lot
+    into memory for every question costs more than the whole run of questions:
+    the first version of this did, and four hundred comparisons did not finish.
+    """
 
-    def __init__(self) -> None:
+    __slots__ = ("cells", "first", "image", "product")
+
+    def __init__(self, image: bytes = b"") -> None:
         self.cells: dict[int, int] = {}
         self.first = 0
         self.product = 0
+        self.image = image
 
     def read8(self, address: int) -> int:
         at = address & 0xFFFFFF
@@ -67,7 +74,14 @@ class Console:
             return self.product & 0xFF
         if at == PRODUCT + 1:
             return self.product >> 8 & 0xFF
-        return self.cells.get(at, 0)
+        if at in self.cells:
+            return self.cells[at]
+        bank, inside = at >> 16, at & 0xFFFF
+        if self.image and inside >= 0x8000:
+            offset = bank * 0x8000 + (inside - 0x8000)
+            if offset < len(self.image):
+                return self.image[offset]
+        return 0
 
     def write8(self, address: int, value: int) -> None:
         at = address & 0xFFFFFF
@@ -85,9 +99,7 @@ class TooLong(Exception):
 
 def run(image: bytes, entry: int, words: Sequence[int], answers: int) -> tuple[int, ...]:
     """That routine, on those arguments, as the processor runs it."""
-    cpu = hardware.load("mos65xx").Cpu("65816", memory=Console())
-    for step, one in enumerate(image[FILE_AT : FILE_AT + SPAN]):
-        cpu.write8(CODE + step, one)
+    cpu = hardware.load("mos65xx").Cpu("65816", memory=Console(image))
     for at, word in enumerate(words):
         cpu.write8(ARG + at * 2, word & 0xFF)
         cpu.write8(ARG + at * 2 + 1, word >> 8)

@@ -10,8 +10,12 @@
 ; passes on every input tried; the commands still being read sit in
 ; OPEN-QUESTIONS.md rather than half-written here.
 ;
-;   $00   ((a * b) >> 15), kept to 16 bits      120 of 120 random inputs exact
-;   $08   twice (x*x + y*y + z*z), 32 bits       60 of 60 random inputs exact
+;   $00   ((a * b) >> 15), kept to 16 bits      400 of 400 random inputs exact
+;   $08   twice (x*x + y*y + z*z), 32 bits      400 of 400 random inputs exact
+;   $04   magnitude times sine and cosine       400 of 400 random inputs exact
+;
+; $04 reads the tables in dsp1-derived.asm, which are the chip's own answers
+; rather than a formula. Everything else here is arithmetic.
 ;
 ; ===========================================================================
 ; WHY THE SHIFT IS 15 AND NOT 16
@@ -105,7 +109,8 @@
 
 !ARG = $00                      ; first argument word, then $02, $04, ...
 !OUT = $10                      ; first answer word, then $12
-!TMP = $20                      ; scratch, four words
+!TMP  = $20                     ; scratch, seven words
+!PAIR = $40                     ; the two words op_00_body multiplies
 
 !MULA   = $004202               ; hardware multiplier, first operand
 !MULB   = $004203               ; hardware multiplier, second operand, starts it
@@ -242,9 +247,23 @@ op_00:
     php
     rep #$30
 
+    lda !ARG+0                  ; the two words this command was given
+    sta !PAIR+0
+    lda !ARG+2
+    sta !PAIR+2
+    jsl op_00_body
+    sta !OUT+0
+
+    plp
+    rtl
+
+; The same arithmetic, reachable on its own, because $04 wants it twice with
+; operands of its own choosing. Takes !PAIR+0 and !PAIR+2, leaves the answer in
+; A, and expects the caller to be in sixteen bit mode already.
+op_00_body:
     stz !TMP+10                 ; how many operands were negative
 
-    lda !ARG+0
+    lda !PAIR+0
     bpl +
     eor #$FFFF                  ; negate: flip every bit, then add one
     inc a
@@ -252,7 +271,7 @@ op_00:
 +
     sta !TMP+0
 
-    lda !ARG+2
+    lda !PAIR+2
     bpl +
     eor #$FFFF
     inc a
@@ -279,9 +298,6 @@ op_00:
     asl !TMP+4                  ; shift the pair left one, keep the high word
     rol !TMP+6
     lda !TMP+6
-    sta !OUT+0
-
-    plp
     rtl
 
 ; ---------------------------------------------------------------------------
@@ -351,6 +367,87 @@ op_08:
 
     asl !OUT+0                  ; the multiplier's doubling, once for the sum
     rol !OUT+2
+
+    plp
+    rtl
+
+; ---------------------------------------------------------------------------
+; $04: a magnitude turned through an angle, as a pair.
+;
+; Answers the magnitude times the sine of the angle, then the magnitude times
+; the cosine. The angle is a whole turn per 65,536, so it indexes the tables
+; with nothing done to it beyond doubling for the entry width.
+;
+; The sine and cosine come from dsp1-derived.asm, which holds what the chip
+; multiplies by rather than what it returns: asked with a magnitude of $7FFF
+; the chip answers one short of the value it used internally, so a table built
+; from its answers would be one out on almost every input. The generator
+; recovers the internal value by asking with six magnitudes and keeping the one
+; that explains them all.
+;
+; The multiply is the same fractional one $00 answers with, so this reuses
+; op_00's body rather than repeating it: put the two words in place and call.
+;
+; In:  !ARG+0 the angle, !ARG+2 the magnitude.
+; Out: !OUT+0 the first half, !OUT+2 the second.
+; ---------------------------------------------------------------------------
+
+; Index a table of words by a value already in A, leaving the entry in A.
+;
+; A table is 131,072 bytes and a bank holds 32,768, so it sits as four pieces in
+; four consecutive banks and the piece has to be chosen. The top two bits of the
+; index say which, the low fourteen say where inside it, and doubling turns an
+; entry number into a byte offset.
+;
+; Written as four branches rather than a computed bank byte because a computed
+; one needs the address assembled into memory and read back through a pointer,
+; which is eight cycles a lookup against at most three here, and this runs twice
+; per $04 and will run far more often than that once $01 uses it.
+macro entry(table)
+    pha
+    and #$3FFF                  ; where inside the piece
+    asl a                       ; two bytes an entry
+    tax
+    pla
+    xba                         ; the high byte down into the low half
+    and #$00C0                  ; the two bits that choose the piece
+    beq ?first
+    cmp #$0040
+    beq ?second
+    cmp #$0080
+    beq ?third
+    lda.l <table>+$030000,x
+    bra ?done
+?third:
+    lda.l <table>+$020000,x
+    bra ?done
+?second:
+    lda.l <table>+$010000,x
+    bra ?done
+?first:
+    lda.l <table>,x
+?done:
+endmacro
+
+op_04:
+    php
+    rep #$30
+
+    lda !ARG+0                  ; the first half
+    %entry(dsp1_sine_of)
+    sta !PAIR+0                 ; stand it in as the multiply's first operand
+    lda !ARG+2
+    sta !PAIR+2
+    jsl op_00_body
+    sta !OUT+0
+
+    lda !ARG+0                  ; the second half, the same way
+    %entry(dsp1_cosine_of)
+    sta !PAIR+0
+    lda !ARG+2
+    sta !PAIR+2
+    jsl op_00_body
+    sta !OUT+2
 
     plp
     rtl

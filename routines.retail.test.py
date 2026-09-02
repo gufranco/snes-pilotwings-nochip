@@ -14,7 +14,8 @@ BUILD = ROOT / "build"
 IMAGE = BUILD / "ops.sfc"
 SOURCE = ROOT / "asm" / "ops-check.asm"
 
-IMAGE_BYTES = 1024 * 1024
+IMAGE_BYTES = 4 * 1024 * 1024
+"""Large enough to hold the derived tables, which sit from bank $20 on."""
 
 ASSEMBLER = "pilotwings-asar-191"
 """The pinned assembler image, built from `asm/Dockerfile`.
@@ -35,6 +36,7 @@ small is a count that passes a routine which is wrong.
 CASES = (
     ("$00", 0x00, 2, 1, "op_00"),
     ("$08", 0x08, 3, 2, "op_08"),
+    ("$04", 0x04, 2, 2, "op_04"),
 )
 """Each command a routine claims to answer: name, byte, arguments, answers, label."""
 
