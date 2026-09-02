@@ -870,6 +870,53 @@ delete.
 | Documents | Read and pinned by digest, never committed: none is redistributable |
 | ROMs and dumps | Never committed, in any form, for any reason |
 
+## Replacing a part that computes
+
+A member whose output is a cartridge with a coprocessor designed out answers the
+part's questions from a stored table first and from code second. The table is the
+design; the code is what keeps a miss from being a hang.
+
+**The table holds what the game asks for, never what the part accepts.** Those
+two are not close and treating them as one thing is the mistake this rule exists
+to stop. A part's input domain is the exponent of its argument count: one sixteen
+bit word is 65,536 rows, two is 4,294,967,296, six is 7.9e28. A game reaches a
+minute fraction of that. Sizing against the domain concludes that nothing can be
+stored; sizing against the game concludes that almost everything can.
+
+**What the game asks for is a property of the whole game, never of one
+recording.** A recording is a floor, and a floor taken from one moment of one run
+is the lowest floor there is. An attract demo is not the game, a single lesson is
+not every lesson, and a run with the controls untouched is not a player. A member
+states the frames a figure came from and what the run was doing, and never
+describes a recording's set as what the game uses.
+
+Two questions come apart here and are answered separately:
+
+| question | answered by | how complete |
+|---|---|---|
+| which calculations the game can ask for | reading the whole image | complete, because the command bytes are in the code |
+| which values it asks for them with | running the game | a floor, because the values are computed from state the image does not hold |
+
+The first closes. The second does not, and a member that reports the second
+without saying which run produced it has published a floor as a ceiling.
+
+**A fallback in code exists for every command, and it is never optional.** A
+lookup with no row has no answer, and a replacement that meets one either hangs
+or reads whatever was in memory. The intent is that the fallback never runs. The
+requirement is that it always could. A slower answer is better than a stopped
+machine, and a member that ships a table without a fallback has chosen the
+stopped machine.
+
+**A fallback nobody measured is a fallback nobody has.** Its cost is stated in
+cycles, and a build reports how often it fired rather than asserting it did not.
+Unreachable is a measurement, not an intention.
+
+**Prefer a table the miss cannot reach.** Where a part's work decomposes into
+functions of a single argument, tabulating those over their whole input is
+exhaustive rather than merely large, and the fallback stops being reachable by
+construction instead of by hope. A member that can arrange this says so, because
+it is the only arrangement in which the intent above is provable.
+
 ## What "finished" means here
 
 Not that everything is known. That every question which can be answered has been,
@@ -895,9 +942,11 @@ Pilotwings carries a DSP-1: an NEC uPD77C25 running a program Nintendo masked
 into it. It computes. It rotates and projects coordinates for the mode 7 ground,
 divides, takes reciprocals, and answers the trigonometry the flight model asks
 for, and without it the game does not fly. All three regional releases are
-targets, and one replacement covers all three: every one of them reaches the part
-in the same seventeen ways, and the only difference between their site counts is
-how many bare status polls each carries.
+targets, and one replacement covers all three: they carry the same driver, the
+same twenty command bytes read out of the code and the same 84 long-form writes
+and 9 long-form reads at the two addresses it uses. An earlier claim that their
+site counts differed by a status poll was wrong; the counts do not differ, and
+what differed was bytes of data that happened to spell an access.
 
 Whether an answer can be stored rather than computed was measured rather than
 assumed, and measured through the part's own protocol: written one word short of
@@ -906,8 +955,10 @@ count is that silence stepped back one. Forty five of 256 command bytes answer a
 all. Two take a single word and can be tabulated whole. The rest take two or
 more, and the smallest of those would need a table 683 times the size of a 96
 Mbit image. So the tables are for the scalar functions the commands are built
-from, of which the image has room for ninety two, and the composition is written
-in 65816.
+from, and the part names those itself: its data ROM carries a reciprocal, a sine,
+a cosine and an arccosine, and no square root or arctangent. Those four over
+their whole sixteen bit input are 524,288 bytes, which is a table no miss can
+reach, and the composition is written in 65816.
 
 That reading was got wrong twice before it was got right, and both wrong versions
 looked correct. The first wrote six argument words to every command regardless of
@@ -925,7 +976,7 @@ tile.
 
 Which of the part's three masks a retail board carries cannot be read out of a
 dump, and two of them answer differently. Nothing here claims which one is being
-reproduced. That is the first of four open questions.
+reproduced. That is the first of nine open questions.
 
 Neither the cartridges nor the microcode is here, and neither is any patched
 output. Everything published is a digest.

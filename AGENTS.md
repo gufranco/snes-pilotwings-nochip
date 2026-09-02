@@ -27,10 +27,14 @@ whole at 131,072 bytes each. The rest take two or more, and the smallest of thos
 96 Mbit image.
 
 What growing the image buys is therefore not whole-command tables. It is a table per scalar function
-the commands are built from: a sine, a cosine, a reciprocal, a square root, an arctangent over a
-ratio, each covering its full sixteen bit domain in 131,072 bytes. The image has room for 92 of
-them, which is far more than a replacement needs, so the ceiling is not the constraint. Products
-need no table at all, because the console has a hardware multiplier.
+the commands are built from, and which functions those are is no longer a guess: the part carries
+1024 words of data ROM and [`tables.py`](tables.py) reads four numeric tables out of it, a reciprocal
+`2^22 / (128 + k)`, a sine, a cosine and an arccosine, each matching its formula to within one unit.
+There is no square root and no arctangent. All four together are 1,282 bytes.
+
+Tabulating those four over their whole sixteen bit input is 524,288 bytes, which is exhaustive rather
+than merely large: every value an argument can hold has a row, so a lookup cannot miss. Products need
+no table at all, because the console has a hardware multiplier.
 
 Anybody proposing to widen or narrow that split re-runs [`tabulate.py`](tabulate.py) and shows the
 number, because the number is what decided it. Two earlier readings of the same question were wrong
@@ -64,6 +68,33 @@ Each is its own repository, pinned as a submodule at the root, and held to somet
 There is no graphics model, unlike the sibling project that converts bitmaps. This part computes
 numbers and returns numbers and never touches a tile, so a model of the tile format would be a
 dependency with nothing to answer. Adding one needs a reason that names what it would answer.
+
+## The table is the design and the fallback is what keeps it honest
+
+The family standard carries this rule; what follows is what it means here.
+
+The table holds what the game asks for, never what the part accepts. Sizing
+against the part's input domain concludes that nothing can be stored, because the
+domain is the exponent of the argument count. Sizing against the game concludes
+that almost all of it can. Any figure here says which of the two it measured.
+
+What the game asks for is a property of the whole game. A recording is a floor,
+and a recording of the attract demo with the controls untouched is the lowest
+floor there is. A figure taken from one states the frames it covers and what the
+run was doing.
+
+Two questions come apart and are answered separately. Which calculations the game
+can ask for is answered by reading the whole image, and that closes. Which values
+it asks for them with is answered by running the game, and that does not: the
+values are computed from state the image does not hold.
+
+Every command has a fallback in 65816, and it is never optional. A lookup with no
+row has no answer, so a replacement that meets one either hangs or reads whatever
+was in memory. The intent is that the fallback never runs; the requirement is that
+it always could. A slower answer beats a stopped machine.
+
+A fallback nobody measured is a fallback nobody has. Its cost is stated in cycles
+and a build reports how often it fired, rather than asserting it did not.
 
 ## What must never enter this repository
 
