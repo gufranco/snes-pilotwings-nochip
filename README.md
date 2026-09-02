@@ -94,33 +94,92 @@ Two commands can have every answer stored. The other forty three cannot, and not
 bigger cartridge closes: the smallest of them is already 683 times a 96 Mbit image. The line sits
 between one argument word and two, there is no arithmetic in between, and nothing moves it.
 
-### What growing the image to 96 Mbit actually buys
+### What the game actually asks for, which is a different question
 
-Not whole-command tables, which the measurement above rules out for all but two. What it buys is
-tables for the scalar functions those commands are built from, and that is where the work goes.
+The table above is about the input domain: what a table would cost if the game
+could send anything. It cannot, and the gap is enormous, so the domain is the wrong
+thing to size against.
 
-The part is a mathematical processor. Its commands compose a small set of functions of a single
-sixteen bit argument: a sine, a cosine, a reciprocal, a square root, an arctangent taken over a
-ratio. Each of those covers its entire domain in 131,072 bytes. A replacement that computes a
-rotation still has to take a sine, and taking it from a table is an indexed read rather than a
-series.
+[`emu/`](emu/) records every byte the cartridge exchanges with the part.
+Three runs of 12,000 frames, one per region, with no input at all so the attract
+demo flies rather than sitting on a menu:
+
+| | |
+|---|---:|
+| port accesses recorded | 49,401,381 |
+| exchanges | 794,616 |
+| command bytes the game used | **19** of 256 |
+| distinct argument sets across all three | **45,991** |
+| a stored answer for every one of them | **367,928 bytes**, 2.9% of a 96 Mbit image |
+
+Every argument set all three runs produced fits in under 360 KB. Sizing against
+the domain said 683 times the image for the smallest two-word command; sizing
+against what the game sends says three per cent of it for all nineteen commands
+together.
+
+The distribution matters more than the total, because the traffic is not spread
+evenly:
+
+| command | share of traffic | distinct argument sets | how to answer it |
+|---|---:|---:|---|
+| `$06` | 28.8% | 2,995 | table |
+| `$13` | 25.3% | **3** | inline compare |
+| `$00` | 17.4% | 13,775 | computed, it is a multiply |
+| `$11` | 4.6% | **9** | inline compare |
+| `$0A` | 2.7% | **1** | inline compare |
+| `$0E` | 2.7% | **1** | inline compare |
+| the other 13 | 18.8% | 29,207 | table or computed |
+
+Six commands take sixteen or fewer argument sets between them. Nineteen rows,
+**152 bytes**, answer **35.3%** of everything the cartridge asks. Command `$13`
+alone is a quarter of all traffic and takes three argument sets, which is
+twenty four bytes.
+
+### What a recording can and cannot say
+
+A recording says what the game did. It cannot say what the game can do, and here
+the two are far apart: the set of argument sets was still growing by about 3,600
+per 500 frames when the longest recording ended, and the second half of that run
+produced half of everything it found. Nothing about it had converged.
+
+Splitting the commands by whether their set closes is what the recording is
+actually good for:
+
+| | commands | what follows |
+|---|---:|---|
+| set unchanged for a whole run | 6 | a table is small and may be complete |
+| set still growing at the end | 13 | the arguments track the aircraft, so no table closes |
+
+So the design is a table where the set closes and computation where it does not,
+and the recording is what says which is which. It is never a table alone: a
+lookup with no entry for an unseen argument has no answer, and the recordings
+prove that unseen arguments exist rather than suggesting it.
+
+Reading the cartridge's code rather than running it gives a second, independent
+bound. Of the 49 exchanges in the USA image, 11 write a command byte the
+instruction carries, which recovers 8 distinct commands including `$21`, which no
+recording produced. The other 20 compute the command at run time, and those are
+exactly the ones only a recording found. Neither method sees what the other
+sees, and their union is 20 command bytes.
+
+### What growing the image to 96 Mbit buys
+
+Room, and not much is needed. The observed set is 2.9% of the image, and the
+tables for the scalar functions a replacement computes from, a sine, a cosine, a
+reciprocal, a square root, an arctangent, are 131,072 bytes each over their whole
+sixteen bit domain.
 
 | | bytes |
 |---|---:|
 | the image at 96 Mbit | 12,582,912 |
 | the retail cartridge inside it | 524,288 |
-| left for tables | 12,058,624 |
+| left over | 12,058,624 |
 | one table over a whole sixteen bit input | 131,072 |
 | **tables that fit** | **92** |
 
-Ninety two is far more than the handful of scalar functions a DSP-1 replacement needs, so the
-ceiling is not the constraint. Products need no table at all: the console has a hardware multiplier,
-and command `$00` is exactly a signed multiply.
-
-That is the shape this project takes. Tabulate the two commands that can be tabulated whole,
-tabulate every scalar kernel at its full domain, use the console's multiplier for products, and
-write 65816 for the composition that remains. The measurement is what decided the split rather than
-a preference for one approach.
+Products need no table at all: command `$00` is a signed multiply, it has the
+most distinct arguments of any command in every recording, and the console's
+hardware multiplier computes it faster than any lookup.
 
 ## The dumps
 

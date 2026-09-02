@@ -1,7 +1,7 @@
 # Open questions
 
 Every place a claim in this repository is narrower than it looks, with the measurement that would
-close it. Four entries.
+close it. Five entries.
 
 A question is closed by evidence, never by a decision to stop asking. Until then the narrow claim
 stands and the broad one is not made anywhere.
@@ -28,23 +28,49 @@ search.
 **Until then.** Nothing here claims which mask is being reproduced. The doctor reports which masks
 are present on the machine so a reader knows which question a run there could not have answered.
 
-## 2. What Pilotwings actually asks for
+## 2. The recordings are three runs of the attract demo, not the game
 
-**What is unknown.** The exchange shapes are read out of the cartridge's code, so they say which
-accesses each routine makes. They do not say which command bytes those routines send, how often, or
-with what arguments, because that is decided at run time by where the player is and what the aircraft
-is doing.
+**What is unknown.** Everything the census reports comes from three 12,000 frame
+runs, one per region, with no controller input at all. That is the demo the game
+plays to itself, which is a fixed sequence. Nobody has flown a lesson.
 
-**Why it matters here.** The sweep covers all 256 command bytes evenly. That is the right way
-to measure the part, and it is the wrong way to weigh the work: a command Pilotwings never sends
-costs nothing to get wrong, and the one it sends every frame decides whether the conversion keeps
-pace. Without the census, any statement about which commands matter is a guess.
+**Why it matters here.** The census is what sizes the tables, and it is a floor
+rather than an answer. The set of distinct argument sets was still growing by
+about 3,600 per 500 frames when the longest run ended, and the second half of
+that run produced half of everything it found. A player working the controls
+produces argument sets the demo never will, because thirteen of the nineteen
+commands take arguments that track the aircraft's attitude and take a new value
+almost every frame.
 
-**What would close it.** Driving each cartridge under an emulator with every byte in and out of the
-port recorded, then counting. The sibling project did exactly this for its own part and the recording
-is what its correctness claim rests on.
+**What would close it.** It does not close. No recording can enumerate a set
+that is a continuous function of player input. What can be closed is the
+narrower question of which commands have a set that does not grow, and that is
+what the split in the readme reports. Driving real lessons rather than the demo
+would sharpen that split and would not change its nature.
 
-**Until then.** No claim is made about which commands matter, and no work is prioritised by one.
+**Until then.** No table is sized against the observed set as though it were
+complete, and the design computes rather than looks up wherever the set grows.
+A lookup with no entry for an unseen argument has no answer at all, which is why
+the observed set is never the whole design.
+
+## 2b. Twenty exchanges choose their command at run time
+
+**What is unknown.** Reading the cartridge's code recovers the command byte for
+11 of the 49 exchanges in the USA image, because those carry it in the
+instruction. The other 20 load it from a register or a variable, and what values
+those can hold has not been traced.
+
+**Why it matters here.** It is the only route to an upper bound on which
+commands the game can issue. The recordings give a lower bound of 19 commands;
+the code gives 8, one of which no recording produced. Neither is the answer, and
+the union of 20 is still a floor.
+
+**What would close it.** Following the value backwards from each of those 20
+sites to where it is set. If they read from a table in the cartridge, that table
+enumerates every command the game can send and the question closes completely.
+
+**Until then.** The command list is stated as what has been observed and what has
+been read, with both counts given, and never as what the game can do.
 
 ## 3. Which scalar functions the commands are actually built from
 
