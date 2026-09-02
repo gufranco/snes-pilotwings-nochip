@@ -1,20 +1,24 @@
 """A lookup table with a row for every input, so nothing can fall through it.
 
-The obvious shape for this is a table keyed on the command and its arguments, and
-that shape cannot be completed. Not one command the game issues takes a single
-argument word: the smallest is `$00` at two, which is 4,294,967,296 rows and
-8,589,934,592 bytes at one answer each, or 683 times a 96 Mbit image. `$0a` takes
-six, which is 1.9e30 bytes. This is not a budget that a larger cartridge closes;
-it is off by twenty three orders of magnitude at the far end. A table built from
-what a recording happened to see would be full of holes, and the recordings say
-so out loud: the sets were still growing when the runs ended, and the arguments
-come from the aircraft's attitude, which takes a new value on almost every frame.
+Two tables are built here and they answer different questions.
 
-So the table goes one level down, to the four scalar functions the part
-interpolates from. Each of those takes one sixteen bit input, which is 65,536
-rows, and four of them are 524,288 bytes. That is exhaustive rather than
-plentiful: every value a sixteen bit argument can hold has a row, so a lookup
-cannot miss, and a fallback for a missing row is unreachable by construction.
+A table covering a command's whole input range cannot be completed. Only `$0a`
+takes a single argument word; the next smallest are `$00` and `$0e` at two, which
+is 4,294,967,296 rows and 8,589,934,592 bytes at one answer each, or 683 times a
+96 Mbit image. `$02` takes seven. This is not a budget a larger cartridge closes.
+
+A table covering the keys the game was seen to use is a different size
+altogether, and it fits. Keyed on the arguments, plus one earlier command's
+arguments for the six that need it, fifteen of the sixteen answering commands
+encode to 2,988,940 bytes with room left over in a 96 Mbit image. What it costs
+is that the table holds a set rather than a range, so an argument no recording
+showed has no row.
+
+That is why the scalar tables below exist as well. The part interpolates from
+four functions of one sixteen bit input, which is 65,536 rows each and 524,288
+bytes for all four. That is exhaustive rather than plentiful: every value a
+sixteen bit argument can hold has a row, so the code that falls back to them
+cannot miss.
 
 What is left for the replacement to do in 65816 is compose those reads with the
 console's hardware multiplier, which is exact and needs no table of its own.
@@ -365,18 +369,24 @@ def table(
 def encode(built: Table) -> bytes:
     """That table as the cartridge holds it: a count, then keys, then answers.
 
+    Low byte first, because the processor that reads this is a 65816 and a
+    sixteen bit load takes the low byte from the lower address. Stored the other
+    way round every word in every key would need swapping before it could be
+    compared, once per step of a binary search that runs seventeen deep on the
+    largest table here.
+
     Every field is wider than it looks like it needs to be, and each was widened
     after the narrow one overflowed on real data. The count is thirty two bits
     because `$06` keyed on its arguments and the last `$02` holds 75,278 rows,
     and sixteen bits wrap to 9,742. The two widths are sixteen bits each because
-    `$0a` answers 704 words in one exchange, and eight bits wrap to 192.
+    `$0a` answers 764 words in one exchange, and eight bits wrap to 252.
     """
     out = bytearray()
-    out += struct.pack(">IHH", built.rows, built.key_words, built.answer_words)
+    out += struct.pack("<IHH", built.rows, built.key_words, built.answer_words)
     for one in built.keys:
-        out += struct.pack(f">{len(one)}H", *one)
+        out += struct.pack(f"<{len(one)}H", *one)
     for one in built.answers:
-        out += struct.pack(f">{len(one)}H", *one)
+        out += struct.pack(f"<{len(one)}H", *one)
     return bytes(out)
 
 
