@@ -16,12 +16,22 @@ def written(command: int, words: tuple[int, ...]) -> bytes:
     out = record(0, census.DATA_PORT, 0, command)
     for word in words:
         out += record(0, census.DATA_PORT, 0, word & 0xFF)
-        out += record(0, census.DATA_PORT, 0, word >> 8)
+        out += record(0, census.DATA_PORT + 1, 0, word >> 8)
     return out
 
 
 def answered(words: int = 1) -> bytes:
-    return b"".join(record(0, census.DATA_PORT, 1, 0x00) for _ in range(words * 2))
+    out = b""
+    for _ in range(words):
+        out += record(0, census.DATA_PORT, 1, 0x00)
+        out += record(0, census.DATA_PORT + 1, 1, 0x00)
+    return out
+
+
+def polled() -> bytes:
+    return record(0, census.STATUS_BOUNDARY, 1, 0x80) + record(
+        0, census.STATUS_BOUNDARY + 1, 1, 0x80
+    )
 
 
 class ReadTest(unittest.TestCase):
@@ -44,15 +54,25 @@ class ReadTest(unittest.TestCase):
         self.assertEqual(next(iter(census.exchanges(trace))).words, (0x1234, 0x5678))
 
     def test_an_access_to_the_status_register_is_not_part_of_the_exchange(self) -> None:
+        trace = polled() + written(0x00, (0x1234,)) + answered() + written(0x01, ()) + answered()
+
+        self.assertEqual(next(iter(census.exchanges(trace))).words, (0x1234,))
+
+    def test_a_poll_in_the_middle_of_a_run_does_not_end_the_exchange(self) -> None:
         trace = (
-            record(0, census.DATA_PORT | 1, 1, 0x84)
-            + written(0x00, (0x1234,))
-            + answered()
-            + written(0x01, ())
+            written(0x00, (0x1234,))
+            + polled()
+            + record(0, census.DATA_PORT, 0, 0x78)
+            + record(0, census.DATA_PORT + 1, 0, 0x56)
             + answered()
         )
 
-        self.assertEqual(next(iter(census.exchanges(trace))).words, (0x1234,))
+        self.assertEqual(next(iter(census.exchanges(trace))).words, (0x1234, 0x5678))
+
+    def test_the_high_byte_of_an_argument_word_is_kept(self) -> None:
+        trace = written(0x00, (0xFF00,)) + answered()
+
+        self.assertEqual(next(iter(census.exchanges(trace))).words, (0xFF00,))
 
     def test_a_command_never_followed_by_a_read_is_not_counted(self) -> None:
         self.assertEqual(list(census.exchanges(written(0x00, (1,)))), [])
