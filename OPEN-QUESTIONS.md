@@ -20,6 +20,42 @@ conversion is arithmetically better than the cartridge and wrong for it. The fam
 which way that goes: a part's defects are modelled rather than corrected, because a model that
 quietly fixes a hardware bug is wrong for the machine that shipped.
 
+**What the cartridge database says, and what it does not.** The DSP model's
+manifest names `dsp1` for all three Pilotwings regions, and says in the same
+entry that which of the three masks a board carries is not determinable from a
+dump. So the family is settled and the mask is not, which is this entry.
+
+**How far apart the two masks actually are, measured.** The manifest also says
+the DSP-1B "corrected an arithmetic fault and left the command set alone". The
+command set is indeed untouched, and the rest understates it:
+
+| | words differing |
+|---|---:|
+| program, compared position for position | 993 of 2,048 |
+| program, after shifting one to line them up | 427 of 2,048 |
+| data ROM, position for position | 537 of 1,024 |
+
+The shift is real: the DSP-1B holds its tables two words earlier and its
+handlers one word earlier, and lining the programs up on that shift takes the
+matching words from 1,055 to 1,620. What is left after it is 427 words that
+genuinely differ, which is a fifth of the program rather than a corrected fault.
+
+**The four tables are the same in both.** Each of the four is found in both
+masks by its formula with nothing forgiven, at word 101, 280, 408 and 542 in the
+DSP-1 and 101, 278, 406 and 540 in the DSP-1B. Identical values, different
+seats. Anything built from the formulas is therefore right for either mask, and
+[`asm/dsp1-tables.asm`](asm/dsp1-tables.asm) is.
+
+**The dispatch is the same shape in both.** Walking the tree for all 256 command
+bytes gives 20 handlers in each, with the same commands reaching the same
+handler, every address one word apart. `$00` and `$80` share a handler in both,
+which is the difference from snes9x recorded in entry 2e.
+
+**So the mask decides one command.** Everything the game issues answers
+identically on both except `$28`, which is what the earlier replay showed from
+the other direction: 6,711 of 7,184 answered exchanges agree under the DSP-1 and
+6,865 under the DSP-1B, the whole of the difference being `$28`.
+
 **How much it matters, measured.** Driving every argument set the three
 recordings produced through both masks, sampled at 200 per command, the two agree
 everywhere except one command:
