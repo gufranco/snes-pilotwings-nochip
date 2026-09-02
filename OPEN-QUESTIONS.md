@@ -315,13 +315,13 @@ takes one argument, so 65,536 rows covers each outright and a miss cannot happen
 
 ## 2i. The part keeps state, and a table keyed on arguments alone answers wrongly
 
-**Measured, and it changes what a table has to be keyed on.** Six of the sixteen
-commands that answer give different answers for identical arguments. The part
+**Measured, and it changes what a table has to be keyed on.** Seven of the
+sixteen commands that answer give different answers for identical arguments. The part
 keeps state, so a command reading a matrix another command loaded is not a
 function of its own arguments, and a table keyed on them would return whichever
 row happened to be written last.
 
-**What settles it.** Five of the six become fully deterministic once the key
+**What settles it.** Six of the seven become fully deterministic once the key
 carries the arguments of one earlier command as well:
 
 | command | keyed on | rows | ambiguous |

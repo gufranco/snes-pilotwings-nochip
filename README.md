@@ -270,10 +270,17 @@ arguments as well: `$03` on the last `$14`, `$06`, `$0d` and `$0e` on the last
 `$02`, `$13` and `$1b` on the last `$11`. Keyed that way nothing is ambiguous,
 the whole table is 301,308 bytes and the image 825,596.
 
-`$0a` is not tabulatable from these runs on any key tried. It streams 176 reads
-of four words from a matrix loaded earlier, so its answer is the matrix rather
-than a row, and a build that tables it on arguments alone is wrong rather than
-incomplete.
+`$0a` is not tabulatable from these runs on any key tried, and that is measured
+three ways rather than asserted once. No earlier command settles it, alone or in
+any pair or triple. Storing each distinct whole answer costs 16,762,160 bytes,
+which is more than a 96 Mbit cartridge holds. Storing the four word steps and
+indexing them costs 538,583 distinct steps before any index array.
+
+It writes one word, reads its answer through four instructions that each fire 176
+or 191 times, then writes four words more. The answer is a per scanline stream
+rather than a row. It reads the reciprocal table in the part's own data ROM, and
+that table is tabulated whole, so `$0a` is computed over a table a miss cannot
+reach rather than looked up in a table of its own.
 
 ### What the table actually encodes to
 
