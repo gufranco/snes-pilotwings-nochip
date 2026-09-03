@@ -1008,3 +1008,51 @@ a third of what the game already spent waiting, and the question closes. If a
 table has to stay for some command, the search needs a bucket index on the first
 key word and the row address needs the console's multiplier rather than a
 software loop.
+
+## 5b. The table was not the reason it is slow
+
+**Measured 2026-09-02.** Removing the table does not fix the speed, because the
+table was never the largest cost. Both routes land in the same place.
+
+| route | a median frame of 43 calls |
+|---|---:|
+| the searched table, measured | 333,850 cycles, 7.5 frames |
+| arithmetic, estimated from the part's own work | roughly 300,000, 7 frames |
+
+**What the part actually does.** Counted by stepping its own program:
+
+| command | share of calls | instructions it runs | of those, loading the multiplier |
+|---|---:|---:|---:|
+| `$02` | 2.9% | 534 | 154 |
+| `$06` | 30.8% | 361 | 86 |
+| `$0a` | 2.9% | 12,225 | streamed |
+
+`$06` is 43 signed 16 by 16 multiplies a call. The part has a 16 by 16
+multiplier that retires one per cycle and runs at 7.6 MHz. The 65816 has an 8 by
+8 multiplier with an eight cycle latency and runs at 3.58 MHz, so one of those
+multiplies costs it roughly a hundred cycles against the part's one. That single
+difference is about forty to one in wall time, and no amount of care in the
+assembly changes it.
+
+**How much the part was doing.** Weighted across the recording it spends about
+230 processor-equivalent cycles a call, which is 9,876 in a median frame, or 22%
+of one. `$0a` alone is 13% of a frame. That work moves onto the processor whole.
+
+**The game did not wait for it.** Status polling never runs longer than three
+reads in a row and averages 1.9, so the part was always ready and its 22% ran
+alongside the game's own code rather than instead of it. A software replacement
+is serial, so it adds to a processor that was already busy.
+
+**What follows.** Full speed on the 65816 is not reachable by writing better
+assembly. The reachable goal is the smallest measured slowdown, and the levers
+in order of size are: reducing the work algebraically, such as hoisting a matrix
+that `$13` and `$11` set up out of the `$06` calls that use it; indexing where a
+domain allows it, as `$10` does; then FastROM, which is worth 15 to 25% and no
+more.
+
+**The cartridge is SlowROM.** Header `$FFD5` is `$20` in all three regions, with
+chipset `$03`, ROM plus DSP. FastROM would set it to `$30`, and on a low
+cartridge the faster timing applies only to banks `$80` and above, so both the
+game's code and this table would have to be reached through the mirror. It also
+changes the timing of every raster effect in the game, so it is verified by
+rendering rather than by reasoning.
