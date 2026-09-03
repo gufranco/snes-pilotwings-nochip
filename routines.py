@@ -43,13 +43,13 @@ STACK = 0x01FF
 
 ARG = 0x00
 
-OUT = 0x0800
+OUT = 0x0E00
 """Where a routine leaves its answer.
 
-Clear of the direct page rather than inside it, because $0a answers 764 words.
-That is 1,528 bytes, and an answer of that length written from anywhere in the
-direct page runs over the working variables of the routine writing it, including
-the pointer it is reading the answer through. It corrupts itself halfway.
+Clear of the direct page rather than inside it, and inside a run of memory the
+game was measured never to write. A conversion has to borrow some of the game's
+memory, and picking an address without measuring is how it corrupts the game in
+a way that only shows up minutes later.
 """
 
 MOST_STEPS = 40000

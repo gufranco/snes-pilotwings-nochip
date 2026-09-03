@@ -137,6 +137,97 @@ static bool load_script(const char *path)
     return true;
 }
 
+/* Which bytes of work RAM the game ever changes.
+ *
+ * A software replacement for the coprocessor needs a few dozen bytes of state
+ * that survive between one port access and the next, and a byte the game also
+ * uses is a byte that corrupts it. Snapshotting after every frame and recording
+ * which bytes differ from the frame before gives the set the game touches; the
+ * complement is where the replacement can live.
+ *
+ * It is one-sided evidence and that is the safe side: a byte marked touched
+ * certainly is, while a byte left unmarked was merely never seen to change,
+ * so the answer is a lower bound on what is in use.
+ */
+static std::vector<unsigned char> ram_before;
+static std::vector<unsigned char> ram_touched;
+static const char *ram_path = NULL;
+
+static void note_ram(void)
+{
+    if (!ram_path || !Memory.RAM) {
+        return;
+    }
+    const size_t span = 0x20000;
+    if (ram_before.empty()) {
+        ram_before.assign(Memory.RAM, Memory.RAM + span);
+        ram_touched.assign(span, 0);
+        return;
+    }
+    for (size_t at = 0; at < span; at++) {
+        if (Memory.RAM[at] != ram_before[at]) {
+            ram_touched[at] = 1;
+            ram_before[at] = Memory.RAM[at];
+        }
+    }
+}
+
+static void report_ram(void)
+{
+    if (!ram_path || ram_touched.empty()) {
+        return;
+    }
+    FILE *out = fopen(ram_path, "w");
+    if (!out) {
+        return;
+    }
+    size_t run_from = 0;
+    bool in_run = false;
+    for (size_t at = 0; at <= ram_touched.size(); at++) {
+        const bool free_here = at < ram_touched.size() && !ram_touched[at];
+        if (free_here && !in_run) {
+            run_from = at;
+            in_run = true;
+        } else if (!free_here && in_run) {
+            fprintf(out, "%06zx %06zx %zu\n", run_from, at - 1, at - run_from);
+            in_run = false;
+        }
+    }
+    fclose(out);
+}
+
+/* Where the processor is, sampled once a frame.
+ *
+ * A conversion that loads, runs and shows nothing is stuck rather than broken
+ * in any way a load check can see, and the only question worth asking is where.
+ * One sample a frame is enough: a game that is running spreads itself over its
+ * whole program, and one that is stuck returns the same handful of addresses.
+ */
+static std::vector<unsigned long> pc_seen;
+static const char *pc_path = NULL;
+
+static void note_pc(void)
+{
+    if (pc_path) {
+        pc_seen.push_back((unsigned long)Registers.PBPC);
+    }
+}
+
+static void report_pc(void)
+{
+    if (!pc_path || pc_seen.empty()) {
+        return;
+    }
+    FILE *out = fopen(pc_path, "w");
+    if (!out) {
+        return;
+    }
+    for (size_t at = 0; at < pc_seen.size(); at++) {
+        fprintf(out, "%lu %06lx\n", (unsigned long)at, pc_seen[at]);
+    }
+    fclose(out);
+}
+
 static void apply_script(unsigned long at_frame)
 {
     while (script_at < script.size() && script[script_at].at_frame <= at_frame) {
@@ -238,6 +329,9 @@ int main(int argc, char **argv)
         }
     }
 
+    ram_path = getenv("PWRAM");
+    pc_path = getenv("PWPC");
+
     const char *script_path = getenv("PWSCRIPT");
     if (script_path && !load_script(script_path)) {
         fprintf(stderr, "cannot read %s\n", script_path);
@@ -267,7 +361,12 @@ int main(int argc, char **argv)
         frames_seen = at;
         apply_script(at);
         retro_run();
+        note_ram();
+        note_pc();
     }
+
+    report_ram();
+    report_pc();
 
     if (trace_out) {
         fclose(trace_out);

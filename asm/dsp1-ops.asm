@@ -108,14 +108,19 @@
 ; ===========================================================================
 
 !ARG = $00                      ; first argument word, then $02, $04, ...
-!OUT = $0800                    ; first answer word, then $0802
+!OUT = $0E00                    ; first answer word, then $0E02
 
-; Not in the direct page, and that is deliberate. $0a answers 764 words, which
-; is 1,528 bytes, so an answer written from inside the direct page runs straight
-; over the working variables of the routine writing it, the pointer it is
-; reading through included. It would corrupt itself a fifth of the way in.
-; Absolute addressing costs one cycle more per access than direct page and this
-; is the one place that trade is worth taking.
+; Two reasons it is here and not in the direct page.
+;
+; The game owns every byte of its own memory, and this conversion has to borrow
+; some. $0E00 sits inside a 744 byte run, $000CFC to $000FE3, that the game was
+; measured never to write across a full run of the recorded demo. Picking an
+; address without measuring is how a conversion corrupts a game in a way that
+; only shows up minutes later.
+;
+; And an answer written from inside the direct page would run over the working
+; variables of the routine writing it, because the direct page this uses is only
+; a hundred bytes wide.
 !TMP  = $20                     ; scratch, seven words
 !PAIR = $40                     ; the two words op_00_body multiplies
 

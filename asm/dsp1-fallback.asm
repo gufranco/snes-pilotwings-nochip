@@ -170,18 +170,22 @@ dsp1_fallback:
 ; European recording alone would take 8.7 megabytes against 3.9 for the whole
 ; cartridge. So lutbuild.py leaves it out and it arrives here every time.
 ;
-; What it answers with is nought, 764 times. That is not an approximation of
-; anything and it is not meant to be. It is a bounded, deterministic answer that
-; reads no memory it has not set, which is the one thing this file promises, and
-; it is obviously wrong rather than plausibly wrong, which is what a placeholder
+; What it answers with is nought. That is not an approximation of anything and
+; it is not meant to be. It is a bounded, deterministic answer that reads no
+; memory it has not set, which is the one thing this file promises, and it is
+; obviously wrong rather than plausibly wrong, which is what a placeholder
 ; should be. The real answer is arithmetic in the chip's program that has not
 ; been read yet, and that it is an exact function of $02's arguments says the
 ; arithmetic is there to find.
 ;
+; Only four words are written rather than 764. The port serves this command a
+; word at a time from the same four, so writing more would be 1,528 bytes of
+; the game's memory spent to say nought in a longer way.
+;
 ; Nothing here can loop: the count is fixed at 764 and comes down by one.
 ; ---------------------------------------------------------------------------
 .stream:
-    ldx #$02FC                  ; 764 words, counted in bytes
+    ldx #$0008                  ; the four words the answer block holds
     lda #$0000
 -
     dex

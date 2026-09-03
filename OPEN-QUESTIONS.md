@@ -1056,3 +1056,44 @@ cartridge the faster timing applies only to banks `$80` and above, so both the
 game's code and this table would have to be reached through the mirror. It also
 changes the timing of every raster effect in the game, so it is verified by
 rendering rather than by reasoning.
+
+## 5c. What `$06` is, and what that makes the fastest route
+
+**Measured 2026-09-02 by driving the part.**
+
+`$06` is a perspective projection: three affine numerators over one affine
+denominator shared by all three.
+
+The evidence, in the order it was found. Sweeping the first argument alone moves
+the first output linearly, by a slope of 0.535 across the whole recorded range,
+and leaves the other two outputs untouched. Sweeping the third argument alone
+produces a reciprocal: `309904 / (2767 - w2)` predicts every sampled point to
+within one. Fitting three affine numerators over one affine denominator on 40
+probes and testing on 20 held out gives a worst error of 2.80 on outputs that
+reach into the thousands, which is the part's own fixed point rounding rather
+than a wrong model.
+
+A plain matrix was tested first and rejected: predicting `f(v)` from `f(0)` and
+the three unit responses is out by up to 2,163.
+
+**What it costs.** Nine multiplies for the matrix, one reciprocal, three
+multiplies for the divide. Twelve multiplies and one table read, against the 43
+multiplies the part's own program runs. The reciprocal is already in the
+cartridge as an exhaustive 65,536 entry table, so it is one indexed read.
+
+**The general finding.** The route is not "arithmetic everywhere". It is "never
+search", and the cheapest form differs per command:
+
+| form | cost | which commands |
+|---|---:|---|
+| a direct index | tens of cycles | `$13`, `$18`, `$10` |
+| arithmetic over an indexed table | hundreds | `$06`, and by structure `$0d`, `$0e`, `$03` |
+| arithmetic alone | hundreds | `$00`, `$08`, `$04` |
+| a searched table | thousands | what everything uses today |
+
+`$13` is the clearest case and needs no decoding at all. Its own arguments have
+56 combinations and its whole table is 1,512 rows, so the row number is
+computable rather than searchable.
+
+**What is still unmeasured.** `$0a`, which is 2.9% of calls and the largest
+single computation the part does.

@@ -107,14 +107,13 @@ def sliced(raw: bytes) -> tuple[bytes, ...]:
     return tuple(raw[at : at + BANK_BYTES] for at in range(0, max(len(raw), 1), BANK_BYTES))
 
 
-FIRST_BANK = 0x10
+FIRST_BANK = 0x11
 """The bank the table starts in, chosen so that all of it stays addressable.
 
 This is a low cartridge, so only banks $00 to $7D carry anything: $7E and $7F
 are the console's memory and everything from $80 up is a second view of what is
-already below. The game itself holds $00 to $0F and the tables taken from the
-chip hold $6D to $78, which leaves $10 to $6C for this table and 21 banks spare
-above them.
+already below. The game itself holds $00 to $0F, all sixteen banks of it, and
+this project's code holds $10, so the first bank free for a table is $11.
 """
 
 WORK_RAM = (0x7E, 0x7F)

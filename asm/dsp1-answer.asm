@@ -71,9 +71,9 @@
 ;      above bank $7D: $7E and $7F are the console's own memory, and everything
 ;      from $80 up is a second view of what is already below. A table placed
 ;      from bank $30 ran off the end of the machine and its last fourteen banks
-;      read back as the game's own first fourteen. The table now starts at $10
-;      and the tables taken from the chip sit above it, which puts the whole
-;      cartridge inside $00 to $77.
+;      read back as the game's own first fourteen. The table now starts at $11,
+;      above the game's own sixteen banks and above this code, and the tables
+;      taken from the chip sit above it again.
 ;
 ;   8. The data bank was pushed before the comparison flags and pulled first, and
 ;      a stack returns things in the order opposite to the one it took them. So
@@ -167,8 +167,13 @@
 ; seventeen compares against 75,278 for the largest command here.
 ; ===========================================================================
 
-!LUT      = $108000             ; where lutbuild.py's blob starts
-!LUTBANK  = $0010               ; and the bank that is, which lutbuild.py picked
+!PAGE     = $0D00               ; where this puts its direct page while it runs
+                                ; Measured free: the game never wrote $000CFC
+                                ; through $000FE3 across a full run of the demo,
+                                ; and everything here fits in $0D00 to $0D61.
+
+!LUT      = $118000             ; where lutbuild.py's blob starts
+!LUTBANK  = $0011               ; and the bank that is, which lutbuild.py picked
 
 !WORKRAM  = $007E               ; the first of the two banks that are not the
                                 ; cartridge at all, but the console's memory
@@ -675,7 +680,14 @@ lut_answer:
 dsp1_answer:
     php
     phb
+    phd
     rep #$30
+
+    ; The direct page moves to somewhere the game does not use. Everything below
+    ; addresses its working variables through it, and leaving it wherever the
+    ; game had it would put them on top of the game's own.
+    lda.w #!PAGE
+    tcd
 
     ; The data bank goes to zero here and comes back on the way out, once,
     ; rather than in each routine that needs it. Everything below reaches the
@@ -696,11 +708,13 @@ dsp1_answer:
 
     jsl lut_answer
     plb
+    pld
     plp
     rtl
 
 .fallback:
     jsl dsp1_fallback
     plb
+    pld
     plp
     rtl
