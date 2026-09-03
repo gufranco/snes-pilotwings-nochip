@@ -720,14 +720,22 @@ dsp1_answer:
     bcc .fallback               ; a key the table has never seen
 
     jsl lut_answer
-    plb
+
+    ; The order matters and it is the reverse of the way in. The prologue pushed
+    ; the flags, then the data bank, then the direct page, so the direct page
+    ; comes back first. Pulling the bank first takes the low half of the page
+    ; and leaves the pull meant for the page taking the page's high half and the
+    ; bank's byte together. The direct page then holds the caller's data bank in
+    ; its high half, every direct page read after it lands somewhere else, and
+    ; the game reads the wrong variable for the rest of its life.
     pld
+    plb
     plp
     rtl
 
 .fallback:
     jsl dsp1_fallback
-    plb
     pld
+    plb
     plp
     rtl
