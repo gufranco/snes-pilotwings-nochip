@@ -172,7 +172,11 @@
                                 ; through $000FE3 across a full run of the demo,
                                 ; and everything here fits in $0D00 to $0D61.
 
-!LUT      = $118000             ; where lutbuild.py's blob starts
+!LUT      = $1D8000             ; where lutbuild.py's blob starts, and it
+                                ; has to be the bank lut-map.asm gives it:
+                                ; naming a different one here reads whatever
+                                ; else is there as the index, so every command
+                                ; misses and every answer falls back
 !LUTBANK  = $0011               ; and the bank that is, which lutbuild.py picked
 
 !WORKRAM  = $007E               ; the first of the two banks that are not the

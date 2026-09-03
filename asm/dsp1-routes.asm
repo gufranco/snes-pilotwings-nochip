@@ -226,3 +226,130 @@ route_00_d507:
     adc $40
     sta $40
     rtl
+
+!RS_KEEP = $7FDD50              ; two words this file keeps across a lookup,
+                                ; because the lookup saves the processor's flags
+                                ; and its two pages but not its index registers
+
+; ---------------------------------------------------------------------------
+; Three products at $00:8071, all sharing one argument.
+;
+; The run sends the same index register as the first argument of all three
+; exchanges and takes the second from a different variable each time, so the
+; index is kept once here rather than read back three times.
+;
+;   sep #$21                    eight bit accumulator, and the carry set
+;   lda #$00 / sta $8000        the command
+;   stx $8000 / ldy $48         the two argument words, a register and a
+;   sty $8000                   variable
+;   rep #$20
+;   lda $54 / sbc $00           the carry set above is what makes this a plain
+;   clc / adc $8000             subtraction rather than one short
+;   sta $00
+;
+; That block appears three times over $54/$00/$48, $56/$02/$4a and $58/$04/$4c.
+; The third one never stores its result: the run ends with it still in the
+; accumulator, and whatever follows reads it there, so this ends the same way.
+; ---------------------------------------------------------------------------
+route_00_8071:
+    rep #$30
+    txa
+    sta.l !RS_KEEP              ; the argument all three exchanges share
+
+    lda.l !RS_KEEP
+    sta.l !ARGL
+    lda $48
+    sta.l !ARGL+2
+    lda.w #$0000
+    sta.l !CMDL
+    jsl dsp1_answer
+    rep #$30
+    sec
+    lda $54
+    sbc $00
+    clc
+    adc.l !OUTL
+    sta $00
+
+    lda.l !RS_KEEP
+    sta.l !ARGL
+    lda $4A
+    sta.l !ARGL+2
+    lda.w #$0000
+    sta.l !CMDL
+    jsl dsp1_answer
+    rep #$30
+    sec
+    lda $56
+    sbc $02
+    clc
+    adc.l !OUTL
+    sta $02
+
+    lda.l !RS_KEEP
+    sta.l !ARGL
+    lda $4C
+    sta.l !ARGL+2
+    lda.w #$0000
+    sta.l !CMDL
+    jsl dsp1_answer
+    rep #$30
+    sec
+    lda $58
+    sbc $04
+    clc
+    adc.l !OUTL                 ; left in the accumulator, as the original does
+    rtl
+
+; ---------------------------------------------------------------------------
+; Two products at $00:d47c, both indexed by the same register.
+;
+; The arithmetic above this point picks an index and the run then uses it to
+; read two tables, so only the tail from the first command onwards is replaced
+; and the index arrives in X. The lookup keeps the flags and both pages but not
+; the index registers, so X is put aside before the first call and taken back
+; after each.
+;
+; The two tables it reads live below $2000, which every bank up to $3f shows as
+; the console's own memory, so they are reachable whatever the data bank holds
+; and no bank change is needed here.
+; ---------------------------------------------------------------------------
+route_00_d447:
+    rep #$20
+    txa
+    and.w #$00FF
+    sta.l !RS_KEEP+2            ; the index, kept across both lookups
+
+    rep #$30
+    lda.l !RS_KEEP+2
+    tax
+    lda.w $1828,x
+    sta.l !ARGL
+    lda $40
+    sta.l !ARGL+2
+    lda.w #$0000
+    sta.l !CMDL
+    jsl dsp1_answer
+    rep #$30
+    lda.l !OUTL
+    sta $00
+    stz $02
+
+    lda.l !RS_KEEP+2
+    tax
+    lda.w $1820,x
+    sta.l !ARGL
+    lda $3C
+    sta.l !ARGL+2
+    lda.w #$0000
+    sta.l !CMDL
+    jsl dsp1_answer
+    rep #$30
+    lda.l !OUTL
+    sta $04
+
+    sep #$10
+    lda.l !RS_KEEP+2
+    tax                         ; the index back where the run's tail expects it
+    rtl
+
