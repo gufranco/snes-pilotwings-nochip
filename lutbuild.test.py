@@ -145,11 +145,52 @@ class RowsOfTest(unittest.TestCase):
         self.assertEqual(key_words, 7)
 
     def test_the_widths_are_the_widest_seen(self) -> None:
-        run = (_Exchange(0x00, (1, 2), (9,)), _Exchange(0x00, (3, 4), (8,)))
+        run = (_Exchange(0x0C, (1, 2), (9,)), _Exchange(0x0C, (3, 4), (8,)))
 
-        _, key_words, answer_words = lutbuild.rows_of((run,))[0x00]
+        _, key_words, answer_words = lutbuild.rows_of((run,))[0x0C]
 
         self.assertEqual((key_words, answer_words), (2, 1))
+
+    def test_a_command_with_its_own_arithmetic_gets_no_rows(self) -> None:
+        run = (_Exchange(0x00, (1, 2), (9,)),)
+
+        self.assertEqual(lutbuild.rows_of((run,)), {})
+
+
+class ChosenTest(unittest.TestCase):
+    def test_what_fits_is_kept(self) -> None:
+        built = {0x13: ((((1,), (9,)),), 1, 1)}
+
+        self.assertEqual(lutbuild.chosen(built, {0x13: 100}, 1000), built)
+
+    def test_what_does_not_fit_is_left_out(self) -> None:
+        built = {0x13: ((((1,), (9,)),), 1, 1)}
+
+        self.assertEqual(lutbuild.chosen(built, {0x13: 100}, 1), {})
+
+    def test_the_busier_command_wins_the_room(self) -> None:
+        built = {0x13: ((((1,), (9,)),), 1, 1), 0x28: ((((2,), (8,)),), 1, 1)}
+
+        kept = lutbuild.chosen(built, {0x13: 1, 0x28: 100}, 4)
+
+        self.assertEqual(list(kept), [0x28])
+
+
+class WeighedTest(unittest.TestCase):
+    def test_it_counts_the_answering_calls(self) -> None:
+        run = (_Exchange(0x13, (1,), (9,)), _Exchange(0x13, (2,), (8,)))
+
+        self.assertEqual(lutbuild.weighed((run,)), {0x13: 2})
+
+    def test_a_call_with_no_answer_is_not_counted(self) -> None:
+        run = (_Exchange(0x01, (1,), ()),)
+
+        self.assertEqual(lutbuild.weighed((run,)), {})
+
+
+class SizedTest(unittest.TestCase):
+    def test_it_is_the_rows_times_the_words_in_each(self) -> None:
+        self.assertEqual(lutbuild.sized(((None, None), (None, None)), 3, 2), 20)
 
 
 class ReportTest(unittest.TestCase):

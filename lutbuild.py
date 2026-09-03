@@ -48,6 +48,20 @@ ENTRY_BYTES = 12
 
 REGIONS = ("usa", "jp", "eur")
 
+ROOM = 2 * BANK_BYTES - 4096
+"""How much of the cartridge is left for this table.
+
+Two banks, $1D and $1E. The game holds sixteen, this project's code one, and
+the three tables taken from the part twelve, and the image cannot pass thirty
+two banks at all, which OPEN-QUESTIONS entry 6 measures. So the recorded answers
+get what is left rather than what they would like: 98,304 bytes against the
+3,014,801 the full set needs.
+
+Which commands make it in is decided by what each buys. A command whose
+arithmetic is already exact in 65816 gains nothing from a row, and a command too
+large to fit cannot have one, so the table holds the ones in between.
+"""
+
 UNSTORABLE = (0x0A,)
 """Commands whose answers no table can hold, whatever they are keyed on.
 
@@ -64,6 +78,15 @@ megabytes, against 3.9 for the whole cartridge.
 That it is an exact function of `$02`'s arguments is the useful half of the
 finding: it says `$0a` is arithmetic waiting to be read out of the chip's
 program, not state that has to be remembered.
+"""
+
+COMPUTED = (0x00, 0x80, 0x04, 0x08)
+"""Commands answered by arithmetic, so a row would only agree with it.
+
+Their routines were read out of the part's own program and checked exact
+against it on four hundred random argument sets each, and looking one up costs
+sixteen times what computing it does. Leaving them out is what makes room for
+the commands that have no arithmetic yet.
 """
 
 CARRIER = {0x03: 0x14, 0x06: 0x02, 0x0D: 0x02, 0x0E: 0x02, 0x13: 0x11, 0x1B: 0x11}
@@ -107,7 +130,7 @@ def sliced(raw: bytes) -> tuple[bytes, ...]:
     return tuple(raw[at : at + BANK_BYTES] for at in range(0, max(len(raw), 1), BANK_BYTES))
 
 
-FIRST_BANK = 0x11
+FIRST_BANK = 0x1D
 """The bank the table starts in, chosen so that all of it stays addressable.
 
 This is a low cartridge, so only banks $00 to $7D carry anything: $7E and $7F
@@ -170,16 +193,54 @@ def rows_of(runs: Sequence[Sequence[Any]]) -> dict[int, Any]:
             last[one.command] = one.words
     built: dict[int, Any] = {}
     for command, rows in found.items():
+        if command in COMPUTED:
+            continue
         key_words = max(len(one) for one in rows)
         answer_words = max(len(one) for one in rows.values())
         built[command] = (tuple(rows.items()), key_words, answer_words)
     return built
 
 
+def weighed(runs: Sequence[Sequence[Any]]) -> dict[int, int]:
+    """How many times each command was asked, across every recording."""
+    calls: dict[int, int] = {}
+    for run in runs:
+        for one in run:
+            if one.answer:
+                calls[one.command] = calls.get(one.command, 0) + 1
+    return calls
+
+
+def sized(rows: Sequence[Any], key_words: int, answer_words: int) -> int:
+    return len(rows) * (key_words + answer_words) * 2
+
+
+def chosen(built: Mapping[int, Any], calls: Mapping[int, int], room: int) -> dict[int, Any]:
+    """The commands worth the space, most calls per byte first.
+
+    Everything does not fit, so this takes what the game asks for most often per
+    byte it costs. A command left out still answers, from the routine behind the
+    lookup, which is why leaving one out costs accuracy rather than correctness.
+    """
+    ranked = sorted(
+        built,
+        key=lambda command: -calls.get(command, 0) / sized(*built[command]),
+    )
+    kept: dict[int, Any] = {}
+    spent = 0
+    for command in ranked:
+        cost = sized(*built[command])
+        if spent + cost > room:
+            continue
+        kept[command] = built[command]
+        spent += cost
+    return kept
+
+
 def gather(where: Path = Path("build"), say: Any = None) -> dict[int, Any]:
     """The rows every recording holds, with the completable commands completed."""
     runs = tuple(exchanges.taken((where / f"trace-{one}.bin").read_bytes()) for one in REGIONS)
-    return completed(rows_of(runs), runs, say=say)
+    return chosen(completed(rows_of(runs), runs, say=say), weighed(runs), ROOM)
 
 
 def completed(

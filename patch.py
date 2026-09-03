@@ -173,7 +173,7 @@ a way anything can recognise. Rewriting the bank it names moves every absolute
 access that follows, without touching any of them.
 """
 
-WINDOW_BANK = 0x11
+WINDOW_BANK = 0x1F
 """The bank those accesses are sent to instead.
 
 It has to be one this project fills, because the accesses land on whatever is
@@ -182,7 +182,10 @@ one without. asm/dsp1-port.asm puts that byte at every address the poll can
 name.
 """
 
-SPANS = ((0x04AD1, 0x04B0F, "dsp_stream"),)
+SPANS = (
+    (0x04AD1, 0x04B0F, "dsp_stream"),
+    (0x04B17, 0x04B39, "dsp_route_10"),
+)
 """Runs of the game's own code replaced whole, rather than one instruction each.
 
 The instruction-for-instruction replacement above works because a long store or

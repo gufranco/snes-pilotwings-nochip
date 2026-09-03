@@ -13,6 +13,7 @@ STUBS = {
     "dsp_status": 0x0F8300,
     "dsp_ignore": 0x0F8400,
     "dsp_stream": 0x0F8500,
+    "dsp_route_10": 0x0F8600,
 }
 
 
@@ -276,6 +277,11 @@ class SpannedTest(unittest.TestCase):
         start, end, _ = patch.SPANS[0]
         self.assertEqual(set(out[start + patch.SITE_BYTES : end]), {patch.NOP})
 
+    def test_every_run_is_replaced(self) -> None:
+        out = patch.spanned(_image(), STUBS)
+
+        self.assertTrue(all(out[start] == patch.JSL for start, _, _ in patch.SPANS))
+
     def test_the_byte_after_the_run_is_untouched(self) -> None:
         rom = bytearray(_image())
         end = patch.SPANS[0][1]
@@ -293,7 +299,7 @@ class BuildTest(unittest.TestCase):
         (into / "one.sfc").write_bytes(_cartridge(bytes([patch.STA_LONG, 0x00, 0x80, 0x3F])))
         (into / "symbols.txt").write_text(
             "dsp_write 0F8100\ndsp_read 0F8200\ndsp_status 0F8300\n"
-            "dsp_ignore 0F8400\ndsp_stream 0F8500\n"
+            "dsp_ignore 0F8400\ndsp_stream 0F8500\ndsp_route_10 0F8600\n"
         )
 
         code = patch.main(

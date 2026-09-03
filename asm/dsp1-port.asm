@@ -685,6 +685,51 @@ dsp_stream:
     rtl
 
 ; ---------------------------------------------------------------------------
+; $10, in place of the routine that asked for it.
+;
+; The original is at $00:CB17, just past the push that sets the data bank, and
+; it reads like every one of these: send the command a byte at a time, send the
+; arguments as words, wait on the status, take the answers back.
+;
+;   sep #$20 / lda #$10 / sta $8000        the command
+;   rep #$31 / lda $58 / adc $18f6         the first argument, computed
+;   sta $8000
+;   lda $18f8 / sta $8000                  the second
+;   bit $c000 / bpl                        the wait
+;   lda $8000 / ldy $8000                  two words of answer
+;
+; None of those stores and loads can be replaced on its own, because each is
+; three bytes and a call is four. The run of them is 34 bytes, so the run is
+; replaced instead, and this stands in its place.
+;
+; The cut starts after the game's own push and pull of the data bank rather than
+; at them, which keeps the stack exactly as the routine expects: that push
+; leaves a byte behind that the routine's closing pull collects, and a
+; replacement that swallowed the push would have to put the byte back by hand.
+;
+; Out: A the first answer word, Y the second, both in sixteen bit mode, which is
+; what the instruction after the run reads.
+; ---------------------------------------------------------------------------
+dsp_route_10:
+    rep #$30
+
+    clc
+    lda $58                     ; the game's own direct page, still in place
+    adc.l $0018F6
+    sta.l !ARGL
+    lda.l $0018F8
+    sta.l !ARGL+2
+    lda.w #$0010
+    sta.l !CMDL
+
+    jsl dsp1_answer
+
+    lda.l !OUTL+2
+    tay
+    lda.l !OUTL
+    rtl
+
+; ---------------------------------------------------------------------------
 ; The window the game reaches when its data bank is redirected.
 ;
 ; Twelve places in the game set the data bank to $3F with "pea $003F" and then
@@ -704,7 +749,7 @@ dsp_stream:
 ; poll can name, in both halves of a word, so the wait ends whichever width the
 ; accumulator happens to be.
 ; ---------------------------------------------------------------------------
-!WINDOW_BANK = $11
+!WINDOW_BANK = $1F
 
 org (!WINDOW_BANK<<16)|$C000
 dsp_window_status:
