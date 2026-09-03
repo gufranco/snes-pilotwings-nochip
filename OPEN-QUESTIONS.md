@@ -1158,3 +1158,53 @@ real question.
 
 **What is ruled out.** The lookup, the fallback, the answers, and the table,
 because none of them is ever reached.
+
+## 9. What answers the absolute accesses, and what is left
+
+**Measured 2026-09-02.** Entry 8 found that most of the traffic reaches the part
+through three byte absolute instructions with the data bank at `$3F`, which
+cannot take a four byte call. The way past it is not to touch those
+instructions at all.
+
+Twelve places set that bank, each with `pea $003F` followed by `plb`. Rewriting
+the bank those twelve name sends every absolute access after them somewhere this
+project fills, without one of them being modified.
+
+What that bank has to hold is a status byte with its top bit set, at every
+address the poll can name and in both halves of a word. The poll spins until
+that bit appears, so a byte without it is an endless loop, which is exactly how
+the game died: at frame 935 it entered `$00CAD7` and never came out.
+
+| build | frames drawn in 3,000 | in 18,000 |
+|---|---:|---:|
+| retail dump padded to 1 MB | 2,657 | 17,657 |
+| this conversion | 2,569 | 17,569 |
+| this conversion, before the redirect | 605 | 605 |
+
+The gap is a constant 88 frames from the opening seconds and does not grow, and
+frames delivered match frames run, so the game runs the whole demo at full pace
+without stopping.
+
+**What is still wrong.** The picture. Those reads now return this project's
+zeroes rather than answers, so everything the part computed is nought.
+
+**What would fix it, and why it is now mechanical.** `pea $003F` and `plb` are
+three bytes and one, which is four, which is exactly the length of a long call.
+So each of the twelve routines can be entered by a call at its first
+instruction, and a routine entered that way can do the whole exchange through
+the port and return past the body it replaced.
+
+The twelve, with the command each sends where the code names one outright:
+
+| where | command |
+|---|---|
+| `$00071` | `$00` |
+| `$04aa4` | `$0a`, already replaced as a span |
+| `$04b13` | `$10` |
+| `$04b4a` | `$02` |
+| `$0004e`, `$01601`, `$04db3`, `$0503f`, `$051f1`, `$05447`, `$05507`, `$055d8` | held in a register rather than an immediate |
+
+**What is not in doubt any more.** The port, the lookup, the fallback, the
+tables, the 1 megabyte layout and the site replacement are all measured innocent
+or working. What is left is reimplementing twelve routines, and each one is
+bounded work with a known entry point.
