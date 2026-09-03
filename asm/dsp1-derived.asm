@@ -78,37 +78,37 @@
 ; What $10 answers as its mantissa, for every input it can be given. The
 ; exponent is not here: it is a count of leading zeros less the second
 ; argument, which is a handful of instructions and would be a wasteful table.
-org $6E8000
+org $128000
 dsp1_reciprocal_of:
 incbin "../build/reciprocal-0.bin"
-org $6F8000
+org $138000
 incbin "../build/reciprocal-1.bin"
-org $708000
+org $148000
 incbin "../build/reciprocal-2.bin"
-org $718000
+org $158000
 incbin "../build/reciprocal-3.bin"
 
 ; What $04 multiplies a magnitude by, per angle, for the first half it answers.
 ; A whole turn is 65,536, so the index is the angle with nothing done to it.
-org $728000
+org $168000
 dsp1_sine_of:
 incbin "../build/sine-0.bin"
-org $738000
+org $178000
 incbin "../build/sine-1.bin"
-org $748000
+org $188000
 incbin "../build/sine-2.bin"
-org $758000
+org $198000
 incbin "../build/sine-3.bin"
 
 ; The same, for the second half.
-org $768000
+org $1A8000
 dsp1_cosine_of:
 incbin "../build/cosine-0.bin"
-org $778000
+org $1B8000
 incbin "../build/cosine-1.bin"
-org $788000
+org $1C8000
 incbin "../build/cosine-2.bin"
-org $798000
+org $1D8000
 incbin "../build/cosine-3.bin"
 
 print "reciprocal of starts at ", hex(dsp1_reciprocal_of)

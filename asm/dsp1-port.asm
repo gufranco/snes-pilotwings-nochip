@@ -127,6 +127,8 @@
 !PORT_LAST   = !PORTRAM+42      ; the last command byte that completed
 !PORT_SITE   = !PORTRAM+44      ; where the first read came from
 !PORT_SEEN   = !PORTRAM+47      ; whether that has been recorded yet
+!PORT_POLLS  = !PORTRAM+48      ; how many status reads have been served
+!PORT_LASTPC = !PORTRAM+50      ; where the last status read came from
 
 ; A value the memory does not hold before this has written it.
 ;
@@ -495,6 +497,8 @@ dsp_read:
     lda.l !PORT_READS
     inc a
     sta.l !PORT_READS
+    sta.l !PORT_POLLS
+    sta.l !PORT_POLLS+1
 
     lda.l !PORT_SEEN            ; keep where the very first read came from
     bne .noted
@@ -549,6 +553,23 @@ dsp_read:
 dsp_status:
     php
     sep #$20
+
+    lda.l !PORT_POLLS           ; counted so that a stub nobody counted cannot
+    inc a                       ; be the one that breaks the game unseen
+    sta.l !PORT_POLLS
+    bne .counted
+    lda.l !PORT_POLLS+1
+    inc a
+    sta.l !PORT_POLLS+1
+
+.counted:
+    lda $02,s                   ; where this was called from
+    sta.l !PORT_LASTPC
+    lda $03,s
+    sta.l !PORT_LASTPC+1
+    lda $04,s
+    sta.l !PORT_LASTPC+2
+
     lda $01,s
     and #$20
     beq .wide
@@ -586,6 +607,9 @@ dsp_port_reset:
     sta.l !PORT_LEFT
     sta.l !PORT_PART
     sta.l !PORT_SEEN
+    sta.l !PORT_WRITES
+    sta.l !PORT_DONE
+    sta.l !PORT_READS
 
     ; The answer buffer starts empty rather than holding whatever the memory
     ; held. The game reads the port before it has asked anything, and the part
