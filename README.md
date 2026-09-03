@@ -47,7 +47,8 @@ be.
 | `$13` and `$18` | complete over their whole domain, driven out of the part, so no key can miss |
 | the lookup, in 65816 | exact on every recorded question, all three regions |
 | the fallback, in 65816 | answers every command, including keys no recording holds, without looping |
-| `$0a` | not answered. It is a function of `$02`'s arguments and would take 8.7 MB to store |
+| `$0a` | read out of the part stage by stage and now specified as arithmetic, not yet written in 65816. See OPEN-QUESTIONS section 22 |
+| the demo | flies. Everything renders except the ground, which is `$0a` |
 | whether the image has to grow | yes, to 3.75 MB, which is inside what a low cartridge addresses |
 | speed | about seven times a whole frame per frame of calls, against 6% for the part |
 | the finished cartridge | not started: the game's own calls are not yet routed here |
@@ -373,9 +374,15 @@ indexing them costs 538,583 distinct steps before any index array.
 
 It writes one word, reads its answer through four instructions that each fire 176
 or 191 times, then writes four words more. The answer is a per scanline stream
-rather than a row. It reads the reciprocal table in the part's own data ROM, and
-that table is tabulated whole, so `$0a` is computed over a table a miss cannot
-reach rather than looked up in a table of its own.
+rather than a row.
+
+None of that matters any more, because `$0a` no longer has to be stored. Reading
+the part's own program stage by stage, and checking each stage against its
+registers rather than against its answers, gives the arithmetic outright: one
+normalise, one reciprocal, two multiplies and two shifts per scanline. The output
+stage reproduces every recorded scanline exactly and the scale stage 175 of 176.
+The chain is in OPEN-QUESTIONS section 22, and the sizes above are kept only to
+record what the storage route would have cost.
 
 ### What the table actually encodes to
 
