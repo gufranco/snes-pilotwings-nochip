@@ -1861,3 +1861,58 @@ adjusts an exponent against ROM pointers `$0f` and `$31`, and loads the
 multiplier. Reading it the same way this section read `$03a` and `$0d3` is the
 remaining work, and the scales are already capturable exactly, so any candidate
 can be checked against them line by line instead of against the answers.
+
+## 22. `$0a`, the whole chain
+
+**Measured 2026-09-03 by stepping the part and reading its registers at each
+stage.** Every step below was checked against the part rather than fitted.
+
+### The chain
+
+For each scanline, with `m1` and `e1` the first scale's mantissa and exponent
+from `$02`, and `m2` and `e2` the second's:
+
+1. **Distance.** The loop keeps a line counter in `RAM[$09]`, seeded from the
+   command's argument and incremented once per line, and forms the distance from
+   it and the horizon in `RAM[$c8]`. Captured at `$36b`, the distance magnitude
+   runs 49, 48, 47, 46 where the naive `argument + 1 + line + horizon` gives 50,
+   49, 48, 47, so the magnitude is one less than that expression throughout.
+
+2. **Normalise, `$03a`.** Double until signed overflow, then step back. Leaves
+   the magnitude in `[0x4000, 0x7fff]` and the count of doublings behind. At
+   `$36b` the accumulator holds exactly `-(49 << 9)`, `-(48 << 9)`, and so on.
+
+3. **Reciprocal, `$0d3`.** Answers a mantissa in `a` and an exponent in `b`, with
+   `a = 2**20 / x` for `x` the magnitude held in `(32, 64]` and `b` counting the
+   doublings from a base of 3. It refines rather than reads: it computes its ROM
+   pointer from an intermediate at `$0de` and saturates twice.
+
+4. **Multiply.** `a = (m1 * recip) >> 15` and `b = b + e1`. Verified against the
+   part: `m1` of `$6000` against a reciprocal of `-21400` gives `-16050`, and
+   `b` of 3 plus `e1` of 3 gives 6, both exactly as captured at `$370`.
+
+5. **Scale, `$0077`.** `scale = a >> (15 - b)`, an arithmetic shift.
+   **175 of 176 scanlines, 99%.** The single miss is the saturation path, where
+   `$0077` clamps to `$7fff` rather than shifting.
+
+6. **Output.** Four words from the two scales and the matrix:
+   `(scale * M) >> 15`, the first scale against `M0` and `M2`, the second against
+   `M1` and `M3`. **176 of 176 scanlines, all four words, 100%.**
+
+### Why every earlier attempt failed
+
+They all tried to recover one number per scanline from the answers. The chain has
+two normalisations, two saturations and a mantissa-exponent pair, so no single
+number exists to recover, and the exponent moves with `e1`, which is exactly the
+pattern that made the conflicts track `e1` rather than the horizon.
+
+### What is left
+
+The saturation case in `$0077`, worth one scanline in 176, and confirming the
+distance expression against a second viewpoint. Both are checkable line by line
+against captured scales rather than against answers, so neither is open-ended.
+
+With that, `$0a` is arithmetic the cartridge can run: one normalise, one
+reciprocal, two multiplies and two shifts per scanline, with no table beyond the
+reciprocal itself. The storage question raised earlier is moot, since nothing
+large needs storing.
