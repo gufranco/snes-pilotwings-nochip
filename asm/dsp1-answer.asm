@@ -177,7 +177,12 @@
                                 ; naming a different one here reads whatever
                                 ; else is there as the index, so every command
                                 ; misses and every answer falls back
-!LUTBANK  = $0011               ; and the bank that is, which lutbuild.py picked
+!LUTBANK  = $001D               ; and the bank that is. This has to agree with
+                                ; !LUT above: lut_place builds every row address
+                                ; from it, so a stale bank here reads whatever
+                                ; lives there as though it were the rows, the
+                                ; search never matches, and every command falls
+                                ; back with the wrong answer
 
 !WORKRAM  = $007E               ; the first of the two banks that are not the
                                 ; cartridge at all, but the console's memory

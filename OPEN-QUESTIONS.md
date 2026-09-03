@@ -1508,3 +1508,51 @@ So a reciprocal table keyed on distance cannot be right, and `raster.py` takes
 the mapping as an argument rather than building a wrong one. The demo asks for
 only 196 distinct distances, from -50 to 145, which covers 100% of its scanlines,
 so whatever the real key turns out to be the table stays small.
+
+## 16. The lookup was reading the wrong bank, twice
+
+**Found 2026-09-03 by running the cartridge's own lookup in a processor model
+against the recording, rather than by reading it.**
+
+Two constants in `dsp1-answer.asm` named where the recorded-answer table lives,
+and both named bank `$11` while `lut-map.asm` assembles it at `$1D`:
+
+| constant | said | is |
+|---|---|---|
+| `!LUT` | `$118000` | `$1D8000` |
+| `!LUTBANK` | `$0011` | `$001D` |
+
+Bank `$11` holds the reciprocal driven out of the part, so the lookup read that
+as its index and as its rows. It found a count of 255 and a first command of
+`$7f`, matched nothing, and fell through to the fallback on every command, every
+time. The wrong answers were literally the opening words of the reciprocal
+table: `32767, 32767, 32767, 21846`.
+
+Correcting the first stopped the demo hanging: it ran 4,000 frames where it had
+stopped at 1,812. Correcting the second made the lookup work at all.
+
+| command | before | after |
+|---|---|---|
+| `$10` | 0 right of 40 | **40 right of 40** |
+| `$13` | 0 right of 84 | 21 right of 84 |
+| `$00` | 56 right of 56 | 56 right of 56 |
+
+**Why two, and why this was hard to see.** The two constants are adjacent, and
+correcting one leaves the other silently wrong: the index is found, the fields
+come back correct, and only the rows are read from somewhere else. The search
+then closes empty and the fallback answers, which looks exactly like a key the
+table has never seen.
+
+**How it was found.** Not by reading the source, which had been read several
+times. By running `dsp1_answer` in the processor model with a key known to be in
+the table, stopping where the search returns, and reading its state: `KEYW 2`,
+`ANSW 2`, `ROWS 2,498`, `ROWAT $25`, all correct, and `LOW 0 HIGH 0 MID 0`,
+which is a range that closed with nothing in it. The search had decided row 0
+was above a key that is row 0.
+
+**What this does not fix.** `$06`, `$02`, `$0e`, `$0c`, `$0d`, `$14`, `$28` and
+`$03` are not in the table and have no routine, so they still answer from the
+fallback and still answer wrongly. `$06` alone is 31.7% of every call the game
+makes. The demo therefore still goes dark after its first fade: the picture
+needs those, and the two corrections here were what stood between the emulation
+and being exercised at all.
