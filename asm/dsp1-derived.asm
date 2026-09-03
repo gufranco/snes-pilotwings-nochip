@@ -14,12 +14,15 @@
 ; that is nearly right, and nearly right is how the ground ends up in the wrong
 ; place. So they are taken from the chip itself:
 ;
-;   reciprocal.bin   131,072 bytes   the mantissa $10 answers, one per input
+;   reciprocal-0.bin  32,768 bytes   the mantissa $00d3 answers, per normalised input
 ;   sine.bin         131,072 bytes   what $04 multiplies a magnitude by
 ;   cosine.bin       131,072 bytes   the same, for the other half
 ;
-; Each is 65,536 entries of two bytes, one for every value a sixteen bit word
-; can hold, so no input can miss and the fallback behind them is unreachable.
+; The two trig tables are 65,536 entries of two bytes, one for every value a
+; sixteen bit word can hold. The reciprocal is 16,384, because that is the whole
+; range its caller can hand it: the chip's own normalise loop always leaves a
+; magnitude between $4000 and $7fff. Either way no input can miss and the routine
+; behind them is unreachable.
 ;
 ; ===========================================================================
 ; WHERE THEY COME FROM, AND WHY THAT IS NOT A COMPILED ARTEFACT
@@ -81,6 +84,20 @@
 ; thousandth of the space. Those four banks are the recorded table's now, which
 ; is what lets it carry the commands that draw the ground rather than only the
 ; three it had room for.
+;
+; What sits here instead is one bank rather than four, and a different question.
+; $0a asks the chip's own routine at $00d3 for a reciprocal, and it only ever
+; asks about a value that has just come out of the normalise loop at $003a, which
+; leaves a magnitude between $4000 and $7fff. That is 16,384 entries, which is
+; exactly one bank, and the bound comes from reading the loop rather than from
+; watching what a recording asked for, so the table is complete by construction.
+;
+; The sign is not stored. $00d3 strips it at $0d6, refines the magnitude, and
+; negates the answer at $0f0, so one half of the range answers both halves and
+; asm/dsp1-ground.asm puts the sign back in two instructions.
+org $738000
+dsp1_reciprocal_of:
+incbin "../build/reciprocal-0.bin"
 
 ; What $04 multiplies a magnitude by, per angle, for the first half it answers.
 ; A whole turn is 65,536, so the index is the angle with nothing done to it.
@@ -105,5 +122,6 @@ incbin "../build/cosine-2.bin"
 org $188000
 incbin "../build/cosine-3.bin"
 
+print "reciprocal of starts at ", hex(dsp1_reciprocal_of)
 print "sine of starts at       ", hex(dsp1_sine_of)
 print "cosine of starts at     ", hex(dsp1_cosine_of)

@@ -160,7 +160,7 @@ dsp1_fallback:
     rtl
 
 ; ---------------------------------------------------------------------------
-; $0a, which has no row and cannot be given one.
+; $0a, which has no row and cannot be given one, so it is computed.
 ;
 ; This command answers 764 words. Keyed on its own argument its answer is not a
 ; function of the key at all, and keyed on its argument plus $02's it is one
@@ -170,29 +170,21 @@ dsp1_fallback:
 ; European recording alone would take 8.7 megabytes against 3.9 for the whole
 ; cartridge. So lutbuild.py leaves it out and it arrives here every time.
 ;
-; What it answers with is nought. That is not an approximation of anything and
-; it is not meant to be. It is a bounded, deterministic answer that reads no
-; memory it has not set, which is the one thing this file promises, and it is
-; obviously wrong rather than plausibly wrong, which is what a placeholder
-; should be. The real answer is arithmetic in the chip's program that has not
-; been read yet, and that it is an exact function of $02's arguments says the
-; arithmetic is there to find.
+; It used to answer nought here, which is why the demo flew over nothing.
+; asm/dsp1-ground.asm now carries its arithmetic, read out of the chip's own
+; program and checked against the chip on 43,440 answer words.
 ;
-; Only four words are written rather than 764. The port serves this command a
-; word at a time from the same four, so writing more would be 1,528 bytes of
-; the game's memory spent to say nought in a longer way.
+; Only four words are written rather than 764, because the port serves this
+; command a word at a time from the same four. So this answers the one scanline
+; the argument names, and the demo does not come this way at all: dsp_width says
+; $0a answers nothing, so the port never reaches the lookup for it and
+; ground_block serves every scanline the game actually reads.
 ;
-; Nothing here can loop: the count is fixed at 764 and comes down by one.
+; Nothing here can loop: one scanline, and every loop inside it is bounded by a
+; sixteen bit shift count.
 ; ---------------------------------------------------------------------------
 .stream:
-    ldx #$0008                  ; the four words the answer block holds
-    lda #$0000
--
-    dex
-    dex
-    sta.w !OUT,x
-    bne -
-
+    jsl ground_answer
     plp
     rtl
 
