@@ -1391,3 +1391,54 @@ the routine, held against the part on four hundred argument sets the way
 words and touches none of `$7f`, `$7e`, `$6f`, `$6e`. `$02` writes thirty-five,
 including every constant the loop reads. The matrix is `$02`'s, and the earlier
 suspicion of the two answerless commands was wrong.
+
+## 14. `$0a` computed rather than replayed, and what still blocks it
+
+**Measured 2026-09-03.** `raster.py` computes `$0a` instead of replaying it, and
+its tests hold it to values taken off the part. What follows is what is settled
+and what is not, kept apart on purpose.
+
+### Settled, each checked against the part
+
+**The output stage.** Four words a scanline, each the high half of a product
+against a matrix `$02` leaves at `RAM[$7f]`, `RAM[$7e]`, `RAM[$6f]`, `RAM[$6e]`.
+In the frame measured that matrix is an identity, which is why two words in four
+are nought there. That is a property of the frame, not of the command.
+
+**The first scale.** `(mantissa * reciprocal) >> (27 - exponent)`, then one
+added. Swept against the part across eight exponents and fourteen mantissas,
+every one exact.
+
+**The second scale.** The same product carried forward,
+`(product * mantissa) >> (42 - exponent - exponent)`, then one added. Swept the
+same way, every one exact. The carrying is why changing the first mantissa moves
+the second value, which is what showed these are one calculation and not two.
+
+**The fold.** A distance outside the table's octave shifts both scales, and it
+shifts each by one, not the second by two. Assuming two fitted 19 distances and
+assuming one fitted 50, which is how the error was found.
+
+**The reciprocal is a table read.** The part holds `2**20 / x` for x from 32 to
+64 in quarter steps, based at word 101, and 101 is the value it keeps in
+`RAM[$00]`. On the eleven distances checked directly the table entry is exactly
+`round(2**20 / x)`.
+
+### Not settled
+
+**Which entry a distance selects.** Measured against the part, the divisor is one
+less than the distance over part of the range and equal to it over another, and
+no rule fitted both. It is taken per distance instead, the way `complete.py`
+takes `$13` and `$18`, which is also what the cartridge can afford: one indexed
+read.
+
+**Lines below the horizon.** Solving a reciprocal from the answer succeeds for
+every distance above the horizon and for none below it, so something in the
+second scale differs there. The count is reported rather than smoothed over:
+50 of 191 scanlines with the fold chosen naively.
+
+### What blocks wiring it into the cartridge
+
+`$0a` reads six values and a matrix, and `$02` writes every one of them. Watching
+the part confirms it: `$01` and `$11` write four words each and touch none of
+them. So a correct `$0a` in the cartridge is worth nothing until `$02` is
+decoded, and `$02` is the next thing to do rather than a later one.
