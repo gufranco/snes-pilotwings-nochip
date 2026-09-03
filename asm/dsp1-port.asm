@@ -119,11 +119,16 @@
 !PORT_ARGS   = !PORTRAM+8       ; ten argument words
 !PORT_ANSWER = !PORTRAM+28      ; four answer words
 
-!ARGL = $000D00                 ; the lookup's arguments, as a long address
-!OUTL = $000E00                 ; and its answer, so this file can reach both
-                                ; without depending on the data bank. Both are
-                                ; inside memory the game was measured never to
-                                ; write.
+; The lookup's own variables, named as long addresses so this file can reach
+; them whatever data bank the game happens to be in. That is the whole reason
+; they are spelled out here rather than reused from dsp1-answer.asm: the names
+; there are direct page offsets, and a direct page offset written with an
+; absolute store goes through the data bank instead. Doing exactly that, once,
+; sent every command to whichever bank the game was using and left the lookup
+; reading a command nobody had written.
+!ARGL = $000D00                 ; the arguments, ten words
+!CMDL = $000D30                 ; the command byte, at !CMD inside that page
+!OUTL = $000E00                 ; the answer
 
 !STATUS_READY = $0080           ; the one value the part's status ever returned
 
@@ -133,28 +138,90 @@
 ; How many argument words each command takes, indexed by the command byte.
 ;
 ; Measured across all three recordings, where every command takes one count and
-; never another. A command not listed takes none, which is what $80 does.
-; A table rather than a chain of comparisons: one long load against nineteen
-; compares, on a path that runs tens of times a frame.
+; never another. A table rather than a chain of comparisons: one long load
+; against nineteen compares, on a path that runs tens of times a frame.
+;
+; All 256 entries, and that is not padding. An earlier version stopped at $2F,
+; which covers every command but one: $80 is the part's reset and the game does
+; send it. Reading past the end of a table returns whatever follows it in the
+; ROM, so $80 came back with an argument count taken from the code, and the port
+; then swallowed that many of the game's next writes as arguments to a command
+; that takes none. Everything after that was one command out of step.
 ; ---------------------------------------------------------------------------
 dsp_arity:
-    db $02, $04, $07, $03, $02, $00, $03, $00     ; $00 $01 $02 $03 $04 $05 $06 $07
-    db $03, $00, $01, $00, $03, $03, $02, $00     ; $08 $09 $0a $0b $0c $0d $0e $0f
-    db $02, $04, $00, $03, $06, $00, $00, $00     ; $10 $11 $12 $13 $14 $15 $16 $17
-    db $04, $00, $00, $03, $00, $00, $00, $00     ; $18 $19 $1a $1b $1c $1d $1e $1f
-    db $00, $00, $00, $00, $00, $00, $00, $00     ; $20 $21 $22 $23 $24 $25 $26 $27
-    db $03, $00, $00, $00, $00, $00, $00, $00     ; $28 $29 $2a $2b $2c $2d $2e $2f
+    db $02, $04, $07, $03, $02, $00, $03, $00     ; $00
+    db $03, $00, $01, $00, $03, $03, $02, $00     ; $08
+    db $02, $04, $00, $03, $06, $00, $00, $00     ; $10
+    db $04, $00, $00, $03, $00, $00, $00, $00     ; $18
+    db $00, $00, $00, $00, $00, $00, $00, $00     ; $20
+    db $03, $00, $00, $00, $00, $00, $00, $00     ; $28
+    db $00, $00, $00, $00, $00, $00, $00, $00     ; $30
+    db $00, $00, $00, $00, $00, $00, $00, $00     ; $38
+    db $00, $00, $00, $00, $00, $00, $00, $00     ; $40
+    db $00, $00, $00, $00, $00, $00, $00, $00     ; $48
+    db $00, $00, $00, $00, $00, $00, $00, $00     ; $50
+    db $00, $00, $00, $00, $00, $00, $00, $00     ; $58
+    db $00, $00, $00, $00, $00, $00, $00, $00     ; $60
+    db $00, $00, $00, $00, $00, $00, $00, $00     ; $68
+    db $00, $00, $00, $00, $00, $00, $00, $00     ; $70
+    db $00, $00, $00, $00, $00, $00, $00, $00     ; $78
+    db $00, $00, $00, $00, $00, $00, $00, $00     ; $80
+    db $00, $00, $00, $00, $00, $00, $00, $00     ; $88
+    db $00, $00, $00, $00, $00, $00, $00, $00     ; $90
+    db $00, $00, $00, $00, $00, $00, $00, $00     ; $98
+    db $00, $00, $00, $00, $00, $00, $00, $00     ; $a0
+    db $00, $00, $00, $00, $00, $00, $00, $00     ; $a8
+    db $00, $00, $00, $00, $00, $00, $00, $00     ; $b0
+    db $00, $00, $00, $00, $00, $00, $00, $00     ; $b8
+    db $00, $00, $00, $00, $00, $00, $00, $00     ; $c0
+    db $00, $00, $00, $00, $00, $00, $00, $00     ; $c8
+    db $00, $00, $00, $00, $00, $00, $00, $00     ; $d0
+    db $00, $00, $00, $00, $00, $00, $00, $00     ; $d8
+    db $00, $00, $00, $00, $00, $00, $00, $00     ; $e0
+    db $00, $00, $00, $00, $00, $00, $00, $00     ; $e8
+    db $00, $00, $00, $00, $00, $00, $00, $00     ; $f0
+    db $00, $00, $00, $00, $00, $00, $00, $00     ; $f8
 
 ; ---------------------------------------------------------------------------
 ; How many answer words each command gives, in the same shape.
+;
+; $0a is nought here although it answers 704 words in one region and 764 in
+; another. Its answer is served from the four word buffer a word at a time, so
+; there is nothing for the copy below to move.
 ; ---------------------------------------------------------------------------
 dsp_width:
-    db $01, $00, $04, $03, $02, $00, $03, $00
-    db $02, $00, $00, $00, $02, $03, $02, $00
-    db $02, $00, $00, $03, $03, $00, $00, $00
-    db $01, $00, $00, $01, $00, $00, $00, $00
-    db $00, $00, $00, $00, $00, $00, $00, $00
-    db $01, $00, $00, $00, $00, $00, $00, $00
+    db $01, $00, $04, $03, $02, $00, $03, $00     ; $00
+    db $02, $00, $00, $00, $02, $03, $02, $00     ; $08
+    db $02, $00, $00, $03, $03, $00, $00, $00     ; $10
+    db $01, $00, $00, $01, $00, $00, $00, $00     ; $18
+    db $00, $00, $00, $00, $00, $00, $00, $00     ; $20
+    db $01, $00, $00, $00, $00, $00, $00, $00     ; $28
+    db $00, $00, $00, $00, $00, $00, $00, $00     ; $30
+    db $00, $00, $00, $00, $00, $00, $00, $00     ; $38
+    db $00, $00, $00, $00, $00, $00, $00, $00     ; $40
+    db $00, $00, $00, $00, $00, $00, $00, $00     ; $48
+    db $00, $00, $00, $00, $00, $00, $00, $00     ; $50
+    db $00, $00, $00, $00, $00, $00, $00, $00     ; $58
+    db $00, $00, $00, $00, $00, $00, $00, $00     ; $60
+    db $00, $00, $00, $00, $00, $00, $00, $00     ; $68
+    db $00, $00, $00, $00, $00, $00, $00, $00     ; $70
+    db $00, $00, $00, $00, $00, $00, $00, $00     ; $78
+    db $00, $00, $00, $00, $00, $00, $00, $00     ; $80
+    db $00, $00, $00, $00, $00, $00, $00, $00     ; $88
+    db $00, $00, $00, $00, $00, $00, $00, $00     ; $90
+    db $00, $00, $00, $00, $00, $00, $00, $00     ; $98
+    db $00, $00, $00, $00, $00, $00, $00, $00     ; $a0
+    db $00, $00, $00, $00, $00, $00, $00, $00     ; $a8
+    db $00, $00, $00, $00, $00, $00, $00, $00     ; $b0
+    db $00, $00, $00, $00, $00, $00, $00, $00     ; $b8
+    db $00, $00, $00, $00, $00, $00, $00, $00     ; $c0
+    db $00, $00, $00, $00, $00, $00, $00, $00     ; $c8
+    db $00, $00, $00, $00, $00, $00, $00, $00     ; $d0
+    db $00, $00, $00, $00, $00, $00, $00, $00     ; $d8
+    db $00, $00, $00, $00, $00, $00, $00, $00     ; $e0
+    db $00, $00, $00, $00, $00, $00, $00, $00     ; $e8
+    db $00, $00, $00, $00, $00, $00, $00, $00     ; $f0
+    db $00, $00, $00, $00, $00, $00, $00, $00     ; $f8
 
 ; ---------------------------------------------------------------------------
 ; Take the caller's value and width, before anything else can disturb either.
@@ -249,14 +316,32 @@ dsp_write:
     brl .done
 
 .complete:
-    ; Every argument is in. The lookup moves the direct page itself, so nothing
-    ; has to be done about it here.
+    ; Every argument is in. Three commands answer nothing at all: $80 resets the
+    ; part, and $01 and $11 set the state later commands are keyed on. There is
+    ; nothing to look up for those, so they stop here.
+    ;
+    ; This is a correctness fix before it is a saving. Reaching the lookup with
+    ; a command that has no answer runs it to the fallback, and the fallback's
+    ; first branch hands $80 to the signed-product routine, which borrows the
+    ; console's one hardware multiplier. The game uses that multiplier too, and
+    ; $4202 and $4203 are write only, so there is no way to give back what was
+    ; in them. Not touching it is the only fix available.
     rep #$30
     sep #$20
     lda.l !PORT_CMD
     rep #$30
     and.w #$00FF
-    sta.w !CMD
+    tax
+    sep #$20
+    lda.l dsp_width,x
+    beq .answered
+
+    ; The lookup moves the direct page itself, so nothing has to be done here.
+    sep #$20
+    lda.l !PORT_CMD
+    rep #$30
+    and.w #$00FF
+    sta.l !CMDL
 
     lda.l !PORT_AT
     and.w #$00FF
