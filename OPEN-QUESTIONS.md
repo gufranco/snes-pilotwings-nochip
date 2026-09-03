@@ -1603,25 +1603,42 @@ rather than guessed: `table[101 + 4 * (x - 32)] = 2**20 / x`, for `x` from 32 to
 64 in quarter steps, which is words 101 to 229. Checked at `x` of 32, 33 and 40.
 That settles the values a scanline can pick from, and leaves only which one.
 
-**The reciprocal is not a function of the distance alone.** Measured 2026-09-03
-across 4,179 recorded viewpoints in all three regions, taking only the ones whose
-matrix is diagonal so that both scales can be read straight out of the answer.
-Each scanline gives two equations, on the near scale and the far one, and the
-entries satisfying both were intersected per distance. 344 distances appeared,
-338 narrowed to a single entry, and **2,843 intersections came out empty**: two
-viewpoints demanding entries that cannot both be right for one distance.
+**Whether the reciprocal follows the distance is still open, and two attempts to
+settle it were both confounded by the same mistake.** Recorded here in full,
+because the mistake is easy to make again and neither number should be quoted.
 
-An earlier revision of this section claimed the opposite from a sample of
-twenty four calls. Twenty four agreeing is what a sample too small to contain the
-disagreement looks like, and the disagreement is dense at four thousand. The
-original finding above, that a distance reached from a different horizon takes a
-different entry, stands.
+The answer does not carry a scale. It carries the scale multiplied by a matrix
+entry and shifted, `(near * M) >> 15`. Every viewpoint used here has `M` of
+`$7fff`, and `(n * 0x7fff) >> 15` is `n - 1` for every positive `n` up to 32,768.
+So a reading that takes the answer word as the scale is one low on every single
+line, and one low is not a rounding difference here: the scales are as small as
+12, so an error of one moves the reciprocal by most of a table entry.
 
-**What that implies.** The part is not looking the entry up per scanline. It
-walks the scanlines and carries a normalised value forward, renormalising when it
-crosses the octave, so the entry depends on the path taken to the distance and
-not only on the distance. That matches the shape of the failure exactly: the same
-distance reached from a different starting line takes a different entry.
+Both measurements on 2026-09-03 made exactly that error. The first intersected
+candidate entries across 4,179 viewpoints and reported 2,843 empty
+intersections. The second corrected the scale, solved the reciprocal as an
+interval instead of an entry, and reported 608,535. Neither number is evidence
+about the part, because a systematic off-by-one in the input makes an empty
+intersection the expected result whether or not the reciprocal follows the
+distance.
+
+What is real is the check that needs no intersection. With the scale read
+correctly, the reciprocal is `2**20 / |d|` almost exactly for `|d|` of 5 or less,
+and drifts above it as the distance grows, reaching about 3% by `|d|` of 144 and
+7 to 11% by 118 on a single viewpoint. Predicting every scanline from
+`2**20 // |d|` reproduces 12.7% of them across 200 viewpoints. So the part is
+computing a reciprocal, and quantising it in a way that is not plain truncation
+of that division.
+
+The earlier claim in this section, that twenty four calls showed no conflicts,
+is also withdrawn. It was measured the same way and is subject to the same fault.
+
+**The walking reading is a hypothesis and nothing more.** It says the part
+carries a normalised value down the scanlines and renormalises when it crosses
+the octave, which would make the entry follow the path rather than the distance.
+It fits the original observation that one distance reached from two horizons
+takes two entries, and it has not been tested. It is written down as the thing to
+test first, never as a finding.
 
 **Why it cannot be sidestepped by storing more.** Keyed on its own argument plus
 `$02`'s seven, `$0a` is unambiguous, and the cost was measured again on
@@ -1631,11 +1648,22 @@ which is 4 MiB in total and less than half of what one region needs. Raising the
 image to 96 Mbit does not help, because the ceiling is the address space and not
 the image. So `$0a` is computed or it is nothing.
 
-**Where to start next.** Measure the recurrence rather than the mapping. Drive
-one viewpoint, recover the entry per scanline the way this measurement did, and
-read the sequence down the lines instead of keyed by distance. The question to
-answer is what makes the walk step to the next entry, since that is the rule, and
-a per-distance table provably is not.
+**Where to start next, in order.**
+
+1. Read the command out of the part's program. Every attempt so far has inferred
+   the rule from answers, and three inferences have now failed. The instruction
+   stream is the only source that cannot be confounded by a reading error, and
+   `microcode.py` already loads it.
+2. Redo the intersection with the scale read through the matrix, since no
+   measurement to date has actually done that. Only then is a conflict count
+   evidence about the part rather than about the reading.
+3. Take the reciprocal from the part directly. `$10` answers one, and if `$0a`
+   uses the same unit then its quantisation is already available without solving
+   anything.
+
+Only the diagonal viewpoints, `M` of `$7fff` on both entries, were used above.
+That is 4,179 of the recording and it makes the scale recoverable, but it also
+means every number here describes one corner of the input space.
 
 ## 19. The demo does run, and what is missing is the ground
 
