@@ -35,10 +35,10 @@ static void cb_video(const void *data, unsigned width, unsigned height, size_t p
     if (!data || !texture) {
         return;
     }
-    SDL_UpdateTexture(texture, NULL, data, (int)pitch);
+    SDL_Rect delivered = {0, 0, (int)width, (int)height};
+    SDL_UpdateTexture(texture, &delivered, data, (int)pitch);
     SDL_RenderClear(renderer);
-    SDL_Rect from = {0, 0, (int)width, (int)height};
-    SDL_RenderCopy(renderer, texture, &from, NULL);
+    SDL_RenderCopy(renderer, texture, &delivered, NULL);
     SDL_RenderPresent(renderer);
 }
 
