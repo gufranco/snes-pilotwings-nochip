@@ -1556,3 +1556,61 @@ fallback and still answer wrongly. `$06` alone is 31.7% of every call the game
 makes. The demo therefore still goes dark after its first fade: the picture
 needs those, and the two corrections here were what stood between the emulation
 and being exercised at all.
+
+## 17. A lookup costs more than the arithmetic it replaces
+
+**Measured 2026-09-03 by running each command in a processor model and counting
+cycles.** This reverses the assumption the cartridge is built on.
+
+| how it is answered | command | cycles |
+|---|---|---:|
+| computed | `$00` | 956 |
+| computed | `$04` | 1,325 |
+| computed | `$08` | 1,469 |
+| looked up | `$18`, 48 rows | 3,928 |
+| looked up | `$10`, 2,498 rows | 5,903 |
+| looked up | `$06`, 75,278 rows | 10,273 |
+
+The smallest table in the cartridge holds forty eight rows and still costs four
+times what computing a product from scratch does.
+
+**Why.** The table is searched rather than indexed, and each step of the search
+calls `lut_key_at`, which multiplies the row number by the key width using a
+shift and add loop of up to sixteen passes, then turns a thirty two bit flat
+offset into a bank and an address. A lookup is a dozen or more of those. Reading
+a byte of ROM costs eight cycles; working out which byte to read costs six
+thousand.
+
+**What it means for the demo.** `$06` runs 228,963 times across the recording, at
+10,273 cycles each, which is 2.35 billion. The whole demo is roughly 18,000
+frames of 59,561 cycles, which is 1.07 billion. The table approach asks for more
+than twice the entire budget before the game does anything else.
+
+**The cheap fix, when performance comes up.** Bisect over byte offsets rather
+than row numbers. The multiply then disappears from the inner loop entirely,
+because halving an offset is a shift. That one change speeds every command at
+once, and nothing else about the design has to move.
+
+## 18. What `$0a` still needs
+
+Every command except `$0a` now answers exactly: 400 of 400 against the recording.
+`$0a` cannot be tabulated, measured rather than assumed: 6,980 distinct keys of
+up to 764 answer words is 10.18 MiB, against 715 KiB free in a LoROM cartridge's
+whole address space. So it is computed, and what stands in the way is one rule.
+
+**What is settled.** The reciprocal a scanline uses is a function of its distance
+from the horizon and nothing else. Twenty four calls across different viewpoints
+were sampled and every distance that recurred used the same table entry both
+times, with no conflicts. An earlier note here said the opposite; that came from
+poking the horizon without the constants that go with it, which is a state the
+part is never in.
+
+**What is not.** The shift that goes with the entry. The table covers a single
+octave, so a distance outside it is folded in and the fold changes the shift.
+Deriving the fold from the distance by counting doublings reproduces 8% of
+scanlines, and solving it from the recorded answers reproduces 17%, so neither is
+the rule the part uses.
+
+Both attempts are recorded here rather than left out, because the next attempt
+should start by measuring the fold directly, the way the reciprocal was measured,
+instead of deriving it a third time.
