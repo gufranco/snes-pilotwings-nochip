@@ -12,6 +12,7 @@ STUBS = {
     "dsp_read": 0x0F8200,
     "dsp_status": 0x0F8300,
     "dsp_ignore": 0x0F8400,
+    "dsp_stream": 0x0F8500,
 }
 
 
@@ -239,13 +240,60 @@ class MainTest(unittest.TestCase):
         self.assertEqual(code, 1)
 
 
+class RedirectTest(unittest.TestCase):
+    def test_a_push_of_the_part_s_bank_names_this_project_s(self) -> None:
+        rom = _image(bytes([patch.PEA, patch.LAST_BANK, 0x00, 0xAB]))
+
+        out, moved = patch.redirected(rom)
+
+        self.assertEqual((out[1], moved), (patch.WINDOW_BANK, 1))
+
+    def test_a_push_of_another_bank_is_left_alone(self) -> None:
+        rom = _image(bytes([patch.PEA, 0x7E, 0x00, 0xAB]))
+
+        out, moved = patch.redirected(rom)
+
+        self.assertEqual((out[1], moved), (0x7E, 0))
+
+    def test_every_push_is_moved(self) -> None:
+        one = bytes([patch.PEA, patch.LAST_BANK, 0x00])
+
+        _, moved = patch.redirected(_image(one + one + one))
+
+        self.assertEqual(moved, 3)
+
+
+class SpannedTest(unittest.TestCase):
+    def test_the_run_starts_with_a_call(self) -> None:
+        out = patch.spanned(_image(), STUBS)
+
+        start = patch.SPANS[0][0]
+        self.assertEqual(out[start], patch.JSL)
+
+    def test_the_rest_of_the_run_does_nothing(self) -> None:
+        out = patch.spanned(_image(), STUBS)
+
+        start, end, _ = patch.SPANS[0]
+        self.assertEqual(set(out[start + patch.SITE_BYTES : end]), {patch.NOP})
+
+    def test_the_byte_after_the_run_is_untouched(self) -> None:
+        rom = bytearray(_image())
+        end = patch.SPANS[0][1]
+        rom[end] = 0xAB
+
+        out = patch.spanned(bytes(rom), STUBS)
+
+        self.assertEqual(out[end], 0xAB)
+
+
 class BuildTest(unittest.TestCase):
     def test_it_writes_a_patched_image(self) -> None:
         into = ROOT / "build" / "patch-test"
         into.mkdir(parents=True, exist_ok=True)
         (into / "one.sfc").write_bytes(_cartridge(bytes([patch.STA_LONG, 0x00, 0x80, 0x3F])))
         (into / "symbols.txt").write_text(
-            "dsp_write 0F8100\ndsp_read 0F8200\ndsp_status 0F8300\ndsp_ignore 0F8400\n"
+            "dsp_write 0F8100\ndsp_read 0F8200\ndsp_status 0F8300\n"
+            "dsp_ignore 0F8400\ndsp_stream 0F8500\n"
         )
 
         code = patch.main(

@@ -626,3 +626,90 @@ dsp_port_reset:
     sta.l !PORT_READY
     plp
     rtl
+
+; ---------------------------------------------------------------------------
+; The $0a stream, in place of the loop that read it out of the port.
+;
+; This is the one exchange the game does not make through an instruction that
+; names the part's address. It sets the data bank to $3F and then reads through
+; three byte absolute instructions, "lda $8000", polling "bit $c000" between
+; groups. A three byte instruction has no room for a four byte call, so there is
+; nowhere to put a jsl and nothing for the site scanner to find.
+;
+; What there is room for is the loop as a whole. From "ldx #$0000" through the
+; last of the four writes that close the exchange is 62 bytes, which is fifteen
+; times what a call needs, so patch.py replaces the span rather than any
+; instruction in it.
+;
+; The loop it replaces read 704 words in 176 turns of four, putting two into the
+; buffer at $0420 and two into the one at $0700. This writes the same 704 words
+; to the same two places. They are nought, because that is what $0a answers
+; until its arithmetic is read: entry 2f in OPEN-QUESTIONS has the measurement
+; that rules a table out for it.
+;
+; X and Y are left as the original loop left them, 704 and nought, because the
+; code after the span is the game's and may still be using them.
+; ---------------------------------------------------------------------------
+!STREAM_TURNS = $00B0           ; 176 groups of four words, which is 704
+!STREAM_ONE   = $0420           ; where the first two of each group went
+!STREAM_TWO   = $0700           ; and the other two
+
+dsp_stream:
+    php
+    phb
+    rep #$30
+
+    lda #$0000
+    pha
+    plb
+    plb
+
+    ldx #$0000
+    ldy #!STREAM_TURNS
+    lda #$0000
+
+-
+    sta.w !STREAM_ONE,x
+    sta.w !STREAM_ONE+2,x
+    sta.w !STREAM_TWO,x
+    sta.w !STREAM_TWO+2,x
+    inx
+    inx
+    inx
+    inx
+    dey
+    bne -
+
+    plb
+    plp
+    rtl
+
+; ---------------------------------------------------------------------------
+; The window the game reaches when its data bank is redirected.
+;
+; Twelve places in the game set the data bank to $3F with "pea $003F" and then
+; reach the part through three byte absolute instructions: "sta $8000" to send,
+; "lda $8000" to receive, "bit $c000" to wait. None of those can be replaced by
+; a call, because a call is four bytes and they are three, and none of them
+; names the part's address in a way a scanner can recognise.
+;
+; What can be replaced is the "pea $003F", which is three bytes and names the
+; bank outright. patch.py rewrites it to name this bank instead, and then every
+; one of those instructions lands here without any of them being touched.
+;
+; What lands here has to satisfy the wait first. The game polls the status until
+; its top bit is set, so a byte with that bit clear is an endless loop, and
+; that is exactly what killed it: at frame 935 it entered the poll at $00CAD7
+; and never came out. This answers with the top bit set at every address the
+; poll can name, in both halves of a word, so the wait ends whichever width the
+; accumulator happens to be.
+; ---------------------------------------------------------------------------
+!WINDOW_BANK = $11
+
+org (!WINDOW_BANK<<16)|$C000
+dsp_window_status:
+    fillbyte $80 : fill $2000
+
+org (!WINDOW_BANK<<16)|$8000
+dsp_window_data:
+    fillbyte $00 : fill $100

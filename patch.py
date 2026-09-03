@@ -162,11 +162,80 @@ def checksummed(rom: bytes) -> bytes:
     return bytes(out)
 
 
+NOP = 0xEA
+
+PEA = 0xF4
+"""The instruction that pushes a bank number for the one after it to pull.
+
+"pea $003F" then "plb" is how this game points its data bank at the part, and
+it is the only three byte thing in the whole arrangement that names the part in
+a way anything can recognise. Rewriting the bank it names moves every absolute
+access that follows, without touching any of them.
+"""
+
+WINDOW_BANK = 0x11
+"""The bank those accesses are sent to instead.
+
+It has to be one this project fills, because the accesses land on whatever is
+there: a status poll waits for a byte with its top bit set and spins forever on
+one without. asm/dsp1-port.asm puts that byte at every address the poll can
+name.
+"""
+
+SPANS = ((0x04AD1, 0x04B0F, "dsp_stream"),)
+"""Runs of the game's own code replaced whole, rather than one instruction each.
+
+The instruction-for-instruction replacement above works because a long store or
+load and a long call are both four bytes. Some of what this cartridge does to
+reach the part is not a long instruction at all: it sets the data bank to $3F
+and uses three byte absolute addressing, which has no room for a call and
+nothing in the operand for a scanner to recognise.
+
+What it does have is length. $04AD1 to $04B0E is the loop that reads $0a's 704
+word answer, 62 bytes of it, and a call needs four. So the loop is replaced as a
+whole and the rest filled with instructions that do nothing.
+
+Five instructions inside this one span account for 12,224,960 of the 15,673,471
+accesses the recording holds, which is 78% of everything the cartridge ever
+asked the part.
+"""
+
+
+def spanned(rom: bytes, stubs: Mapping[str, int]) -> bytes:
+    """The image with each named run replaced by a call to its routine."""
+    out = bytearray(rom)
+    for start, end, stub in SPANS:
+        target = stubs[stub]
+        out[start] = JSL
+        out[start + 1] = target & 0xFF
+        out[start + 2] = target >> 8 & 0xFF
+        out[start + 3] = target >> 16 & 0xFF
+        for at in range(start + SITE_BYTES, end):
+            out[at] = NOP
+    return bytes(out)
+
+
+def redirected(rom: bytes) -> tuple[bytes, int]:
+    """The image with every push of the part's bank naming this project's instead."""
+    out = bytearray(rom)
+    want = bytes([PEA, LAST_BANK, 0x00])
+    moved = 0
+    at = 0
+    while True:
+        at = out.find(want, at)
+        if at < 0:
+            break
+        out[at + 1] = WINDOW_BANK
+        moved += 1
+        at += 3
+    return bytes(out), moved
+
+
 def report(where: Mapping[int, str]) -> list[str]:
     counts: dict[str, int] = {}
     for stub in where.values():
         counts[stub] = counts.get(stub, 0) + 1
-    lines = [f"{len(where)} sites replaced"]
+    lines = [f"{len(where)} sites replaced, {len(SPANS)} runs replaced whole"]
     for stub in sorted(counts):
         lines.append(f"  {stub:12} {counts[stub]:4}")
     return lines
@@ -189,7 +258,11 @@ def main(argv: Sequence[str] = (), say: Any = print) -> int:
     if not where:
         say("no sites found: this image does not reach the part")
         return 1
-    out = applied(rom, where, symbols(Path(argv[1])))
+    stubs = symbols(Path(argv[1]))
+    out = applied(rom, where, stubs)
+    out = spanned(out, stubs)
+    out, moved = redirected(out)
+    say(f"{moved} data bank pushes redirected")
     out = declared(out, fast="--fast" in argv)
     out = checksummed(out)
     Path(argv[2]).write_bytes(out)
