@@ -242,6 +242,17 @@ ordinary absolute stores. Measured against a recording, the long form carries
 62% of the writes and 8% of the reads. Anything that reports where the cartridge
 reaches the part reads both forms, and [`commands.py`](commands.py) is what does.
 
+A store into the window is not a store the port sees. Those hot paths reach the
+part through a bank this project fills with ROM, so every write is discarded and
+every read comes back nought. Three commands are asked for that way, and one of
+them, `$02`, deposits the whole of what `$0a` reads to draw the ground. A
+replacement that answers `$02` perfectly and never has it asked is
+indistinguishable, from the inside, from one that answers it wrongly. The only
+thing that told the two apart was dumping the cartridge's own work RAM and
+finding the argument buffer still holding the game's fill. Anything that claims
+a command is answered checks that the port was asked, not only that the answer
+is right.
+
 The same search also reports bytes that were never instructions. Twenty nine of
 the 122 long-form matches in the USA image sit at 29 different addresses, one
 each, scattered across banks `$30` to `$3e`. A driver does not have that shape.
@@ -263,6 +274,12 @@ first, and this one did not.
   number.
 - **A figure in the readme is one somebody ran.** When a claim is checked and found stale, the claim
   was the defect, never the check.
+- **A run replaced whole is bounded by its bytes, not by a site number.** A recording names a site by
+  the program counter *after* the store, so a run built from site numbers is off by one at both ends,
+  and one byte left over is an opcode: `$80` is a branch and `$09` is an or. Dump the bytes, find the
+  instruction boundaries, and never begin a run at a `pea` that sets the data bank, because the `plb`
+  that collects its byte can be a hundred bytes further on and skipping the push unbalances the
+  stack.
 
 ## Bound the domain before building a table, never after
 

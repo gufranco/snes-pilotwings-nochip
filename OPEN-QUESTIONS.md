@@ -1916,3 +1916,190 @@ With that, `$0a` is arithmetic the cartridge can run: one normalise, one
 reciprocal, two multiplies and two shifts per scanline, with no table beyond the
 reciprocal itself. The storage question raised earlier is moot, since nothing
 large needs storing.
+
+## 23. `$0a` closed, and the ground it draws
+
+**Measured 2026-09-03. Every number below came from driving the part or from
+running the built cartridge, never from reading either.**
+
+### Both loose ends from entry 22 are shut
+
+The saturation path and the distance expression were the two things entry 22 left
+open. Both are now measured rather than argued about.
+
+**`$0077` has three exits, not one.** It normalises, works out
+`over = exponent - count - 15`, and then:
+
+| `over` | what it does | where |
+|---|---|---|
+| below nought | shifts right by `-over`, by multiplying by a power of two | `$07e` |
+| exactly nought | hands the normalised value back untouched | `$080`, `$086` |
+| above nought | clamps to `$7fff`, or `$8001` when negative | `$083`, `$085` |
+
+`$8001` rather than `$8000`: the part loads that constant, so the most negative
+scale it can answer is minus 32,767. Across 43,440 answer words the exact exit
+fired 121 times and the clamp 132, so neither is a corner nobody reaches.
+
+The shift is a multiply by a word out of the part's own data ROM. Read off the
+part: `$022` through `$030` hold 1, 2, 4 up to 16,384, and `$000` through `$021`
+are all nought. So a shift of sixteen or more is a multiply by nought rather than
+a sign fill, and every shift below that is an arithmetic shift right.
+
+**The distance is not `argument + 1 + line + horizon`.** It is
+`((step * line) >> 15) + horizon`, with `step` a seventh word `$02` deposits at
+`RAM[$49]` and `line` starting at the argument itself. Entry 22 read the
+magnitude as one less than the naive expression, and that off-by-one was the
+fractional walk: the step is 32,032 rather than 32,768, so the distance repeats a
+value roughly every fourteen scanlines. That repeat is the one thing entry 21
+could not explain, and nothing was wrong with the reciprocal at all.
+
+### The reciprocal is a table after all, over the right domain
+
+Entry 15 concluded that a reciprocal table keyed on distance could not be right,
+because the same distance reached from different horizons gave different values.
+That conclusion is withdrawn. The key is not the distance: it is the distance
+**after `$003a` has normalised it**, and the exponent that normalise leaves is
+carried separately. Keyed that way it is an exact function, checked on every
+scanline of 60 argument sets.
+
+The domain comes from the code rather than from a recording. `$003a` doubles
+while the top two bits agree, so what it leaves always has a magnitude between
+`$4000` and `$7fff`. That is 16,384 values, one bank, and no input can miss it.
+The sign is not stored either: `$00d3` strips it, refines the magnitude, and
+negates on the way out.
+
+### The whole chain, as the cartridge now runs it
+
+Per scanline: one multiply for the distance, one normalise, one table read, one
+multiply and one shift for each of two scales, and four multiplies for the four
+answer words. `raster.py` is that arithmetic in Python and
+`asm/dsp1-ground.asm` is the same thing in 65816.
+
+**43,440 of 43,440 answer words exact**, on 60 `$02` and `$0a` pairs spread
+across all three recordings, against the part and against the recordings both.
+
+## 24. Three commands never reached the port at all
+
+**Found 2026-09-03, by dumping the cartridge's own work RAM rather than by
+reading the code.** This is why the ground was missing, and it had nothing to do
+with `$0a`'s arithmetic.
+
+### What the dump showed
+
+With `$0a` computing exactly, the ground was still blank. `!CARRY_02`, where the
+port keeps `$02`'s arguments, held `$5555` on every frame: the game's own fill,
+never written. So `$02` had never once completed through the port.
+
+### Why
+
+The game reaches the part two ways. Most sites are a four byte long store, which
+`patch.py` replaces one for one with a call. Twelve places instead push the data
+bank and use three byte absolute instructions, which have no room for a call and
+nothing in the operand a scanner can recognise. Those go to the window at bank
+`$7D`, which is ROM: every store is discarded and every read comes back nought.
+
+Three commands are asked for that way, and 44,474 of the recording's calls go
+through it:
+
+| command | where | what was lost |
+|---|---|---|
+| `$02` | `$00:CB4E` | the ten words `$0a` reads, and four the game turns into its own state |
+| `$0a` | `$00:CAA8` | the line the stream starts at |
+| `$10` | `$00:CB17` | already replaced, by `dsp_route_10` |
+
+`$02` is the one that mattered. The game computed its own state from four
+zeroes, and one of those zeroes is what `$0a`'s argument is derived from, so the
+ground had no chance of being right however exact its arithmetic was.
+
+### The fix, and the two boundaries that had to be right
+
+Both runs are now replaced whole, the way `$10` already was. Two details cost a
+black screen each before they were read properly:
+
+**Neither run may start at the `pea` that sets the data bank.** On the path the
+demo takes, the `pea` before `$02` at `$00:CB4A` is jumped over by a `bra` at
+`$00:CB3F`, so the byte the closing `plb` at `$00:CBB2` collects was pushed by
+the `pea` before the `$10` run. A run that swallowed a `pea` leaves the stack one
+byte out.
+
+**Both boundaries were off by one on the first attempt.** The recording names the
+site by the counter *after* the store, so `$00:CAAF` is the `rep` following the
+command byte rather than the store itself. Ending a run one byte early leaves the
+high byte of an address behind as an opcode: `$80` is a branch, and `$09` is an
+or. Reading the bytes rather than the site numbers settles it.
+
+### What the cartridge now writes
+
+Its own 65816 code, checked against the part on the arguments the running game
+supplied: **704 of 704 words exact**, on two frames sampled minutes apart. The
+ground draws, and the runway and the island sit where the retail cartridge puts
+them.
+
+## 25. What it costs, which is the next thing to work on
+
+**Measured 2026-09-03 by watching how far the demo advances per emulated frame.**
+
+`$02`'s arguments move by one per game frame. In the converted cartridge they
+move once every twelve to fifteen frames, so the flight runs at roughly a
+thirteenth of speed. Nothing is stalled and nothing is dropped: the console
+delivers every frame, and the game's own loop is waiting on the stream.
+
+Where it goes, per scanline: seven signed multiplies through `op_00_body`, two
+normalise loops of up to fifteen doublings, and two shift loops of up to fifteen
+places. `op_00_body` is four hardware multiplies with an eight cycle wait each,
+so the multiplies alone are the larger half.
+
+Three things would take it back, in the order they are worth doing:
+
+1. **The distance multiply is an accumulator.** `(step * line) >> 15` with `line`
+   stepping by one is a running 32-bit sum incremented by `step`, exactly equal
+   and with no multiply at all. One of seven.
+2. **`op_00_body` is general where this needs one shape.** It negates both
+   operands, multiplies, negates the product and shifts. A version that keeps the
+   sign in a flag and skips the 32-bit negate would save most of its overhead.
+3. **The eight cycle wait is spent on `nop`s.** Three of the four partial products
+   could set up the next multiply inside that wait instead.
+
+None of it changes an answer, so all of it can be checked against
+`raster.retail.test.py`, which is the point of having the arithmetic pinned
+before optimising it.
+
+## 26. The status register has two halves, and only one of them was right
+
+**Found 2026-09-03 by running the demo four times longer than before and watching
+the port's own counters stop.**
+
+### What it looked like
+
+Two minutes into the flight the game stopped issuing commands. The port's
+counters froze at 205 writes, 147 completed commands and 34 reads, and stayed
+there for another thirty seconds of play while the count of status polls climbed
+by ten thousand a second. Nothing crashed and every frame still rendered.
+
+### What it was
+
+`dsp_status` answered `$0080` to a sixteen bit read. The game polls at `$00:a196`
+with a sixteen bit accumulator and branches on the sign, so what that branch reads
+is the *top* half, and the top half was nought. The poll never ended.
+
+A sixteen bit load of `$3fc000` takes two bytes, `$c000` and `$c001`. The
+recording holds 1,482,010 reads of the first and 1,385,726 of the second, and
+every one of them answered `$80`, so the value a wide read gives back is `$8080`.
+
+### Why nothing caught it earlier
+
+The eight bit path was right the whole time, and it is the one every earlier
+check exercised. The window at bank `$7d` was right too, because it is filled a
+byte at a time. Only the stub had the constant, only the sixteen bit path read
+it, and only a run long enough to reach that particular poll took it.
+
+The measurement that produced the constant said "the status answered `$80` on
+every one of 2,867,736 reads", which is true and was read as though a read were a
+word. It is a byte. A figure about bytes carried into a place that wants a word
+is not a wrong figure, it is a figure used at the wrong width.
+
+### After the fix
+
+The demo runs on: `$02`'s arguments keep moving through the flight, the plane
+turns and climbs, and the cartridge's own 704 words stay exact against the part
+on every frame sampled.

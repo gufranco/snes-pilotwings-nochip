@@ -26,11 +26,11 @@ You supply the retail dumps. Nothing here contains game data, and nothing ever w
 
 ## Status
 
-The replacement answers. Fifteen of the sixteen commands that return anything
-come back with exactly what the part returned, on every question the three
-recordings hold. The sixteenth is named below and in
-[`OPEN-QUESTIONS.md`](OPEN-QUESTIONS.md); nothing that is not built is implied to
-be.
+The replacement answers, and the demo draws its ground. Every one of the sixteen
+commands that return anything comes back with exactly what the part returned, on
+every question the three recordings hold. What is left is speed, named below and
+in [`OPEN-QUESTIONS.md`](OPEN-QUESTIONS.md); nothing that is not built is implied
+to be.
 
 | part | state |
 |------|-------|
@@ -41,17 +41,19 @@ be.
 | whether an answer can be stored instead of computed | measured, per command |
 | how many argument sets each command takes | measured, 73,341 across three runs |
 | which tables the part computes from | measured, four of them, 1,282 bytes, rebuilt exactly |
-| the three tables no formula reproduces | taken from the part, 393,216 bytes, exact |
+| the three tables no formula reproduces | taken from the part, 294,912 bytes, exact |
+| `$02`'s derived state, which is everything `$0a` reads | three tables from the part, 59,686 bytes, no key carrying two answers across all 6,980 argument sets |
 | `$00`, `$08` and `$04` as 65816 arithmetic | exact against the part, 400 random argument sets each |
 | the table of answers | built, 15 commands, 3,014,801 bytes |
 | `$13` and `$18` | complete over their whole domain, driven out of the part, so no key can miss |
 | the lookup, in 65816 | exact on every recorded question, all three regions |
 | the fallback, in 65816 | answers every command, including keys no recording holds, without looping |
-| `$0a` | read out of the part stage by stage and now specified as arithmetic, not yet written in 65816. See OPEN-QUESTIONS section 22 |
-| the demo | flies. Everything renders except the ground, which is `$0a` |
+| `$0a` | written in 65816, exact: 43,440 of 43,440 answer words against the part, on 60 argument sets across all three recordings |
+| the three commands the game asks for through its redirected window | routed, so `$02`'s state and `$0a`'s starting line reach the cartridge |
+| the demo | flies, and draws its ground. The cartridge's own 704 words match the part on the arguments the running game supplies, on every frame sampled through six thousand |
+| the instrument panel | still missing, and not `$0a`. Nothing has been measured about it yet |
 | whether the image has to grow | yes, to 3.75 MB, which is inside what a low cartridge addresses |
-| speed | about seven times a whole frame per frame of calls, against 6% for the part |
-| the finished cartridge | not started: the game's own calls are not yet routed here |
+| speed | the flight runs at about a thirteenth of speed. Nothing stalls; see OPEN-QUESTIONS section 25 for where the time goes |
 
 ### How much of the game it covers
 
@@ -134,9 +136,13 @@ image is 121 banks, 3,964,928 bytes, with 5 banks still spare:
 
 | what | banks |
 |---|---|
-| the game as it ships, with the replacement's code in the space above it | `$00`-`$0F` |
-| the answers | `$10`-`$6C` |
-| the three tables taken from the part | `$6D`-`$78` |
+| the game as it ships | `$00`-`$0F` |
+| the replacement's own code | `$10` |
+| the sine and cosine taken from the part | `$11`-`$18` |
+| the answers | `$19`-`$6F` |
+| the state `$02` leaves behind, which is what `$0a` reads | `$70`-`$72` |
+| the reciprocal taken from the part | `$73` |
+| the window the game's redirected accesses land in | `$7D` |
 
 ```bash
 python3 tools/identify.py
@@ -593,6 +599,10 @@ Analysis modules in Python, each with its tests beside it.
 | [`tabulate.py`](tabulate.py) | whether a command's answers can be stored instead of computed |
 | [`microcode.py`](microcode.py) | the part's own dispatch tree, walked for all 256 command bytes |
 | [`derived.py`](derived.py) | drives the part to produce the three tables no formula reproduces |
+| [`raster.py`](raster.py) | what `$0a` computes, read out of the part stage by stage. The reference the assembly mirrors |
+| [`parameter.py`](parameter.py) | how the state `$02` leaves behind splits into tables smaller than the whole |
+| [`state02.py`](state02.py) | packs one of those tables the way the cartridge searches it |
+| [`state02build.py`](state02build.py) | drives the part across every `$02` argument set and writes all three |
 | [`routines.py`](routines.py) | runs the assembled 65816 against the part, and fails when they disagree |
 | [`lutbuild.py`](lutbuild.py) | builds the table of recorded answers, and says what it left out |
 | [`doctor.py`](doctor.py) | what is actually on this machine, the whole chain, printed for a bug report |
@@ -602,6 +612,9 @@ Analysis modules in Python, each with its tests beside it.
 | [`asm/nochip.asm`](asm/nochip.asm) | the whole replacement, and where each piece sits in the cartridge |
 | [`asm/dsp1-answer.asm`](asm/dsp1-answer.asm) | the lookup: the index, the binary search, the answer copy |
 | [`asm/dsp1-fallback.asm`](asm/dsp1-fallback.asm) | what answers when the lookup finds no row |
+| [`asm/dsp1-port.asm`](asm/dsp1-port.asm) | the stubs the game's own accesses become, and the runs replaced whole |
+| [`asm/dsp1-ground.asm`](asm/dsp1-ground.asm) | `$0a`, the command that draws the ground, and the three tables it reads |
+| [`asm/dsp1-window.asm`](asm/dsp1-window.asm) | the bank the game's redirected accesses land in |
 | [`asm/dsp1-ops.asm`](asm/dsp1-ops.asm) | the three commands whose arithmetic is known exactly |
 | [`asm/dsp1-tables.asm`](asm/dsp1-tables.asm) | the four tables the part's own formulas rebuild, entry for entry |
 | [`asm/dsp1-derived.asm`](asm/dsp1-derived.asm) | where the three tables taken from the part are placed |
