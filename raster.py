@@ -18,16 +18,23 @@ and then sends four words, each the high half of a product against the matrix:
 A against the first entry, B against the second, A against the third, B against
 the fourth.
 
-Why the reciprocal arrives as a table here rather than as a formula. The part
-holds `2**20 / x` for x from 32 to 64 in quarter steps, based at word 101, which
-is the value it keeps in `RAM[$00]`. Which entry a distance selects is decided
-by a normalise loop whose rule did not survive being fitted: measured against
-the part, the selected divisor is one less than the distance over part of the
-range and equal to it over another, and folding across an octave shifts it again.
-Rather than ship a rule that fits most distances and silently misses the rest,
-the mapping is taken from the part per distance, which is the same method
-`complete.py` uses for `$13` and `$18` and for the same reason. It also matches
-what the cartridge can afford: a table indexed by distance is one read.
+Why the reciprocal is passed in rather than worked out here. The part holds
+`2**20 / x` for x from 32 to 64 in quarter steps, based at word 101, which is
+the value it keeps in `RAM[$00]`. Which entry a line selects is decided by a
+normalise loop, and that loop is the one part of this command still not read.
+
+It is not a function of the distance. Holding the distance at -46 and changing
+only the horizon gives -35 at a horizon of 53, 60 and 80, then -34 at 40 and a
+different second value again at 120. So the same distance reached from a
+different starting line takes a different entry, and a table keyed on distance
+cannot be right. Solving one from the recording bears that out: across the calls
+that use it, 30 distances of 192 are contradicted outright, meaning no single
+value reproduces every line that asks for them.
+
+That is why this takes the mapping as an argument instead of building one. A
+caller with a correct mapping gets exact answers, and a caller with a mapping
+keyed on the wrong thing gets `shortfall` telling it so, rather than a routine
+that quietly rounds a wrong answer into a plausible one.
 
 What the earlier operand decode got wrong, and how it was caught. That reading
 put the matrix at `RAM[$bf]` and its neighbours. Driving `$02` on its own and
@@ -76,6 +83,12 @@ def scales(
     A line level with the horizon has none, because the distance it would divide
     by is nought. The part is never asked for one, and neither is this. A
     distance the part was never asked about is also nothing rather than a guess.
+
+    The one taken away at the end is taken away whichever side of the horizon the
+    line falls, and that is the whole of the sign handling. Reading it as an
+    addition whose sign followed the line fitted every distance above the horizon
+    and none below it, which is how the mistake showed up: the sky agreed and the
+    ground did not.
     """
     entry = reciprocal.get(distance)
     if distance == 0 or entry is None:
@@ -86,9 +99,11 @@ def scales(
     if first < 0 or second < 0:
         return None
     product = state[FIRST_MANTISSA] * value
-    near = (product >> first) + 1
-    far = ((product * state[SECOND_MANTISSA]) >> second) + 1
-    return (near, far) if distance > 0 else (-near, -far)
+    whole = product >> first
+    carried = (product * state[SECOND_MANTISSA]) >> second
+    if distance > 0:
+        return whole - 1, carried - 1
+    return -whole - 1, -carried - 1
 
 
 def answer(

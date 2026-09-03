@@ -60,11 +60,17 @@ class Scales(unittest.TestCase):
             raster.scales(lookup(), state(), -36), raster.scales(lookup(), state(), -35)
         )
 
-    def test_a_line_below_the_horizon_flips_both_signs(self) -> None:
+    def test_a_line_below_the_horizon_is_not_a_mirror_of_one_above(self) -> None:
         below = raster.scales(lookup(), state(), 50)
         above = raster.scales(lookup(), state(), -50)
         assert below is not None and above is not None
-        self.assertEqual(below, (-above[0], -above[1]))
+        self.assertNotEqual(below, (-above[0], -above[1]))
+
+    def test_the_pair_below_the_horizon_is_two_short_of_the_mirror(self) -> None:
+        below = raster.scales(lookup(), state(), 50)
+        above = raster.scales(lookup(), state(), -50)
+        assert below is not None and above is not None
+        self.assertEqual(below, (-above[0] - 2, -above[1] - 2))
 
     def test_a_shift_from_folding_reaches_both_values(self) -> None:
         flat = raster.scales({-46: (23302, 0)}, state(), -46)

@@ -1442,3 +1442,69 @@ second scale differs there. The count is reported rather than smoothed over:
 the part confirms it: `$01` and `$11` write four words each and touch none of
 them. So a correct `$0a` in the cartridge is worth nothing until `$02` is
 decoded, and `$02` is the next thing to do rather than a later one.
+
+## 15. `$02` solved, and where `$0a` still stops
+
+**Measured 2026-09-03.**
+
+### `$02` is trigonometry, and it tabulates in 32 KiB
+
+Swept one argument at a time against the part, every one of its outputs has a
+single owner:
+
+| argument | what it sets |
+|---|---|
+| 0 and 1 | two answer words, passed through |
+| 2 and 6 | the first mantissa and exponent |
+| 5 | the matrix |
+| 6 | the horizon, and the second mantissa and exponent |
+| 3 and 4 | nothing. Neither ever varies |
+
+**Argument 5 is an angle.** The matrix it writes is `32767 cos` and `32767 sin`
+of a full turn in 65,536 steps, matching to within one unit at every angle
+sampled, and the four entries carry two numbers because the cosine is written
+twice and the sine twice, once negated.
+
+**Argument 6 is a pitch.** The horizon it sets is the fourth argument against
+the cosine of it: at a pitch of 8192, which is an eighth of a turn, the horizon
+is 181 against a predicted 181.
+
+**Arguments 3 and 4 never vary.** Across all three recordings argument 3 is
+always 32 and argument 4 always 256, so neither is a key. `parameter.fixed`
+re-derives that from whatever run it is given rather than trusting it.
+
+**The split is not a hopeful reading.** `parameter.gathered` refuses a key that
+carries two different answers, and driven across all 6,980 distinct argument
+sets it refused none. That is the whole domain of the recordings, not a sample.
+
+**What it costs.** 1,193 rows keyed on argument 6, 3,302 on argument 5, 3,033 on
+the pair, which is 31.7 KiB against 123 KiB for one flat table. Built from the
+European recording it answers every `$02` call in the American and Japanese ones,
+all three at 100%. That is three recordings of one attract sequence agreeing with
+each other, so it covers the demo and says nothing about a player.
+
+**`$02` can be driven in one pass.** It leaves the same state whether reached by
+replaying the recording up to it or by driving it directly, and driving it twice
+with the same arguments gives the same state both times. So the whole extraction
+takes eight seconds rather than a day.
+
+### `$0a`'s sign rule was wrong, and the fix is uniform
+
+Both scales end by taking one away, and that one is taken away on both sides of
+the horizon. Reading it as an addition whose sign followed the line fitted every
+distance above the horizon and none below it, which is exactly how it showed up:
+the sky agreed and the ground did not. Correcting it widened the distances that
+could be solved from 50 to 195.
+
+### Where it stops
+
+The normalise loop is not a function of the distance. Held at -46 and reached
+from a horizon of 53, 60 and 80 it gives -35; from 40 it gives -34; from 120 the
+second value changes again. Solving a table from the recording agrees: 30
+distances of 192 are contradicted, meaning no single value reproduces every line
+that asks for them.
+
+So a reciprocal table keyed on distance cannot be right, and `raster.py` takes
+the mapping as an argument rather than building a wrong one. The demo asks for
+only 196 distinct distances, from -50 to 145, which covers 100% of its scanlines,
+so whatever the real key turns out to be the table stays small.
