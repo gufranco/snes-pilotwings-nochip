@@ -28,10 +28,12 @@ org $108000
 !PORTRAM = $7FDC00              ; measured free: the game never wrote $7FDB76
                                 ; through $7FFBFF across a full run of the demo
 
+
 incsrc "dsp1-ops.asm"
 incsrc "dsp1-answer.asm"
 incsrc "dsp1-fallback.asm"
 incsrc "dsp1-port.asm"
+incsrc "dsp1-routes.asm"
 code_end:
 
 incsrc "dsp1-tables.asm"
@@ -51,3 +53,7 @@ print "SYM dsp_ignore ", hex(dsp_ignore)
 print "SYM dsp_port_reset ", hex(dsp_port_reset)
 print "SYM dsp_stream ", hex(dsp_stream)
 print "SYM dsp_route_10 ", hex(dsp_route_10)
+print "SYM route_0e ", hex(route_0e)
+print "SYM route_02 ", hex(route_02)
+print "SYM route_00_d03f ", hex(route_00_d03f)
+print "SYM route_00_d507 ", hex(route_00_d507)

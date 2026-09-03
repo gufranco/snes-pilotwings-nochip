@@ -183,8 +183,12 @@ name.
 """
 
 SPANS = (
+    (0x0004E, 0x00070, "route_0e"),
     (0x04AD1, 0x04B0F, "dsp_stream"),
     (0x04B17, 0x04B39, "dsp_route_10"),
+    (0x04B4A, 0x04BB3, "route_02"),
+    (0x05055, 0x05068, "route_00_d03f"),
+    (0x05522, 0x0554B, "route_00_d507"),
 )
 """Runs of the game's own code replaced whole, rather than one instruction each.
 
