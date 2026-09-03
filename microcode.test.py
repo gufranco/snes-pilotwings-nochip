@@ -233,5 +233,49 @@ class FileTest(unittest.TestCase):
         self.assertTrue((ROOT / "microcode.py").exists())
 
 
+class FieldsTest(unittest.TestCase):
+    def test_a_load_is_recognised(self) -> None:
+        self.assertEqual(microcode.fields(0xC00244)["form"], 3)
+
+    def test_an_operation_is_recognised(self) -> None:
+        self.assertEqual(microcode.fields(0x13101C)["form"], 0)
+
+    def test_the_operation_is_taken_apart(self) -> None:
+        part = microcode.fields(0x13101C)
+
+        self.assertEqual((part["alu"], part["source"], part["destination"]), (3, 1, 12))
+
+    def test_the_page_modifier_is_taken_apart(self) -> None:
+        self.assertEqual(microcode.fields(0x13101C)["page"], 8)
+
+
+class ExplainTest(unittest.TestCase):
+    def test_a_load_names_its_destination_and_value(self) -> None:
+        self.assertEqual(microcode.explain(0xC00244), "dp = $0009")
+
+    def test_a_branch_says_so(self) -> None:
+        self.assertEqual(microcode.explain(0x97CD80), "branch")
+
+    def test_the_multiplier_pairing_is_spelled_out(self) -> None:
+        said = microcode.explain(0x13101C)
+
+        self.assertIn(f"k <- ram[dp|${microcode.FAR_HALF:02x}]", said)
+
+    def test_an_ordinary_move_names_both_ends(self) -> None:
+        self.assertIn("tr <- a", microcode.explain(0x000013))
+
+    def test_the_arithmetic_is_named(self) -> None:
+        self.assertIn("a = a xor idb", microcode.explain(0x13101C))
+
+    def test_a_pointer_step_is_named(self) -> None:
+        self.assertIn("dp-1", microcode.explain(0x21582F))
+
+    def test_the_table_pointer_step_is_named(self) -> None:
+        self.assertIn("rp-1", microcode.explain(0x000100))
+
+    def test_an_instruction_that_does_nothing_says_so(self) -> None:
+        self.assertEqual(microcode.explain(0x000000), "nothing")
+
+
 if __name__ == "__main__":
     unittest.main()

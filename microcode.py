@@ -236,3 +236,79 @@ if __name__ == "__main__":
     import sys
 
     raise SystemExit(main(sys.argv[1:]))
+
+
+FORMS = ("op", "rt", "jp", "ld")
+
+PRODUCT_SOURCES = ("ram[dp]", "idb", "m", "n")
+
+STEPS = ("", "dp+1", "dp-1", "dp=0")
+
+FAR_HALF = 0x80
+"""The bit that separates the two halves of the part's data RAM.
+
+It is the whole reason the program is readable. The destination the
+disassembler prints as `klm` does not load both multiplier operands from the
+same place: the low one takes whatever the instruction names as its source, and
+the high one is read from `RAM[dp | $80]` without being named at all. So an
+instruction that looks like it squares a value is multiplying two different
+ones, drawn from the near and far halves of RAM at the same offset.
+
+Reading that off the model rather than off the mnemonic is what turned `$0a`
+from a page of arithmetic that made no sense into four products of a per
+scanline scale against a matrix the previous command left behind.
+"""
+
+
+def fields(raw: int) -> dict[str, int]:
+    """The instruction taken apart, as the silicon reads it."""
+    return {
+        "form": raw >> 22 & 3,
+        "product": raw >> 20 & 3,
+        "alu": raw >> 16 & 15,
+        "accumulator": raw >> 15 & 1,
+        "step": raw >> 13 & 3,
+        "page": raw >> 9 & 15,
+        "table_step": raw >> 8 & 1,
+        "source": raw >> 4 & 15,
+        "destination": raw & 15,
+    }
+
+
+def explain(raw: int) -> str:
+    """One instruction in words, with the operand pairing spelled out."""
+    part = fields(raw)
+    if FORMS[part["form"]] == "ld":
+        return f"{_destinations()[part['destination']]} = ${raw >> 6 & 0xFFFF:04x}"
+    if FORMS[part["form"]] == "jp":
+        return "branch"
+    said = []
+    source = _sources()[part["source"]]
+    destination = _destinations()[part["destination"]]
+    if destination == "klm":
+        said.append(f"l <- {source}; k <- ram[dp|${FAR_HALF:02x}]")
+    elif destination != "none":
+        said.append(f"{destination} <- {source}")
+    operation = _alu()[part["alu"]]
+    if operation != "nop":
+        letter = "ab"[part["accumulator"]]
+        said.append(f"{letter} = {letter} {operation} {PRODUCT_SOURCES[part['product']]}")
+    if part["step"]:
+        said.append(STEPS[part["step"]])
+    if part["page"]:
+        said.append(f"dp ^= ${part['page']:x}0")
+    if part["table_step"]:
+        said.append("rp-1")
+    return "; ".join(said) or "nothing"
+
+
+def _sources() -> Any:
+    return _opcodes().SOURCES
+
+
+def _destinations() -> Any:
+    return _opcodes().DESTINATIONS
+
+
+def _alu() -> Any:
+    return _opcodes().ALU
