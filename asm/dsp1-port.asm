@@ -147,6 +147,9 @@
 !CARRY_11    = !CARRY+14        ; four words
 !CARRY_14    = !CARRY+22        ; six words
 !PORT_TAIL   = !CARRY+34        ; where a command's own arguments end
+!PORT_WORD   = !CARRY+36        ; one word in transit, because the processor
+                                ; indexes a long address by X and by nothing
+                                ; else, so source and destination take turns
 
 ; A value the memory does not hold before this has written it.
 ;
@@ -509,14 +512,17 @@ dsp_write:
     ldx.w #$000C
 -
     lda.l !CARRY_02,x
-    phx
+    sta.l !PORT_WORD
     txa
     clc
     adc.l !PORT_TAIL
     tax
-    pla
+    lda.l !PORT_WORD
     sta.l !ARGL,x
-    plx
+    txa
+    sec
+    sbc.l !PORT_TAIL
+    tax
     dex
     dex
     bpl -
@@ -526,14 +532,17 @@ dsp_write:
     ldx.w #$0006
 -
     lda.l !CARRY_11,x
-    phx
+    sta.l !PORT_WORD
     txa
     clc
     adc.l !PORT_TAIL
     tax
-    pla
+    lda.l !PORT_WORD
     sta.l !ARGL,x
-    plx
+    txa
+    sec
+    sbc.l !PORT_TAIL
+    tax
     dex
     dex
     bpl -
@@ -543,14 +552,17 @@ dsp_write:
     ldx.w #$000A
 -
     lda.l !CARRY_14,x
-    phx
+    sta.l !PORT_WORD
     txa
     clc
     adc.l !PORT_TAIL
     tax
-    pla
+    lda.l !PORT_WORD
     sta.l !ARGL,x
-    plx
+    txa
+    sec
+    sbc.l !PORT_TAIL
+    tax
     dex
     dex
     bpl -
