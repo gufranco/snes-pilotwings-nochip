@@ -460,29 +460,98 @@ carries the arguments of one earlier command as well:
 | `$13` | its arguments and the last `$11` | 244 | 0 |
 | `$1b` | its arguments and the last `$11` | 2,986 | 0 |
 
-**What is left.** `$0a` is not tabulatable by value from these runs, and that is
-now measured three separate ways rather than asserted once.
+**What is left.** `$0a` still has no row, but the reason has changed and the
+earlier reason was wrong. It was recorded here as ambiguous under every carrier,
+and that measurement was taken before the exchange cutter separated the writes
+that follow an answer from the writes that precede it. `$0a` is the command that
+separation exists for: it writes one word, streams its answer, then writes four
+more. With the four trailing words no longer in its key, the measurement comes
+out the other way.
 
-| what was tried | what it cost |
-|---|---|
-| every single earlier command as the carrier | every row still ambiguous |
-| every pair and triple drawn from `$01`, `$11`, `$80`, `$02`, `$06`, `$0e` | every row still ambiguous |
-| storing each distinct whole answer | 10,970 answers of up to 764 words, 16,762,160 bytes, over a 96 Mbit cartridge on its own |
-| storing the four word steps and indexing them | 538,583 distinct steps, 4,308,664 bytes for the steps before any index array |
+| carrier | keys | ambiguous |
+|---|---:|---:|
+| none, its own argument only | 2 | 1 |
+| the last `$02` | 6,980 | 0 |
 
-The shape says why. `$0a` writes one word, reads its answer through four
-instructions that each fire 176 or 191 times, and then writes four words more.
-The answer is a per scanline stream rather than a row, and its content comes from
-state accumulated over many earlier commands rather than from anything in the key.
+Nought ambiguous, in all three recordings, which is the same result the six
+state-dependent commands give. `$0a` is a function of its argument and `$02`'s.
 
-**Where it goes instead.** `$0a` reads the reciprocal table in the part's own
-data ROM, which entry 3 has already tabulated over its whole input. So `$0a` is
-answered from that table by code, and it is the only command that is. That is a
-lookup with a complete table underneath it, not a fallback: a miss cannot happen
-because every value the reciprocal takes has a row.
+What rules it out is size alone.
 
-**Until then.** Fifteen of sixteen commands answer from a table keyed on
-recorded values. `$0a` answers from the scalar tables, which are exhaustive.
+| what was measured | what it costs |
+|---|---:|
+| distinct answers, USA and JP recordings | 5,232 each |
+| distinct answers, European recording | 5,738 |
+| positions of the 764 that ever differ | 764, so nothing factors out as constant |
+| the European recording stored whole | 8.7 megabytes, against 3.9 for the entire cartridge |
+
+**Where it goes instead.** Not into the table, and for now not into a routine
+either. [`asm/dsp1-fallback.asm`](asm/dsp1-fallback.asm) answers `$0a` with 764
+words of nought: bounded, deterministic, reading no memory it has not set, and
+obviously wrong rather than plausibly wrong. It is the one command of sixteen
+whose answers are not right.
+
+**What would close it.** Reading the arithmetic out of the part's own program.
+That the answer is an exact function of `$02`'s arguments is what says the
+arithmetic is there to be read, rather than state that has to be remembered.
+
+**Until then.** Fifteen of sixteen commands answer from the table exactly, on
+every question the three recordings hold. `$0a` answers nought.
+
+## 2i2. A recorded-set table covers the recording, and that was measured late
+
+**Measured.** Coverage was taken by holdout: build the table from part of the
+recordings and ask it the rest.
+
+| what was asked | hit rate |
+|---|---:|
+| the questions it was built from | 100% of 253,933 calls |
+| a different recording of the same attract demo | 93.4% |
+| the second half of a recording whose first half it learned | 11.2% |
+
+The middle figure measures repetition rather than coverage. All three recordings
+are the same attract sequence flying the same path, so the European run mostly
+repeats questions the other two already asked. Quoted on its own it is
+misleading, and the last figure is the one that describes a player.
+
+Per command on the last figure: `$13` 39.4%, `$10` 10.9%, `$00` 5.4%, and `$06`
+0% of 39,766 calls.
+
+**How wrong a miss is.** Measured on the 21,850 real misses from the middle
+scenario, worst error across the answer words:
+
+| command | worst | within 16 |
+|---|---:|---:|
+| `$1b` | 1 | all |
+| `$13` | 26 | 61% |
+| `$03` | 73 | 56% |
+| `$06` | 1,820 | none |
+| `$0e` | 23,154 | none |
+| `$08` | 26,912 | none |
+
+`$1b` and `$13` degrade into a near neighbour. `$0e`, `$0c` and `$14` do not:
+adjacent keys carry answers tens of thousands apart, so the nearest row there is
+noise rather than an approximation.
+
+**What was done about it.** The domain of each command was sized two ways, by the
+span of each argument word and by the set of distinct values it takes, because a
+quantised word makes those differ by orders of magnitude. `$13` spans 5.48e17 and
+holds 1,512 combinations; `$18` holds 48. Both reproduce the recording exactly
+when driven on the key alone, so both were completed out of the part and neither
+can miss now. `$10` has only 4,996 combinations and was deliberately not
+completed: it reproduces 83 times in 100, so 17% of any filled row would be
+wrong, and a wrong row does not fall back.
+
+**What is left.** `$06` is 31.7% of every call, has 75,278 rows, sizes at 5.78e23
+combinations, and answers nothing on unseen flight. No table reaches it. Its
+arithmetic is the single highest-value thing left to read, and `$14` and `$0d`
+follow it for the same reason.
+
+**What this changed in how the work is done.** The domain is now derived before a
+table is built rather than after, and the rule is in
+[AGENTS.md](AGENTS.md). Building the recorded-set table first and measuring its
+coverage afterwards is what produced a table that looked finished and answers
+11.2% of a run it has not seen.
 
 ## 2j. A key that indexes an answer is not the state that produces it
 
@@ -850,21 +919,32 @@ traffic and it is behind that one table, as `$10` is.
 
 ## 4. Whether the image needs to grow at all
 
-**What is unknown.** The retail cartridge is 512 KB and the replacement is not
-written, so what it costs is not measured. What has changed since this entry was
-written is that the tables are no longer the reason to grow it. The part carries
-1,282 bytes of them, per entry 3, and the argument sets a table would answer from
-are 586,728 bytes at the widest reading, per entry 2c. Neither needs a 96 Mbit
-image, and the smaller of the two fits in what a 512 KB cartridge already has
-spare.
+**Answered, 2026-09-02: yes, to 3.75 megabytes, and no further.**
 
-**Why it matters here.** An image that fits the original address space needs no
-addressing work at all. One that does not needs the windowed layout the sibling
-project uses, which is substantial and changes which emulators load the result.
-The evidence now points at the first, which would remove that work entirely.
+The replacement is written and measured. The image is 121 banks, $00 to $78,
+which is 3,964,928 bytes:
 
-**What would close it.** Writing the replacement and measuring it.
+| what | banks | bytes |
+|---|---|---:|
+| the game as it ships, with the replacement's code in the space above it | `$00`-`$0F` | 524,288 |
+| the answers | `$10`-`$6C` | 3,014,801 |
+| the three tables taken from the part itself | `$6D`-`$78` | 393,216 |
 
-**Until then.** No layout is committed to and no size is claimed. The 96 Mbit
-figure in [`tabulate.py`](tabulate.py) is a ceiling used to decide what cannot be
-stored, and on the current evidence it is a ceiling nothing here approaches.
+**What that settles.** No windowed layout and no second address space. A low
+cartridge carries banks `$00` to `$7D` and nothing above: `$7E` and `$7F` are the
+console's own memory, and everything from `$80` up is a second view of what is
+already below. 121 banks of 126 is inside that, so the whole cartridge is
+reachable with ordinary long addressing and every emulator that loads a 4 megabyte
+low cartridge loads this one.
+
+This was found the hard way. The table was first placed from bank `$30`, which
+put its last fourteen banks above `$7F`, where they read back as the game's own
+first fourteen banks. Nothing reported an error; the lookup simply returned the
+wrong row.
+
+**What is left of the 96 megabit figure.** Nothing. It was a ceiling used to
+decide what could not be stored, and the answer came in at a twenty fifth of it.
+It stays in [`tabulate.py`](tabulate.py) as that ceiling and is not a target.
+
+**The one thing the size does rule out.** `$0a`, per entry 2f. Its answers would
+take 8.7 megabytes on their own, which is more than twice the whole cartridge.

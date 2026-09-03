@@ -26,8 +26,11 @@ You supply the retail dumps. Nothing here contains game data, and nothing ever w
 
 ## Status
 
-Early. What is measured is written down below; what is not built is named in
-[`OPEN-QUESTIONS.md`](OPEN-QUESTIONS.md) rather than implied.
+The replacement answers. Fifteen of the sixteen commands that return anything
+come back with exactly what the part returned, on every question the three
+recordings hold. The sixteenth is named below and in
+[`OPEN-QUESTIONS.md`](OPEN-QUESTIONS.md); nothing that is not built is implied to
+be.
 
 | part | state |
 |------|-------|
@@ -37,10 +40,77 @@ Early. What is measured is written down below; what is not built is named in
 | what the part answers | works, by running the part's own microcode |
 | whether an answer can be stored instead of computed | measured, per command |
 | how many argument sets each command takes | measured, 73,341 across three runs |
-| which tables the part computes from | measured, four of them, 1,282 bytes |
-| whether the image has to grow | no, on the evidence so far |
-| the replacement in 65816 | not started |
-| the finished cartridge | not started |
+| which tables the part computes from | measured, four of them, 1,282 bytes, rebuilt exactly |
+| the three tables no formula reproduces | taken from the part, 393,216 bytes, exact |
+| `$00`, `$08` and `$04` as 65816 arithmetic | exact against the part, 400 random argument sets each |
+| the table of answers | built, 15 commands, 3,014,801 bytes |
+| `$13` and `$18` | complete over their whole domain, driven out of the part, so no key can miss |
+| the lookup, in 65816 | exact on every recorded question, all three regions |
+| the fallback, in 65816 | answers every command, including keys no recording holds, without looping |
+| `$0a` | not answered. It is a function of `$02`'s arguments and would take 8.7 MB to store |
+| whether the image has to grow | yes, to 3.75 MB, which is inside what a low cartridge addresses |
+| the finished cartridge | not started: the game's own calls are not yet routed here |
+
+### How much of the game it covers
+
+Answering the questions it was built from is not coverage, so the table is
+measured by holdout: built from part of the recordings and asked the rest.
+
+| what was asked | hit rate |
+|---|---:|
+| the questions it was built from | 100% |
+| a different recording of the same attract demo | 93.4% |
+| the second half of a recording whose first half it learned | 11.2% |
+
+The middle figure is the one to distrust. All three recordings are the same
+attract sequence, so agreement between them measures repetition. The last figure
+is what a player doing something the demo never did would see, and it is the
+honest one.
+
+Per command, on that last figure: `$13` 39.4%, `$10` 10.9%, `$00` 5.4%, `$06`
+0%. `$06` is 31.7% of every call the game makes and cannot be tabulated at any
+size, so its arithmetic is the single highest-value thing left to read.
+
+Two commands are not measured this way because they no longer can miss. `$13`
+and `$18` have arguments that are quantised rather than continuous: one of
+`$13`'s words spans 32,769 and takes seven values. Sizing by span says 5.48e17
+rows and sizing by the values the word can hold says 1,512. Every combination
+was driven out of the part and stored, and all 248 rows the recordings do hold
+came back identical when driven the same way, which is what says the fill is
+sound rather than assumed.
+
+`$10` was not completed although its domain is only 4,996 combinations. Driven
+on its key alone it reproduces the recording 83 times in 100, so 17% of any
+filled row would be wrong, and a wrong row is worse than a missing one: the
+missing one falls back and the wrong one does not.
+
+### What the lookup answers
+
+Driven on the processor model against the three recordings, forty questions per
+command per region:
+
+| command | right | wrong |
+|---|---:|---:|
+| `$00` `$02` `$03` `$06` `$08` `$0c` `$0d` `$0e` `$10` `$13` `$14` `$1b` `$28` | 120 each | 0 |
+| `$04` | 40 | 0 |
+| `$18` | 10 | 0 |
+| `$0a` | 0 | 120 |
+
+`$04` and `$18` have fewer because the recordings hold fewer distinct questions
+for them, not because fewer were tried. `$0a` answers 764 words of nought, which
+is deliberate: it is bounded, it reads nothing it has not set, and it is
+obviously wrong rather than plausibly wrong.
+
+### Where everything sits in the cartridge
+
+A low cartridge carries banks `$00` to `$7D` and nothing above, so the whole
+image is 121 banks, 3,964,928 bytes, with 5 banks still spare:
+
+| what | banks |
+|---|---|
+| the game as it ships, with the replacement's code in the space above it | `$00`-`$0F` |
+| the answers | `$10`-`$6C` |
+| the three tables taken from the part | `$6D`-`$78` |
 
 ```bash
 python3 tools/identify.py
@@ -489,11 +559,20 @@ Analysis modules in Python, each with its tests beside it.
 | [`tables.py`](tables.py) | which tables the part carries, read out of its own data ROM |
 | [`layout.py`](layout.py) | whether the replacement fits in the image the cartridge already is |
 | [`tabulate.py`](tabulate.py) | whether a command's answers can be stored instead of computed |
+| [`microcode.py`](microcode.py) | the part's own dispatch tree, walked for all 256 command bytes |
+| [`derived.py`](derived.py) | drives the part to produce the three tables no formula reproduces |
+| [`routines.py`](routines.py) | runs the assembled 65816 against the part, and fails when they disagree |
+| [`lutbuild.py`](lutbuild.py) | builds the table of recorded answers, and says what it left out |
 | [`doctor.py`](doctor.py) | what is actually on this machine, the whole chain, printed for a bug report |
 | [`version.py`](version.py) | the release number, rewritten by [`scripts/set-version.sh`](scripts/set-version.sh) |
 | [`artifacts.manifest.json`](artifacts.manifest.json) | every dump this project reads, and what makes each one itself |
 | [`tools/identify.py`](tools/identify.py) | checks a dump, and says what is wrong when it is |
-| [`asm/`](asm/) | assembly that will go into the ROM |
+| [`asm/nochip.asm`](asm/nochip.asm) | the whole replacement, and where each piece sits in the cartridge |
+| [`asm/dsp1-answer.asm`](asm/dsp1-answer.asm) | the lookup: the index, the binary search, the answer copy |
+| [`asm/dsp1-fallback.asm`](asm/dsp1-fallback.asm) | what answers when the lookup finds no row |
+| [`asm/dsp1-ops.asm`](asm/dsp1-ops.asm) | the three commands whose arithmetic is known exactly |
+| [`asm/dsp1-tables.asm`](asm/dsp1-tables.asm) | the four tables the part's own formulas rebuild, entry for entry |
+| [`asm/dsp1-derived.asm`](asm/dsp1-derived.asm) | where the three tables taken from the part are placed |
 | [`mos65xx-python/`](mos65xx-python/) | the 65816, held to a per-opcode suite |
 | [`snes-dsp-python/`](snes-dsp-python/) | the DSP-1, running the part's own microcode |
 | [`snes-mapper-python/`](snes-mapper-python/) | the cartridge map, held to a library of real cartridges |
