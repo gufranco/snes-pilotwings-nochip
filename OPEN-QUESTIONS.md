@@ -1782,3 +1782,82 @@ attract sequence and not a player.
 Storing the reciprocal instead is a quarter of the size at worst, one word per
 scanline against four, and far smaller than that under any key that works. So the
 size question is settled the moment the key is.
+
+## 21. `$0a` read out of the part, one instruction at a time
+
+**Measured 2026-09-03, by executing the part's own program in the model and
+watching its registers rather than by fitting its answers.** This is the method
+section 18 asked for, and it settles in one pass what six attempts at inference
+could not.
+
+### The method that works
+
+The model exposes the processor. Setting `registers.pc` and calling `core.step()`
+runs one instruction, so a command can be driven normally and interrupted at any
+address to read what the part is holding. Two addresses inside `$0a` matter:
+`$372` and `$37b`, immediately after each of its two calls to `$0077`.
+
+### The output stage, exact
+
+At those two addresses the accumulator holds the two scales for the current
+scanline. Multiplying them by the matrix reproduces **176 of 176 scanlines, all
+four words each, with no exceptions**:
+
+    answer = ((scale * M) >> 15) for M in (M0, M1, M2, M3)
+    the first scale against M0 and M2, the second against M1 and M3
+
+So the four answer words are two numbers, and everything `$0a` does reduces to
+producing those two per scanline.
+
+### The normalise, `$03a`
+
+    dp = 0
+    l <- a; a = a and idb        keep a copy, set the flags
+    if a is zero, return with dp = 0
+    loop: l <- a; a = a + a; dp + 1
+          repeat while the addition did not overflow
+    a <- l; dp - 1               step back to the last value that fit
+
+It doubles until **signed** overflow, so the result lands in `[0x4000, 0x7fff]`,
+normalised to bit 14 rather than bit 15, and the doubling count is left in the
+data pointer. Every earlier attempt normalised one bit too far.
+
+### The reciprocal, `$0d3`
+
+It is not a table read. It guards zero by answering `$7fff`, normalises the sign,
+sets the ROM pointer to 100, reads consecutive words while multiplying, **computes
+a new ROM pointer from an intermediate result** at `$0de`, and saturates to
+`$7fff` at two separate points. That is a refinement rather than a lookup, which
+is why a table read reproduced 14.8% and interpolating between entries changed
+nothing.
+
+Captured at its return, it answers a mantissa in `a` and an exponent in `b`:
+
+| d | a | b | 2**20 / a |
+|---|---|---|---|
+| -34 | -30840 | 3 | 34.00 |
+| -33 | -31776 | 3 | 33.00 |
+| -32 | -16384 | 4 | 64.00 |
+| -31 | -16912 | 4 | 62.00 |
+| -16 | -16384 | 5 | 64.00 |
+
+So `a = 2**20 / (|d| << (b - 3))`, with the divisor held in `(32, 64]` and `b`
+counting the doublings from a base of 3. The sign of `a` follows the sign of the
+distance, on every line. **The reciprocal is a function of the distance alone**,
+which is visible directly here and was never visible through the answers.
+
+One detail is unresolved and is the next thing to look at: across the first
+eighteen lines the implied divisor runs 49, 48, 47 ... 35, then **repeats 35**
+before continuing 34, 33. A step of exactly one per scanline would not repeat, so
+the walk carries a fractional part. That single repeat is the whole of what is
+still unexplained about the reciprocal.
+
+### What is still missing
+
+Feeding `a << (b - 3)` into the existing scale formula reproduces 23% of
+scanlines, up from 12.7%, so the reciprocal is right and the arithmetic between
+it and the scale is not yet. `$0077` is that arithmetic: it normalises again,
+adjusts an exponent against ROM pointers `$0f` and `$31`, and loads the
+multiplier. Reading it the same way this section read `$03a` and `$0d3` is the
+remaining work, and the scales are already capturable exactly, so any candidate
+can be checked against them line by line instead of against the answers.
