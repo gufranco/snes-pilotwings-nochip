@@ -1208,3 +1208,57 @@ The twelve, with the command each sends where the code names one outright:
 tables, the 1 megabyte layout and the site replacement are all measured innocent
 or working. What is left is reimplementing twelve routines, and each one is
 bounded work with a known entry point.
+
+## 10. What `$0a` computes, and how much code the three heavy commands are
+
+**Measured 2026-09-03.**
+
+The three commands that decide the picture are far smaller than the traffic
+suggests. Counting distinct instruction addresses rather than instructions
+executed:
+
+| command | executed | distinct | multiplier loads |
+|---|---:|---:|---:|
+| `$02` | 534 | 273 | 154 |
+| `$06` | 361 | 186 | 86 |
+| `$0a` | 12,225 | **48** | 1,528 |
+
+`$0a` looked the largest and is the smallest. Its 12,225 instructions are a loop
+of about twenty five run 191 times, plus three subroutines. That is less code
+than `op_08`, which is already written and exact against the part.
+
+**What it computes.** A Mode 7 matrix per scanline, 191 groups of four words.
+Two of the four are the scale terms and the other two are nought while the
+aircraft is level. The subroutines it calls are the part's reciprocal: `$00D3`
+reads the data ROM table, `$0077` and `$003A` normalise around it.
+
+Fitting the scale terms against the scanline number confirms the shape. If
+`A(k) = C / (k - h)` then `1/A` is a straight line in `k`, and it is:
+
+| case | horizon from A | horizon from D | median error |
+|---|---:|---:|---|
+| 1 | 49.67 | 50.14 | 1.5 and 1.1 |
+| 2 | 48.79 | 49.14 | 1.4 and 0.8 |
+| 3 | 48.86 | 49.15 | 1.4 and 0.8 |
+| 4 | 48.89 | 49.17 | 1.6 and 0.9 |
+
+The horizon sits in the same place in every case and the constants move with the
+flight, which is what a perspective divide against a camera does. So `$0a` is a
+reciprocal per scanline scaled by two constants that come from `$02`.
+
+**Why the fit is not the implementation.** A median error of one and a worst of
+seventy is a curve through the answers, not the arithmetic that produced them.
+The part works in a fixed point format with a separate exponent, which is what
+`$0077` and `$003A` exist for, and a reimplementation that guesses the rounding
+is wrong on every input rather than only between samples. That is the same
+reasoning that kept the thirteen unread commands on nearest-row rather than on
+invented arithmetic.
+
+**What is needed.** The 48 instructions read to the bit, then held against the
+part on the same four hundred argument sets `op_00`, `op_08` and `op_04` were.
+The reciprocal it needs is already in the cartridge, exhaustive over all 65,536
+inputs, so the loop is a table read and two multiplies once the format is known.
+
+**Order.** `$0a` first, at 48 instructions and the whole ground plane. Then
+`$02` at 273, which produces the constants `$0a` and `$06` both need. Then `$06`
+at 186, whose shape entry 5c already fixes.
