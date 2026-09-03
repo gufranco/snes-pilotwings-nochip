@@ -1693,3 +1693,92 @@ downstream of a ground that was never drawn. The second replaced the runs at
 `$00:CB4A` and around it, which sent the image black: measured afterwards, that
 address is reached zero times in the retail cartridge as well, so the run was
 never a chip site and filling it with padding destroyed working code.
+
+## 20. `$0a`, what is now settled and what six attempts ruled out
+
+**Measured 2026-09-03.** Section 18 says to stop inferring the rule from answers.
+This section records the last round of inference so nobody pays for it again, and
+the parts of `$0a` that are now nailed down.
+
+### Settled, and not to be re-derived
+
+**The routine is at `$35f`.** Its loop runs `$364` to `$390`, and it calls two
+subroutines that matter. `$03a` is the normalise: it doubles the accumulator
+until it overflows, incrementing the data pointer once per doubling, so the
+count of doublings ends up in the pointer. `$0d3` is the lookup: it sets the ROM
+pointer to 100 and then reads several consecutive words with `rpdec`, taking one
+into `a`, one into `tr` and one into `l`, which is the shape of an interpolation
+between neighbouring entries rather than a single read.
+
+**The reciprocal table is words 101 to 229**, holding `2**20 / x` for `x` from 32
+to 64 in quarter steps, so `table[101 + 4 * (x - 32)]`. Read out of the part's
+data ROM and checked at three points.
+
+**The two shifts in `raster.py` are correct.** Searched exhaustively over 24
+values of the first shift against 30 of the second, on twelve viewpoints spanning
+five different exponents. The best fit is `27 - e1` and `42 - e1 - e2` on every
+one of them, which is exactly what the module already had.
+
+**Given the right reciprocal, the model reproduces the answer exactly.** Solving
+one value per scanline by search reproduces all four answer words on 95 to 148
+scanlines of 176, depending on the viewpoint. So the only unknown left in `$0a`
+is that one value.
+
+### Ruled out
+
+Each of these was measured, not argued.
+
+| Candidate key or model | Result |
+|---|---|
+| The reciprocal follows the distance | 4,617 conflicts over 40 viewpoints |
+| It follows the distance and `e1` | 3,126 conflicts, so `e1` is not the missing term |
+| It follows the scanline index | Zero agreement between any two horizons |
+| It follows the walk, `(start, horizon, line)` | 545,700 empty intersections |
+| The distance is missing an integer offset | No offset from -6 to +6 aligns two viewpoints |
+| It is `2**20 / |d|` exactly | Reproduces 12.7% of scanlines |
+| The same, with interpolation between table entries | 14.8%, and interpolation changed nothing |
+| It is held in one of the part's 256 memory words | No word tracks it, under any shift |
+
+The last row is the useful one. The value never appears in memory, so it lives in
+a register or is never formed at all, and every attempt above assumed it exists
+as a number the part computes once per line. That assumption is the thing to drop.
+
+### The next step, narrowly
+
+Read `$03a` and `$0d3` as instructions rather than as shapes: what the normalise
+leaves in the pointer, which words `$0d3` reads at `rp = 100` and what it does
+with them. `microcode.explain` prints the fields of a single word and
+`routines.run` executes a routine against the model, so both halves can be
+checked one instruction at a time against a case whose answer is already known.
+That is bounded work on a routine of about fifty instructions, and it is the only
+route left that does not go through the answers.
+
+### `$02`'s state, verified and ready
+
+Separately, everything `$0a` will need from `$02` is measured and holds across all
+6,980 argument sets in the three recordings, with no key carrying two answers:
+
+| table | keys on | rows | bytes |
+|---|---|---|---|
+| horizon and the second scale | argument 6 | 1,193 | 9,544 |
+| the matrix | argument 5 | 3,302 | 19,812 |
+| the first scale | arguments 2 and 6 | 3,033 | 24,264 |
+
+53,620 bytes in total. The matrix needs two words rather than four, confirmed on
+every set: the first and last entries are always equal and the middle two are
+always negatives of each other. Arguments 3 and 4 never vary, at 32 and 256.
+
+`parameter.py` and `state02.py` already build these and are included in no build.
+Wiring them in is blocked on nothing except that `$0a` has no use for them yet.
+
+### On enlarging the image
+
+Storing `$0a`'s answers outright costs 9,210,432 bytes for the American recording
+and 10,775,576 for the European. That is a question of address space rather than
+of image size: LoROM reaches 4 MiB and ExHiROM 6 MiB, so 96 Mbit of storage does
+not help without bank-switching hardware. It would also cover only the recorded
+attract sequence and not a player.
+
+Storing the reciprocal instead is a quarter of the size at worst, one word per
+scanline against four, and far smaller than that under any key that works. So the
+size question is settled the moment the key is.
