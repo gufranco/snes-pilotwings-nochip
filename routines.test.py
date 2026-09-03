@@ -48,6 +48,7 @@ RTL = 0x6B
 
 LDA_IMMEDIATE = 0xA9
 STA_DIRECT = 0x85
+STA_LONG = 0x8F
 
 
 def image_of(code: bytes) -> bytes:
@@ -121,6 +122,10 @@ class CartridgeReadTest(unittest.TestCase):
         self.assertEqual(memory.read8(0x000123), 0)
 
 
+def _long(value: int) -> tuple[int, int, int]:
+    return value & 0xFF, value >> 8 & 0xFF, value >> 16
+
+
 class RunTest(unittest.TestCase):
     def test_a_routine_that_returns_at_once_answers_nothing(self) -> None:
         found = routines.run(image_of(bytes([RTL])), routines.CODE, (), 0)
@@ -128,7 +133,7 @@ class RunTest(unittest.TestCase):
         self.assertEqual(found, ())
 
     def test_a_routine_that_stores_a_word_answers_it(self) -> None:
-        code = bytes([LDA_IMMEDIATE, 0x34, STA_DIRECT, routines.OUT, RTL])
+        code = bytes([LDA_IMMEDIATE, 0x34, STA_LONG, *_long(routines.OUT), RTL])
 
         found = routines.run(image_of(code), routines.CODE, (), 1)
 
@@ -141,7 +146,7 @@ class RunTest(unittest.TestCase):
             routines.run(image_of(loop), routines.CODE, (), 0)
 
     def test_the_arguments_land_where_a_routine_reads_them(self) -> None:
-        code = bytes([0xA5, routines.ARG, STA_DIRECT, routines.OUT, RTL])
+        code = bytes([0xA5, routines.ARG, STA_LONG, *_long(routines.OUT), RTL])
 
         found = routines.run(image_of(code), routines.CODE, (0x0055,), 1)
 

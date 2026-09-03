@@ -108,7 +108,14 @@
 ; ===========================================================================
 
 !ARG = $00                      ; first argument word, then $02, $04, ...
-!OUT = $10                      ; first answer word, then $12
+!OUT = $0800                    ; first answer word, then $0802
+
+; Not in the direct page, and that is deliberate. $0a answers 764 words, which
+; is 1,528 bytes, so an answer written from inside the direct page runs straight
+; over the working variables of the routine writing it, the pointer it is
+; reading through included. It would corrupt itself a fifth of the way in.
+; Absolute addressing costs one cycle more per access than direct page and this
+; is the one place that trade is worth taking.
 !TMP  = $20                     ; scratch, seven words
 !PAIR = $40                     ; the two words op_00_body multiplies
 
@@ -245,7 +252,12 @@ mul16:
 ; ---------------------------------------------------------------------------
 op_00:
     php
-    rep #$30
+    phb                         ; the answer block is in bank zero and this is
+    rep #$30                    ; reached with the caller's data bank, whatever
+    lda #$0000                  ; that is, so set it here rather than trust it
+    pha
+    plb
+    plb
 
     lda !ARG+0                  ; the two words this command was given
     sta !PAIR+0
@@ -254,6 +266,7 @@ op_00:
     jsl op_00_body
     sta !OUT+0
 
+    plb
     plp
     rtl
 
@@ -339,7 +352,12 @@ endmacro
 
 op_08:
     php
-    rep #$30
+    phb                         ; the answer block is in bank zero and this is
+    rep #$30                    ; reached with the caller's data bank, whatever
+    lda #$0000                  ; that is, so set it here rather than trust it
+    pha
+    plb
+    plb
 
     %square(!ARG+0)             ; first square starts the running total
     lda !TMP+4
@@ -368,6 +386,7 @@ op_08:
     asl !OUT+0                  ; the multiplier's doubling, once for the sum
     rol !OUT+2
 
+    plb
     plp
     rtl
 
@@ -431,7 +450,12 @@ endmacro
 
 op_04:
     php
-    rep #$30
+    phb                         ; the answer block is in bank zero and this is
+    rep #$30                    ; reached with the caller's data bank, whatever
+    lda #$0000                  ; that is, so set it here rather than trust it
+    pha
+    plb
+    plb
 
     lda !ARG+0                  ; the first half
     %entry(dsp1_sine_of)
@@ -449,5 +473,6 @@ op_04:
     jsl op_00_body
     sta !OUT+2
 
+    plb
     plp
     rtl
