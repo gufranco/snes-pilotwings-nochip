@@ -1598,19 +1598,70 @@ Every command except `$0a` now answers exactly: 400 of 400 against the recording
 up to 764 answer words is 10.18 MiB, against 715 KiB free in a LoROM cartridge's
 whole address space. So it is computed, and what stands in the way is one rule.
 
-**What is settled.** The reciprocal a scanline uses is a function of its distance
-from the horizon and nothing else. Twenty four calls across different viewpoints
-were sampled and every distance that recurred used the same table entry both
-times, with no conflicts. An earlier note here said the opposite; that came from
-poking the horizon without the constants that go with it, which is a state the
-part is never in.
+**Where the table lives.** The part's own data ROM holds it, and it is now read
+rather than guessed: `table[101 + 4 * (x - 32)] = 2**20 / x`, for `x` from 32 to
+64 in quarter steps, which is words 101 to 229. Checked at `x` of 32, 33 and 40.
+That settles the values a scanline can pick from, and leaves only which one.
 
-**What is not.** The shift that goes with the entry. The table covers a single
-octave, so a distance outside it is folded in and the fold changes the shift.
-Deriving the fold from the distance by counting doublings reproduces 8% of
-scanlines, and solving it from the recorded answers reproduces 17%, so neither is
-the rule the part uses.
+**The reciprocal is not a function of the distance alone.** Measured 2026-09-03
+across 4,179 recorded viewpoints in all three regions, taking only the ones whose
+matrix is diagonal so that both scales can be read straight out of the answer.
+Each scanline gives two equations, on the near scale and the far one, and the
+entries satisfying both were intersected per distance. 344 distances appeared,
+338 narrowed to a single entry, and **2,843 intersections came out empty**: two
+viewpoints demanding entries that cannot both be right for one distance.
 
-Both attempts are recorded here rather than left out, because the next attempt
-should start by measuring the fold directly, the way the reciprocal was measured,
-instead of deriving it a third time.
+An earlier revision of this section claimed the opposite from a sample of
+twenty four calls. Twenty four agreeing is what a sample too small to contain the
+disagreement looks like, and the disagreement is dense at four thousand. The
+original finding above, that a distance reached from a different horizon takes a
+different entry, stands.
+
+**What that implies.** The part is not looking the entry up per scanline. It
+walks the scanlines and carries a normalised value forward, renormalising when it
+crosses the octave, so the entry depends on the path taken to the distance and
+not only on the distance. That matches the shape of the failure exactly: the same
+distance reached from a different starting line takes a different entry.
+
+**Why it cannot be sidestepped by storing more.** Keyed on its own argument plus
+`$02`'s seven, `$0a` is unambiguous, and the cost was measured again on
+2026-09-03: 9,210,432 bytes for the American recording, the same for the Japanese
+and 10,775,576 for the European. A LoROM cartridge addresses banks `$00` to `$7D`,
+which is 4 MiB in total and less than half of what one region needs. Raising the
+image to 96 Mbit does not help, because the ceiling is the address space and not
+the image. So `$0a` is computed or it is nothing.
+
+**Where to start next.** Measure the recurrence rather than the mapping. Drive
+one viewpoint, recover the entry per scanline the way this measurement did, and
+read the sequence down the lines instead of keyed by distance. The question to
+answer is what makes the walk step to the next entry, since that is the rule, and
+a per-distance table provably is not.
+
+## 19. The demo does run, and what is missing is the ground
+
+**Found 2026-09-03 by comparing frames against the retail cartridge rather than
+by reading the screen.**
+
+The replacement was thought to be stuck on the "DEMO FLIGHT" card. It is not.
+Held against retail at the same frame, the two agree on the glider, the
+controller icon and the right-hand gauge, and disagree on the ground: retail
+draws sea, island and runway, and the replacement draws flat colour.
+
+Memory says the same thing more precisely. Through frame 1,700 the two images
+differ in three to seven bytes of low memory, and every one of them is a counter
+one step apart, which is a frame of phase and not a fault. At frame 1,750 exactly
+one byte differs. By frame 1,800 the pair have converged again on `$7E:000C` and
+`$7E:000D` and diverge in 624 bytes, which is flight state rather than a stalled
+state machine. Both cartridges are flying.
+
+So the missing piece is `$0a` and only `$0a`. It is the per-scanline transform
+that draws the ground, it answers nought by design until the rule in section 18
+is found, and nought is flat colour. Every other command answers exactly.
+
+**What this corrects.** Two earlier readings were wrong and are recorded here so
+the next session does not repeat them. The first blamed `$02` and `$0e`, on the
+grounds that `$7E:0060` through `$7E:0067` are nought at frame 1,800; those are
+downstream of a ground that was never drawn. The second replaced the runs at
+`$00:CB4A` and around it, which sent the image black: measured afterwards, that
+address is reached zero times in the retail cartridge as well, so the run was
+never a chip site and filling it with padding destroyed working code.
