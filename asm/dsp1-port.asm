@@ -749,7 +749,7 @@ dsp_route_10:
 ; poll can name, in both halves of a word, so the wait ends whichever width the
 ; accumulator happens to be.
 ; ---------------------------------------------------------------------------
-!WINDOW_BANK = $1F
+!WINDOW_BANK = $7D
 
 org (!WINDOW_BANK<<16)|$C000
 dsp_window_status:

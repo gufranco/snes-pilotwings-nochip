@@ -48,7 +48,7 @@ ENTRY_BYTES = 12
 
 REGIONS = ("usa", "jp", "eur")
 
-ROOM = 2 * BANK_BYTES - 4096
+ROOM = 95 * BANK_BYTES - 4096
 """How much of the cartridge is left for this table.
 
 Two banks, $1D and $1E. The game holds sixteen, this project's code one, and
@@ -130,7 +130,7 @@ def sliced(raw: bytes) -> tuple[bytes, ...]:
     return tuple(raw[at : at + BANK_BYTES] for at in range(0, max(len(raw), 1), BANK_BYTES))
 
 
-FIRST_BANK = 0x1D
+FIRST_BANK = 0x19
 """The bank the table starts in, chosen so that all of it stays addressable.
 
 This is a low cartridge, so only banks $00 to $7D carry anything: $7E and $7F

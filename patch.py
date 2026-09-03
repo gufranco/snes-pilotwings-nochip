@@ -134,10 +134,20 @@ def applied(rom: bytes, where: Mapping[int, str], stubs: Mapping[str, int]) -> b
     return bytes(out)
 
 
+HEADER_SIZE = 0x7FD7
+"""Where the header records how large the image is, as a power of two kibibytes.
+
+The conversion grows the cartridge well past what the retail one was, and a
+header still claiming the old size tells an emulator to map only part of what is
+there. The tables that answer the commands live in the part it would leave out.
+"""
+
+
 def declared(rom: bytes, fast: bool) -> bytes:
     """The image with its header saying what it now is."""
     out = bytearray(rom)
     out[HEADER_CHIPSET] = CHIPSET_PLAIN
+    out[HEADER_SIZE] = max((len(rom) // 1024).bit_length() - 1, 1)
     if fast:
         out[HEADER_SPEED] |= FAST
     return bytes(out)
@@ -173,7 +183,7 @@ a way anything can recognise. Rewriting the bank it names moves every absolute
 access that follows, without touching any of them.
 """
 
-WINDOW_BANK = 0x1F
+WINDOW_BANK = 0x7D
 """The bank those accesses are sent to instead.
 
 It has to be one this project fills, because the accesses land on whatever is

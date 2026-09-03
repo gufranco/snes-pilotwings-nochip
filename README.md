@@ -689,3 +689,30 @@ own, and the analysis is derived from retail cartridges you supply.
 
 The tooling, the assembly and this document are released under the [MIT licence](LICENSE). That
 covers my own work and nothing else. It grants no rights in the game.
+
+## Image size is not a constraint to optimise against
+
+The cartridge may grow to **96 Mbit** whenever that buys fidelity, stability or
+speed. This is a standing decision by the project owner, recorded here so no
+later session re-derives the opposite from an old measurement.
+
+What that means in practice:
+
+- Never drop a command from the answer table for space. Grow the image instead.
+- Never approximate arithmetic to avoid carrying a table. Carry the table.
+- Never treat "it does not fit" as a reason to stop. It fits; make it bigger.
+
+The numbers, so the trade is visible rather than assumed. A LoROM cartridge
+addresses banks `$00` to `$7d`, which is 126 banks of 32 KiB, or just under 4
+MiB, and every bank above that needs the windowed layout the sibling project
+uses. Answering all twelve of the commands the game asks for takes 87 banks:
+`$06` alone is 1,957,228 bytes, because it has 75,278 distinct keys and answers
+three words to each. That is 60 banks for one command, and it is the command the
+game asks for most.
+
+An earlier note in this file put a ceiling at 1 MiB on the strength of one
+measurement. That measurement does not hold: images of 2 MiB and 4 MiB both boot
+and run the demo identically, once the header's size byte is set to match. The
+header byte is what an emulator maps from, so an image that grows without it
+maps only the part the old byte described, and the tables that answer the
+commands live in the part it leaves out.
