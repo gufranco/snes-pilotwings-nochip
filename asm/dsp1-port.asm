@@ -130,6 +130,24 @@
 !PORT_POLLS  = !PORTRAM+48      ; how many status reads have been served
 !PORT_LASTPC = !PORTRAM+50      ; where the last status read came from
 
+; Three commands set up state that later ones are asked in terms of, and the
+; recorded table keys those later ones on their own arguments followed by the
+; setter's. lutbuild.py calls the setter a carrier and builds every key that
+; way, so the port has to rebuild the same key or the search looks for
+; something the table does not hold.
+;
+;   $02 carries for $06, $0d and $0e      seven words
+;   $11 carries for $13 and $1b           four words
+;   $14 carries for $03                   six words
+;
+; Their arguments are kept here as each one completes, and appended to the next
+; command that names them.
+!CARRY       = !PORTRAM+64      ; seventeen words, the three sets end to end
+!CARRY_02    = !CARRY+0         ; seven words
+!CARRY_11    = !CARRY+14        ; four words
+!CARRY_14    = !CARRY+22        ; six words
+!PORT_TAIL   = !CARRY+34        ; where a command's own arguments end
+
 ; A value the memory does not hold before this has written it.
 ;
 ; The idle state used to be all zeroes, on the reasoning that work RAM reads as
@@ -406,7 +424,9 @@ dsp_write:
     tax
     sep #$20
     lda.l dsp_width,x
-    beq .answered
+    bne +
+    brl .answered            ; the block below grew past a short branch
++
 
     ; The lookup moves the direct page itself, so nothing has to be done here.
     sep #$20
@@ -419,7 +439,7 @@ dsp_write:
     and.w #$00FF
     asl a
     tax
-    beq .asked
+    beq .carried
 -
     dex
     dex
@@ -427,6 +447,113 @@ dsp_write:
     sta.l !ARGL,x
     cpx.w #$0000
     bne -
+
+.carried:
+    ; Keep this command's arguments if later commands are keyed on them.
+    lda.l !CMDL
+    cmp.w #$0002
+    bne ++
+    ldx.w #$000C
+-
+    lda.l !PORT_ARGS,x
+    sta.l !CARRY_02,x
+    dex
+    dex
+    bpl -
+    bra .append
+++
+    cmp.w #$0011
+    bne ++
+    ldx.w #$0006
+-
+    lda.l !PORT_ARGS,x
+    sta.l !CARRY_11,x
+    dex
+    dex
+    bpl -
+    bra .append
+++
+    cmp.w #$0014
+    bne .append
+    ldx.w #$000A
+-
+    lda.l !PORT_ARGS,x
+    sta.l !CARRY_14,x
+    dex
+    dex
+    bpl -
+
+.append:
+    ; And append the set this command is keyed on, after its own arguments.
+    lda.l !PORT_AT
+    and.w #$00FF
+    asl a
+    sta.l !PORT_TAIL
+
+    lda.l !CMDL
+    cmp.w #$0006
+    beq .from02
+    cmp.w #$000D
+    beq .from02
+    cmp.w #$000E
+    beq .from02
+    cmp.w #$0013
+    beq .from11
+    cmp.w #$001B
+    beq .from11
+    cmp.w #$0003
+    beq .from14
+    bra .asked
+
+.from02:
+    ldx.w #$000C
+-
+    lda.l !CARRY_02,x
+    phx
+    txa
+    clc
+    adc.l !PORT_TAIL
+    tax
+    pla
+    sta.l !ARGL,x
+    plx
+    dex
+    dex
+    bpl -
+    bra .asked
+
+.from11:
+    ldx.w #$0006
+-
+    lda.l !CARRY_11,x
+    phx
+    txa
+    clc
+    adc.l !PORT_TAIL
+    tax
+    pla
+    sta.l !ARGL,x
+    plx
+    dex
+    dex
+    bpl -
+    bra .asked
+
+.from14:
+    ldx.w #$000A
+-
+    lda.l !CARRY_14,x
+    phx
+    txa
+    clc
+    adc.l !PORT_TAIL
+    tax
+    pla
+    sta.l !ARGL,x
+    plx
+    dex
+    dex
+    bpl -
 
 .asked:
     jsl dsp1_answer
