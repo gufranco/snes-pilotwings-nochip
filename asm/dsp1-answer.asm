@@ -462,10 +462,14 @@ lut_compare:
     jsr lut_key_at
 
     ; The wanted key is in the direct page, and the 65816 has no compare that
-    ; indexes the direct page by Y. Absolute indexing by Y exists, and the
-    ; direct page sits at zero, so the comparison reaches it as an absolute
-    ; address. The data bank is already zero: dsp1_answer sets it once on the
-    ; way in, which is the only place it is touched.
+    ; indexes the direct page by Y. Absolute indexing by Y exists, so the
+    ; comparison reaches the key as an absolute address, and that address is the
+    ; page's base plus the offset within it. Naming the offset alone reads from
+    ; the bottom of the bank instead, where the game keeps its own variables, so
+    ; no key ever matches and every search closes on nothing. The one row that
+    ; still answered was the first, which is where an empty range leaves the
+    ; index, and that is why the table looked as though it held a single row.
+    ; The data bank is already zero: dsp1_answer sets it once on the way in.
 
     ; Does the whole key fit in what is left of this bank? Almost always, and
     ; then Y can walk it. About one row in sixteen hundred sits across the join
@@ -481,7 +485,7 @@ lut_compare:
     ldx !KEYW
 -
     lda [!SCRATCH],y
-    cmp.w !ARG,y
+    cmp.w !PAGE+!ARG,y
     bne .differ
     iny
     iny
@@ -497,7 +501,7 @@ lut_compare:
     ldy #$0000                  ; has to be nought for the load and back to the
     lda [!SCRATCH],y            ; argument offset for the compare
     ply
-    cmp.w !ARG,y
+    cmp.w !PAGE+!ARG,y
     bne .differ
     jsr lut_next
     iny
