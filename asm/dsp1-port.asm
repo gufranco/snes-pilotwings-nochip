@@ -38,8 +38,10 @@
 ; because nothing in the byte stream marks the end.
 ;
 ; The status register answered $80 on every one of the 2,867,736 reads in the
-; recordings and never anything else, so it is a constant here. The nine writes
-; to it are ignored, which is what the part did with them.
+; recordings and never anything else, so it is a constant here. Both halves of it
+; are that constant: a sixteen bit read takes $c000 and $c001, and both are $80,
+; so the constant this returns for a wide read is $8080 rather than $0080. The
+; nine writes to it are ignored, which is what the part did with them.
 ;
 ; ===========================================================================
 ; TWO THINGS THIS FILE HAS TO GET EXACTLY RIGHT
@@ -129,6 +131,9 @@
 !PORT_SEEN   = !PORTRAM+47      ; whether that has been recorded yet
 !PORT_POLLS  = !PORTRAM+48      ; how many status reads have been served
 !PORT_LASTPC = !PORTRAM+50      ; where the last status read came from
+!PORT_LINE   = !PORTRAM+54      ; the scanline $0a was asked to start from,
+                                ; which never reaches the port because the
+                                ; game writes that command through the window
 
 ; Three commands set up state that later ones are asked in terms of, and the
 ; recorded table keys those later ones on their own arguments followed by the
@@ -176,7 +181,21 @@
 !CMDL = $000D30                 ; the command byte, at !CMD inside that page
 !OUTL = $000E00                 ; the answer
 
-!STATUS_READY = $0080           ; the one value the part's status ever returned
+!STATUS_READY = $8080           ; what a sixteen bit read of the status gives
+                                ; back. Both halves, because a sixteen bit load
+                                ; reads $c000 and $c001 and the recording holds
+                                ; 1,482,010 reads of the first and 1,385,726 of
+                                ; the second, every one of them $80.
+                                ;
+                                ; It answered $0080 until the demo was watched
+                                ; long enough to wedge. The game polls the status
+                                ; with a sixteen bit accumulator at $00:a196 and
+                                ; branches on the sign, so the top half is what
+                                ; that branch reads: with the high byte nought
+                                ; the poll never ends, and the game stops issuing
+                                ; commands at all after about two minutes. The
+                                ; eight bit path was right the whole time, which
+                                ; is why nothing before this ever noticed.
 
 !NO_COMMAND   = $00FF           ; no command is part way through
 
@@ -782,45 +801,131 @@ dsp_port_reset:
 ;
 ; The loop it replaces read 704 words in 176 turns of four, putting two into the
 ; buffer at $0420 and two into the one at $0700. This writes the same 704 words
-; to the same two places. They are nought, because that is what $0a answers
-; until its arithmetic is read: entry 2f in OPEN-QUESTIONS has the measurement
-; that rules a table out for it.
+; to the same two places, and they are the answers rather than nought:
+; ground_block in asm/dsp1-ground.asm computes each scanline from the state $02
+; left behind, which is arithmetic read out of the chip's own program and checked
+; against the chip on 43,440 answer words.
 ;
 ; X and Y are left as the original loop left them, 704 and nought, because the
-; code after the span is the game's and may still be using them.
+; code after the span is the game's and may still be using them. ground_block
+; does that on the way out rather than by accident.
 ; ---------------------------------------------------------------------------
 !STREAM_TURNS = $00B0           ; 176 groups of four words, which is 704
 !STREAM_ONE   = $0420           ; where the first two of each group went
 !STREAM_TWO   = $0700           ; and the other two
 
 dsp_stream:
-    php
-    phb
+    jsl ground_block
+    rtl
+
+; ---------------------------------------------------------------------------
+; $02, in place of the run that asked for it and read it back.
+;
+; This command matters twice over. It answers four words the game turns into its
+; own state, and it leaves ten more words inside the part that $0a reads to draw
+; the ground. Neither reached the cartridge before this routine existed, because
+; the game asks for $02 the same way it asks for $10: it sets the data bank and
+; then uses three byte absolute instructions, which have no room for a call and
+; nothing in the operand a scanner could recognise.
+;
+; So every one of those stores went into the window at bank $7D, which is ROM,
+; and every one of the reads came back nought. The game then computed its state
+; from four zeroes, $0a was handed a line number derived from one of them, and
+; the ground had no chance of being right however exact its arithmetic was.
+;
+; The run replaced is $00:CB4E through $00:CBB1, which is 100 bytes: the command
+; byte, the seven arguments, the wait, the four reads, and the arithmetic the
+; game does on them. That arithmetic is reproduced below rather than left in
+; place, because the reads are three byte instructions in the middle of it.
+;
+; It does not start at $00:CB4A, where the `pea` that sets the data bank is. That
+; instruction is jumped over on the path the demo takes, so the byte the closing
+; `plb` at $00:CBB2 collects comes from the `pea` before the $10 run instead.
+; Replacing from $CB4A unbalances the stack and blacks the screen.
+;
+; The direct page is the game's own throughout, which is what lets $54, $56 and
+; the rest be read where the game reads them. Everything in bank zero is reached
+; with a long address, because the data bank here is the window's rather than the
+; game's usual one.
+; ---------------------------------------------------------------------------
+dsp_route_02:
     rep #$30
 
-    lda #$0000
-    pha
-    plb
-    plb
+    lda $54                     ; the seven arguments, from where the game's
+    sta.l !ARGL+0               ; own instructions took them
+    lda $56
+    sta.l !ARGL+2
+    lda $58
+    sta.l !ARGL+4
+    lda $68
+    sta.l !ARGL+6
+    lda.l $0018F4
+    sta.l !ARGL+8
+    lda $36
+    sta.l !ARGL+10
+    lda $2A
+    sta.l !ARGL+12
 
-    ldx #$0000
-    ldy #!STREAM_TURNS
-    lda #$0000
+    ldx.w #$000C                ; and kept where $0a's own routine looks for
+-                               ; them, which is the same place dsp_write keeps
+    lda.l !ARGL,x               ; them for the commands that arrive through the
+    sta.l !CARRY_02,x           ; port
+    dex
+    dex
+    bpl -
 
--
-    sta.w !STREAM_ONE,x
-    sta.w !STREAM_ONE+2,x
-    sta.w !STREAM_TWO,x
-    sta.w !STREAM_TWO+2,x
-    inx
-    inx
-    inx
-    inx
-    dey
-    bne -
+    lda.w #$0002
+    sta.l !CMDL
+    jsl dsp1_answer
 
-    plb
-    plp
+    ; What the game did with the four words it read back. The carry is set and
+    ; cleared exactly where its own instructions did, because two of these are
+    ; subtractions that borrow.
+    clc
+    lda.w #$0098
+    adc.l !OUTL+0
+    sta $8A
+    clc
+    adc.l !OUTL+2
+    sta.l $0018F2
+
+    lda.l !OUTL+4
+    sta $60
+    and $B2
+    sta.l $0009E0
+    sec
+    sbc.w #$007F
+    sta.l $0009E8
+
+    lda.l !OUTL+6
+    sta $62
+    and $B2
+    sta.l $0009E2
+    sec
+    sbc $8A
+    inc a
+    sta.l $0009EA
+    rtl
+
+; ---------------------------------------------------------------------------
+; The line number $0a is asked to start from.
+;
+; The game writes $0a's command byte and its one argument through the window as
+; well, so the port never sees either and nothing in the cartridge knew which
+; scanline the stream began at. The argument is one less than $31 minus the byte
+; $02 left at $8A, because the `rep` before it clears the carry and the
+; subtraction borrows.
+;
+; The run replaced is $00:CAA8 through $00:CAB8, seventeen bytes: the command
+; byte, the argument, and the width change between them. It leaves the widths
+; the way that `rep` left them, sixteen bits and the carry clear, because the
+; game's own code carries straight on from there.
+; ---------------------------------------------------------------------------
+dsp_route_0a:
+    rep #$31
+    lda.w #$0031
+    sbc $8A
+    sta.l !PORT_LINE
     rtl
 
 ; ---------------------------------------------------------------------------
@@ -867,33 +972,3 @@ dsp_route_10:
     tay
     lda.l !OUTL
     rtl
-
-; ---------------------------------------------------------------------------
-; The window the game reaches when its data bank is redirected.
-;
-; Twelve places in the game set the data bank to $3F with "pea $003F" and then
-; reach the part through three byte absolute instructions: "sta $8000" to send,
-; "lda $8000" to receive, "bit $c000" to wait. None of those can be replaced by
-; a call, because a call is four bytes and they are three, and none of them
-; names the part's address in a way a scanner can recognise.
-;
-; What can be replaced is the "pea $003F", which is three bytes and names the
-; bank outright. patch.py rewrites it to name this bank instead, and then every
-; one of those instructions lands here without any of them being touched.
-;
-; What lands here has to satisfy the wait first. The game polls the status until
-; its top bit is set, so a byte with that bit clear is an endless loop, and
-; that is exactly what killed it: at frame 935 it entered the poll at $00CAD7
-; and never came out. This answers with the top bit set at every address the
-; poll can name, in both halves of a word, so the wait ends whichever width the
-; accumulator happens to be.
-; ---------------------------------------------------------------------------
-!WINDOW_BANK = $7D
-
-org (!WINDOW_BANK<<16)|$C000
-dsp_window_status:
-    fillbyte $80 : fill $2000
-
-org (!WINDOW_BANK<<16)|$8000
-dsp_window_data:
-    fillbyte $00 : fill $100

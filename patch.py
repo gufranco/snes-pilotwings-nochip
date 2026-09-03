@@ -193,8 +193,10 @@ name.
 """
 
 SPANS = (
+    (0x04AA8, 0x04AB9, "dsp_route_0a"),
     (0x04AD1, 0x04B0F, "dsp_stream"),
     (0x04B17, 0x04B39, "dsp_route_10"),
+    (0x04B4E, 0x04BB2, "dsp_route_02"),
 )
 """Runs of the game's own code replaced whole, rather than one instruction each.
 
@@ -208,9 +210,21 @@ What it does have is length. $04AD1 to $04B0E is the loop that reads $0a's 704
 word answer, 62 bytes of it, and a call needs four. So the loop is replaced as a
 whole and the rest filled with instructions that do nothing.
 
-Five instructions inside this one span account for 12,224,960 of the 15,673,471
+Five instructions inside that one span account for 12,224,960 of the 15,673,471
 accesses the recording holds, which is 78% of everything the cartridge ever
 asked the part.
+
+Four runs rather than one, because three commands are asked for this way and one
+of them is asked in two places. $02 is the one that mattered most and was found
+last: it writes the ten words $0a reads to draw the ground, and every one of its
+own four answer words came back nought until its run was replaced. $0a's command
+byte and argument go the same way, which is why the line the ground starts at had
+to be recovered rather than read out of the port.
+
+None of the four starts at the `pea` that sets the data bank. On the path the
+demo takes, the one before $02 is jumped over, so the byte its closing `plb`
+collects was pushed by the `pea` before the $10 run. A run that swallowed a `pea`
+would leave the stack one byte out and black the screen.
 """
 
 

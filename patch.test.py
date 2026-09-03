@@ -14,6 +14,8 @@ STUBS = {
     "dsp_ignore": 0x0F8400,
     "dsp_stream": 0x0F8500,
     "dsp_route_10": 0x0F8600,
+    "dsp_route_02": 0x0F8700,
+    "dsp_route_0a": 0x0F8800,
 }
 
 
@@ -300,6 +302,7 @@ class BuildTest(unittest.TestCase):
         (into / "symbols.txt").write_text(
             "dsp_write 0F8100\ndsp_read 0F8200\ndsp_status 0F8300\n"
             "dsp_ignore 0F8400\ndsp_stream 0F8500\ndsp_route_10 0F8600\n"
+            "dsp_route_02 0F8700\ndsp_route_0a 0F8800\n"
         )
 
         code = patch.main(
