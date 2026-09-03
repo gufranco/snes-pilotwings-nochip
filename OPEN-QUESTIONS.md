@@ -1313,3 +1313,81 @@ setup, the two constants at `RAM[$CC]` and `RAM[$CB]`, the normalisation in
 `$0077`, and wherever the far half is written. Then the routine, held against
 the part on four hundred argument sets the way `op_00`, `op_08` and `op_04`
 were.
+
+## 13. `$0a` read off the part rather than off the microcode
+
+**Measured 2026-09-03, and this supersedes the operand pairing in entry 12.**
+
+Entry 12 named the matrix as `RAM[$BF]/$BE/$AF/$AE`, read out of the instruction
+operands. That was wrong, and the way it was found to be wrong is worth keeping:
+driving `$02` on its own and reading the part's RAM afterwards showed all four
+slots still nought while a real run plainly produced output from them. So the
+operand decode was set aside and the part was watched directly instead.
+
+**Watching it needed one correction first.** Replaying a recording by writing the
+command and then reading as many bytes as the recording holds desynchronises the
+part, because a read takes whatever is latched whether or not anything is
+pending. Reading nothing at all for a command that answers nothing, and exactly
+the recorded count for one that answers, brings the first 129 exchanges into
+exact agreement. The one remaining divergence is a `$0a`, whose answer is a
+stream the game stops reading when it likes, so replaying it leaves the part
+mid-answer and every later command reads the leftovers. Skipping the earlier
+`$0a` calls reproduces a live one word for word.
+
+**The whole per-scanline body, as the part executes it.** Thirty-four memory
+events, every one of them accounted for:
+
+| step | what happens |
+|---|---|
+| 1 | `RAM[$09]` increments by one. It starts at the command's single argument |
+| 2 | `RAM[$c8]` is read. It is the horizon offset, 53 in this frame |
+| 3 | a normalise loop over `RAM[$00]` and `RAM[$01]` with three ROM constants |
+| 4 | the reciprocal is a ROM read, at an index that moves with the scanline |
+| 5 | `RAM[$4c]` and `RAM[$cc]` are read, a mantissa and an exponent |
+| 6 | a power of two is read from ROM, then `RAM[$3f]` and `RAM[$2f]` are written |
+| 7 | `RAM[$4b]` and `RAM[$cb]` are read, the second mantissa and exponent |
+| 8 | another power of two, then `RAM[$3e]` and `RAM[$2e]` are written |
+| 9 | four products are formed and sent |
+
+**The matrix is at `$7f`, `$7e`, `$6f`, `$6e`,** and the four answer words are
+
+| word | product |
+|---|---|
+| 0 | `RAM[$3f]` against `RAM[$7f]` |
+| 1 | `RAM[$3e]` against `RAM[$7e]` |
+| 2 | `RAM[$2f]` against `RAM[$6f]` |
+| 3 | `RAM[$2e]` against `RAM[$6e]` |
+
+In the frame measured the matrix is an identity, `32767, 0, 0, 32767`, which is
+why two of every four answer words are nought and the other two are the
+per-scanline values unchanged. That is a property of this frame, not of `$0a`.
+
+**The per-scanline law, fitted and then confirmed against the horizon offset the
+part reads.** Both values are a constant over the distance to the horizon:
+
+| n | `$3f` | `$3e` | `$3f` times n+53 | `$3e` times n+53 |
+|---:|---:|---:|---:|---:|
+| -103 | -32 | -149 | 1600 | 7450 |
+| -100 | -34 | -159 | 1598 | 7473 |
+| -97 | -36 | -170 | 1584 | 7480 |
+| -94 | -39 | -183 | 1599 | 7503 |
+
+The divisor is `n + RAM[$c8]`, and `RAM[$c8]` is 53. The scatter in the products
+is integer rounding in the part, not a worse fit.
+
+**What this changes.** Both tables `$0a` needs are ROM tables this project has
+already extracted whole: the reciprocal and the powers of two. Nothing about the
+expensive half has to be written as arithmetic. What has to be written is the
+normalise, two multiplies, and the four output products.
+
+**What is left.** The fixed-point scaling that turns the reciprocal and a
+mantissa and exponent pair into `$3f`, and the same for `$3e`. The trace names
+every input to it, so it can be pinned by driving the part across a spread of
+`RAM[$4c]`, `RAM[$cc]` and `RAM[$c8]` rather than by reading instructions. Then
+the routine, held against the part on four hundred argument sets the way
+`op_00`, `op_08` and `op_04` were.
+
+**And `$01` and `$11` are not where the matrix comes from.** Each writes four
+words and touches none of `$7f`, `$7e`, `$6f`, `$6e`. `$02` writes thirty-five,
+including every constant the loop reads. The matrix is `$02`'s, and the earlier
+suspicion of the two answerless commands was wrong.
