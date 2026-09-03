@@ -49,6 +49,7 @@ be.
 | the fallback, in 65816 | answers every command, including keys no recording holds, without looping |
 | `$0a` | not answered. It is a function of `$02`'s arguments and would take 8.7 MB to store |
 | whether the image has to grow | yes, to 3.75 MB, which is inside what a low cartridge addresses |
+| speed | about seven times a whole frame per frame of calls, against 6% for the part |
 | the finished cartridge | not started: the game's own calls are not yet routed here |
 
 ### How much of the game it covers
@@ -100,6 +101,30 @@ command per region:
 for them, not because fewer were tried. `$0a` answers 764 words of nought, which
 is deliberate: it is bounded, it reads nothing it has not set, and it is
 obviously wrong rather than plausibly wrong.
+
+### How fast it is, against the part it replaces
+
+Counted on the processor model, driving the assembled image. The call rate comes
+from the recordings, which carry a frame number per access.
+
+| | per call | a median frame, 43 calls | of a frame |
+|---|---:|---:|---:|
+| the part, wall time the game was blocked | tens to ~250 | about 2,700 | 6% |
+| this replacement | 7,764 | 333,850 | 750% |
+
+So it is correct and it is far too slow. A frame is 44,671 processor cycles when
+a read costs 8 master clocks, and the game has to do everything else in the same
+frame.
+
+The reason is that the table is the slow path. `$00` costs 6,562 cycles through
+the table and 398 through the arithmetic that was read out of the part and
+checked exact against it, which is sixteen times cheaper and covers the whole
+domain instead of only what was recorded. The same holds for `$08`, 5,696
+against 920, and `$04`, 3,960 against 833.
+
+That points the remaining work at exactly the two commands the coverage figures
+already pointed at. `$06` is 30.8% of calls and `$13` is 26.9%; reading their
+arithmetic is the largest gain in speed and in coverage, and it is one task.
 
 ### Where everything sits in the cartridge
 

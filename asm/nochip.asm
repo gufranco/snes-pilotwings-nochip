@@ -34,3 +34,6 @@ incsrc "../build/lut-map.asm"
 print "code          ", dec(code_end-$0F8000), " bytes"
 print "dsp1_answer at ", hex(dsp1_answer)
 print "dsp1_lut at    ", hex(dsp1_lut)
+print "op_00 at       ", hex(op_00)
+print "op_08 at       ", hex(op_08)
+print "op_04 at       ", hex(op_04)

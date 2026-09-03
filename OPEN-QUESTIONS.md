@@ -948,3 +948,63 @@ It stays in [`tabulate.py`](tabulate.py) as that ceiling and is not a target.
 
 **The one thing the size does rule out.** `$0a`, per entry 2f. Its answers would
 take 8.7 megabytes on their own, which is more than twice the whole cartridge.
+
+## 5. Whether the replacement is fast enough to run the game
+
+**Measured 2026-09-02, and no: it is about seven times an entire frame.**
+
+Every figure below is 65816 cycles counted on the processor model, driving the
+assembled image.
+
+| | per call | a median frame, 43 calls | of a frame |
+|---|---:|---:|---:|
+| the part, wall time the game was blocked | tens to ~250 | about 2,700 | 6% |
+| this replacement, every call a hit | 7,764 | 333,850 | 750% |
+
+A frame is 357,368 master clocks, which is 44,671 processor cycles when a read
+costs 8 of them and 59,561 when it costs 6. The game has to do everything else
+in the same frame, so the replacement's share needs to be a fraction of it
+rather than a multiple.
+
+Call rate is measured rather than assumed. The recordings carry a frame number
+per access, and across all three the busy frames take a mean of 37 calls, a
+median of 43, a 99th percentile of 46 and a worst case of 128.
+
+**Where it goes.** The search is a binary one over as many as 75,278 rows, so
+seventeen comparisons, and each comparison recomputes the row's address from
+scratch: a software multiply of the row number by the key width, then the
+conversion from a flat offset to a bank and address, then the words themselves.
+That is roughly 650 cycles a comparison.
+
+**The finding that matters.** The table is the slow path, not the fast one.
+
+| command | through the table | through its own arithmetic |
+|---|---:|---:|
+| `$00` | 6,562 | 398 |
+| `$08` | 5,696 | 920 |
+| `$04` | 3,960 | 833 |
+
+Sixteen times slower for `$00`, and the arithmetic is exact on the whole domain
+where the table covers only what was recorded. For a command whose arithmetic is
+known, computing beats looking up on both counts at once, and the 191,314 bytes
+those three occupy in the table buy nothing.
+
+**What that changes.** The order of work is now the same by both measures. `$06`
+is 30.8% of calls, costs 9,805 cycles through the table and answers nothing on
+unseen flight. `$13` is 26.9%, costs 7,151 and answers 39.4%. Reading those two
+handlers out of the part's program is the largest available gain in speed and in
+coverage together, and it is the same task.
+
+**Caveat on the part's own latency.** Several commands report a single cycle to
+the first answer byte, which is not credible as a hardware latency and is more
+likely the model buffering. The rows that do report plausibly, `$02` at 527 DSP
+cycles, `$06` at 356, `$14` at 134, `$0e` at 114, are the ones the estimate above
+rests on. A tighter figure needs the part timed against a hardware capture rather
+than against its own model.
+
+**What would close this.** Reading `$06` and `$13`, then re-measuring. If the
+weighted mean lands under about 400 cycles a call the replacement fits in roughly
+a third of what the game already spent waiting, and the question closes. If a
+table has to stay for some command, the search needs a bucket index on the first
+key word and the row address needs the console's multiplier rather than a
+software loop.
