@@ -1262,3 +1262,54 @@ inputs, so the loop is a table read and two multiplies once the format is known.
 **Order.** `$0a` first, at 48 instructions and the whole ground plane. Then
 `$02` at 273, which produces the constants `$0a` and `$06` both need. Then `$06`
 at 186, whose shape entry 5c already fixes.
+
+## 12. `$0a` decoded, and the one thing it still needs
+
+**Read and measured 2026-09-03.** Four facts, each checked against the part
+rather than inferred.
+
+**It steps by a constant.** The value handed to the reciprocal advances by
+exactly 512 per scanline. Watched at the call site over the first twelve
+scanlines: -25088, -24576, -24064, -23552, and so on without exception. So the
+per scanline input is a start plus 512 times the scanline, and the start is what
+the twelve instructions of setup compute.
+
+**What comes back is a reciprocal of a half.** Input times output is 0.5 in the
+part's fixed point, to five digits, on every row sampled. That is a reciprocal
+with a half in the numerator, which is what keeps the result inside a signed
+word.
+
+**It is the reciprocal this cartridge already carries.** The table `derived.py`
+drove out of the part, 65,536 entries covering every input, returns exactly what
+the part returned on all six values checked, to the bit. So the expensive half of
+`$0a` needs no arithmetic written at all: it is a table read this project has
+had since before any of this.
+
+**The shape.** Per scanline the loop computes two scales from that reciprocal,
+writes each into two places in the near half of RAM, and the output stage sends
+four words, each the high half of a near value against a far one:
+
+| word | near, per scanline | far, the matrix |
+|---|---|---|
+| 0 | `RAM[$3F]` | `RAM[$BF]` |
+| 1 | `RAM[$3E]` | `RAM[$BE]` |
+| 2 | `RAM[$2F]` | `RAM[$AF]` |
+| 3 | `RAM[$2E]` | `RAM[$AE]` |
+
+**What it still needs, and this is the finding that matters.** The four far
+values are not `$02`'s answer. Driving `$02` alone and reading the part's RAM
+straight afterwards, all four are nought, while a real run produces output that
+is plainly not. So the matrix `$0a` multiplies by is accumulated by more than
+`$02`, and the commands that answer nothing at all, `$01` and `$11`, are the
+candidates: they exist to set state and nothing else.
+
+That was worth finding out before writing the routine. An implementation of
+`$0a` that took `$02`'s four answer words for the matrix would have been wrong
+in a way that looks plausible, which is the shape of fault this project has
+already been caught by twice.
+
+**What is left for `$0a`.** The start value from its twelve instructions of
+setup, the two constants at `RAM[$CC]` and `RAM[$CB]`, the normalisation in
+`$0077`, and wherever the far half is written. Then the routine, held against
+the part on four hundred argument sets the way `op_00`, `op_08` and `op_04`
+were.
