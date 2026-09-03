@@ -118,6 +118,29 @@
 !PORT_VALUE  = !PORTRAM+6       ; the value the caller was writing
 !PORT_ARGS   = !PORTRAM+8       ; ten argument words
 !PORT_ANSWER = !PORTRAM+28      ; four answer words
+!PORT_PART   = !PORTRAM+36      ; a half written argument is waiting
+!PORT_HALF   = !PORTRAM+37      ; and this is its low byte
+!PORT_READY  = !PORTRAM+38      ; holds !READY once this state has been set up
+!PORT_WRITES = !PORTRAM+39      ; how many writes have arrived, wrapping
+!PORT_DONE   = !PORTRAM+40      ; how many commands have completed, wrapping
+!PORT_READS  = !PORTRAM+41      ; how many reads have been served, wrapping
+!PORT_LAST   = !PORTRAM+42      ; the last command byte that completed
+!PORT_SITE   = !PORTRAM+44      ; where the first read came from
+!PORT_SEEN   = !PORTRAM+47      ; whether that has been recorded yet
+
+; A value the memory does not hold before this has written it.
+;
+; The idle state used to be all zeroes, on the reasoning that work RAM reads as
+; nought before anything writes it. It does not: this game fills bank $7F with
+; $55, so the count of arguments still to come started at 85, the port believed
+; a command was permanently part way through, and not one exchange ever
+; completed. Every argument slot was still $55 after nine hundred frames.
+;
+; So the state is not assumed, it is recognised. Anything other than this value
+; means the block has not been set up, and the first access sets it up. There is
+; nowhere to put an initialiser that would run once instead: the console's reset
+; vector is sixteen bits and reaches only bank $00, which the game fills.
+!READY = $A5
 
 ; The lookup's own variables, named as long addresses so this file can reach
 ; them whatever data bank the game happens to be in. That is the whole reason
@@ -263,6 +286,17 @@ dsp_write:
     phd
 
     sep #$20
+    lda.l !PORT_READY           ; has this block been set up at all?
+    cmp #!READY
+    beq .known
+    jsl dsp_port_reset
+    sep #$20
+
+.known:
+    lda.l !PORT_WRITES
+    inc a
+    sta.l !PORT_WRITES
+
     lda.l !PORT_LEFT
     bne .argument
 
@@ -276,8 +310,9 @@ dsp_write:
     sep #$20
 
     lda #$00                    ; there is no stz that names a full address, so
-    sta.l !PORT_AT              ; the zero is loaded once and stored three times
+    sta.l !PORT_AT              ; the zero is loaded once and stored four times
     sta.l !PORT_OUT
+    sta.l !PORT_PART            ; no half written argument is outstanding
 
     lda.l dsp_arity,x           ; how many argument words to expect
     sta.l !PORT_LEFT
@@ -297,7 +332,42 @@ dsp_write:
 ; the count reaches nought either way.
 
 .argument:
+    ; An argument is a word, and the game does not always send it as one. A
+    ; sixteen bit store delivers the whole thing at once; an eight bit store
+    ; delivers half, and the other half arrives as the next write. Counting
+    ; that second half as an argument of its own is what desynchronised the
+    ; protocol: the count of arguments still to come never reached nought, so
+    ; every write after it was swallowed as an argument to a command that had
+    ; already had all of them. It ran the argument index up past eighty and
+    ; wrote 170 bytes beyond the end of the buffer.
+    sep #$20
+    lda.l !PORT_WIDE
+    beq .whole                  ; the caller's accumulator was sixteen bits
+
+    lda.l !PORT_PART
+    bne .second
+
+    lda.l !PORT_VALUE           ; the first half: keep it and wait
+    sta.l !PORT_HALF
+    lda #$01
+    sta.l !PORT_PART
+    brl .done
+
+.second:
+    lda #$00
+    sta.l !PORT_PART
+    lda.l !PORT_VALUE           ; the second half is the high byte
+    xba
+    lda.l !PORT_HALF            ; and the kept one is the low
     rep #$30
+    bra .place
+
+.whole:
+    rep #$30
+    lda.l !PORT_VALUE
+
+.place:
+    sta.l !PORT_VALUE
     lda.l !PORT_AT
     and.w #$00FF
     asl a                       ; two bytes to a word
@@ -382,6 +452,12 @@ dsp_write:
     bne -
 
 .answered:
+    sep #$20
+    lda.l !PORT_DONE
+    inc a
+    sta.l !PORT_DONE
+    lda.l !PORT_CMD
+    sta.l !PORT_LAST
 
 .done:
     ; A "sta" leaves the accumulator exactly as it found it, so this has to as
@@ -409,6 +485,30 @@ dsp_read:
     phx
 
     sep #$20
+    lda.l !PORT_READY
+    cmp #!READY
+    beq .known
+    jsl dsp_port_reset
+    sep #$20
+
+.known:
+    lda.l !PORT_READS
+    inc a
+    sta.l !PORT_READS
+
+    lda.l !PORT_SEEN            ; keep where the very first read came from
+    bne .noted
+    lda #$01
+    sta.l !PORT_SEEN
+    lda $04,s
+    sta.l !PORT_SITE
+    lda $05,s
+    sta.l !PORT_SITE+1
+    lda $06,s
+    sta.l !PORT_SITE+2
+
+.noted:
+
     lda.l !PORT_OUT
     rep #$30
     and.w #$0007                ; four words, and never past them however far
@@ -471,18 +571,34 @@ dsp_ignore:
     rtl
 
 ; ---------------------------------------------------------------------------
-; Put the port back to where it starts.
+; Put the port back to where it starts, and mark it as set up.
 ;
-; Nothing calls this, and that is the point: the idle state is all zeroes, which
-; is what work RAM already reads as. It is here so that a future caller with
-; somewhere to put an initialiser has one to call.
+; Called by the first access that finds the marker missing, which is the only
+; moment available: there is nowhere to put an initialiser that runs once.
 ; ---------------------------------------------------------------------------
 dsp_port_reset:
     php
+    rep #$10                    ; a sixteen bit index, for the loop below
     sep #$20
     lda #$00
     sta.l !PORT_AT
     sta.l !PORT_OUT
     sta.l !PORT_LEFT
+    sta.l !PORT_PART
+    sta.l !PORT_SEEN
+
+    ; The answer buffer starts empty rather than holding whatever the memory
+    ; held. The game reads the port before it has asked anything, and the part
+    ; returns nought to those reads: the first data read in the recording comes
+    ; back $00, and every byte of the four words after it does too. Leaving the
+    ; buffer as found returned $55 instead, which is the game's own fill.
+    ldx #$0008
+-
+    dex
+    sta.l !PORT_ANSWER,x
+    bne -
+
+    lda #!READY
+    sta.l !PORT_READY
     plp
     rtl

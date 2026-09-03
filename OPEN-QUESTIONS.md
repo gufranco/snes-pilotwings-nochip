@@ -1097,3 +1097,64 @@ computable rather than searchable.
 
 **What is still unmeasured.** `$0a`, which is 2.9% of calls and the largest
 single computation the part does.
+
+## 6. The image cannot grow past 1 megabyte
+
+**Measured 2026-09-02, and it settles entry 4 the other way.**
+
+Entry 4 concluded the image could grow to 3.75 megabytes because that fits
+inside what a low cartridge addresses. It fits, and the game does not run.
+
+Padding the retail dump with zeroes and changing nothing else, run against the
+local snes9x fork:
+
+| image | banks | frames drawn in 3,000 |
+|---|---|---:|
+| 1,024 KB | `$00`-`$1F` | 2,657, the same as the retail dump |
+| 1,056 KB | `$00`-`$20` | 605 |
+| 1,216 KB | `$00`-`$25` | 605 |
+| 2,048 KB | `$00`-`$3F` | 605 |
+| 4,096 KB | `$00`-`$7F` | 605 |
+
+Thirty two banks work and thirty three do not. Nothing else differs: same code,
+same header, same input script, zeroes in every added byte.
+
+Three things it is not. Not the header's size byte, since declaring 11, 12 or 13
+changes nothing. Not the loss of the mirrors, since filling the whole image with
+repeated copies of the game changes nothing. Not the coprocessor window at
+`$30`-`$3F`, since 33 banks fails and reaches only `$20`.
+
+**What this costs.** The table is 3.0 megabytes and there is room for about 100
+kilobytes beside the game, the code and the three tables taken from the part. A
+recorded-answer table of that size is not reachable at all, which turns entry 5c
+from the fastest route into the only one: the answers have to be computed.
+
+**What would close it.** Reading snes9x's own map for a low cartridge above one
+megabyte, and checking the same boundary against a second emulator and against
+hardware. A limit measured on one emulator is a property of that emulator until
+a second one agrees.
+
+## 7. What the conversion still gets wrong, with everything else ruled out
+
+**Measured 2026-09-02 at one megabyte, where the size limit above does not
+apply.** Three builds, one input script, 3,000 frames:
+
+| build | frames drawn |
+|---|---:|
+| the retail dump padded to 1 MB | 2,657 |
+| that, plus this project's code and the tables taken from the part, with the 122 sites left alone | 2,657 |
+| the same with the 122 sites replaced | 605 |
+
+So everything this project adds to the image is harmless, and the fault is in
+the replacement of the sites or in the port that stands behind them.
+
+**What the port sees.** Counters kept in its own state, read out of work RAM:
+213 writes, 213 completed commands, 85 reads, and the last command completed is
+`$80`. Those numbers are identical at frame 200 and at frame 2000, so the game
+stops using the part entirely after its opening handshake. The recording shows
+the retail cartridge issuing 130 `$80` writes at frame 0 and then nothing until
+frame 1790, so the conversion never reaches the point where the part is asked a
+real question.
+
+**What is ruled out.** The lookup, the fallback, the answers, and the table,
+because none of them is ever reached.

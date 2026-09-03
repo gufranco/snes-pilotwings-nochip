@@ -17,6 +17,72 @@ static const double LIT_THRESHOLD = 1.0;
 
 static unsigned pad_state = 0;
 
+static const char *shot_dir = NULL;
+static std::vector<unsigned long> shot_frames;
+static unsigned long frame_number = 0;
+
+static void write_shot(const char *path)
+{
+    if (frame.empty() || frame_width == 0) {
+        return;
+    }
+    FILE *out = fopen(path, "wb");
+    if (!out) {
+        return;
+    }
+    fprintf(out, "P6\n%u %u\n255\n", frame_width, frame_height);
+    for (unsigned y = 0; y < frame_height; y++) {
+        for (unsigned x = 0; x < frame_width; x++) {
+            const uint16_t pixel = frame[y * frame_pitch + x];
+            const unsigned char rgb[3] = {
+                (unsigned char)(((pixel >> 11) & 0x1F) * 255 / 31),
+                (unsigned char)(((pixel >> 5) & 0x3F) * 255 / 63),
+                (unsigned char)((pixel & 0x1F) * 255 / 31),
+            };
+            fwrite(rgb, 1, 3, out);
+        }
+    }
+    fclose(out);
+}
+
+static const char *wram_dir = NULL;
+static void *(*get_memory)(unsigned) = NULL;
+static size_t (*get_memory_size)(unsigned) = NULL;
+
+static void maybe_dump_wram(void)
+{
+    if (!wram_dir || !get_memory) {
+        return;
+    }
+    void *ram = get_memory(RETRO_MEMORY_SYSTEM_RAM);
+    const size_t span = get_memory_size(RETRO_MEMORY_SYSTEM_RAM);
+    if (!ram || !span) {
+        return;
+    }
+    char path[512];
+    snprintf(path, sizeof(path), "%s/wram-%06lu.bin", wram_dir, frame_number);
+    FILE *out = fopen(path, "wb");
+    if (!out) {
+        return;
+    }
+    fwrite(ram, 1, span, out);
+    fclose(out);
+}
+
+static void maybe_shoot(void)
+{
+    if (!shot_dir) {
+        return;
+    }
+    for (size_t at = 0; at < shot_frames.size(); at++) {
+        if (shot_frames[at] == frame_number) {
+            char path[512];
+            snprintf(path, sizeof(path), "%s/frame-%06lu.ppm", shot_dir, frame_number);
+            write_shot(path);
+        }
+    }
+}
+
 struct Press {
     unsigned long at_frame;
     unsigned buttons;
@@ -203,6 +269,24 @@ int main(int argc, char **argv)
     }
     const unsigned long frames_to_run = strtoul(argv[3], NULL, 10);
 
+    shot_dir = getenv("PWSHOT");
+    wram_dir = getenv("PWWRAM");
+    get_memory = (void *(*)(unsigned))dlsym(core, "retro_get_memory_data");
+    get_memory_size = (size_t (*)(unsigned))dlsym(core, "retro_get_memory_size");
+    const char *shot_list = getenv("PWSHOTS");
+    if (shot_list) {
+        const char *cursor = shot_list;
+        while (*cursor) {
+            char *next = NULL;
+            const unsigned long at = strtoul(cursor, &next, 10);
+            if (next == cursor) {
+                break;
+            }
+            shot_frames.push_back(at);
+            cursor = (*next == ',') ? next + 1 : next;
+        }
+    }
+
     const char *script_path = getenv("PWSCRIPT");
     if (script_path && !load_script(script_path)) {
         fprintf(stderr, "cannot read %s\n", script_path);
@@ -229,8 +313,15 @@ int main(int argc, char **argv)
     }
 
     for (unsigned long at = 0; at < frames_to_run; at++) {
+        frame_number = at;
         apply_script(at);
         retro_run();
+        maybe_shoot();
+        for (size_t k = 0; k < shot_frames.size(); k++) {
+            if (shot_frames[k] == frame_number) {
+                maybe_dump_wram();
+            }
+        }
     }
 
     printf("RESULT load=ok frames=%lu delivered=%lu lit=%lu brightness=%.2f\n", frames_to_run,
