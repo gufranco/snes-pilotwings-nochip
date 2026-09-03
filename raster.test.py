@@ -1,120 +1,182 @@
 import unittest
+from pathlib import Path
 
 import raster
 
+ROOT = Path(__file__).resolve().parent
 
-def lookup() -> dict[int, tuple[int, int]]:
-    """The reciprocal the part hands back, for the distances measured from it.
 
-    Taken by watching a live `$0a`, so these are the part's own values rather
-    than a reading of what its instructions ought to produce. Every entry here
-    sits inside the table's own octave, where no folding happens; the folded
-    range is measured by `derive.py` rather than guessed at here.
-    """
-    return {
-        -50: (21400, 0),
-        -49: (21845, 0),
-        -46: (23302, 0),
-        -45: (23831, 0),
-        -36: (29959, 0),
-        -35: (29959, 0),
-        50: (21400, 0),
+def _table(value: int = 0x4000) -> tuple[int, ...]:
+    """A reciprocal table over the whole normalised range, holding one value."""
+    return (value,) * 0x4000
+
+
+def _state(**named: int) -> dict[int, int]:
+    found = {
+        raster.STEP: 0,
+        raster.HORIZON: 0,
+        raster.FIRST_MANTISSA: 0,
+        raster.FIRST_EXPONENT: 0,
+        raster.SECOND_MANTISSA: 0,
+        raster.SECOND_EXPONENT: 0,
     }
+    found.update(dict.fromkeys(raster.MATRIX, 0))
+    for name, value in named.items():
+        found[getattr(raster, name.upper())] = value
+    return found
 
 
-def state(over: dict[int, int] | None = None) -> dict[int, int]:
-    """The constants `$02` leaves behind, as measured in the recording."""
-    base = {
-        raster.HORIZON: 53,
-        raster.FIRST_MANTISSA: 24576,
-        raster.FIRST_EXPONENT: 3,
-        raster.SECOND_MANTISSA: 19440,
-        raster.SECOND_EXPONENT: 3,
-        raster.MATRIX[0]: 32767,
-        raster.MATRIX[1]: 0,
-        raster.MATRIX[2]: 0,
-        raster.MATRIX[3]: 32767,
-    }
-    base.update(over or {})
-    return base
+class Signed(unittest.TestCase):
+    def test_a_word_below_the_halfway_point_stays_itself(self) -> None:
+        self.assertEqual(raster.signed(0x1234), 0x1234)
+
+    def test_a_word_above_it_reads_as_negative(self) -> None:
+        self.assertEqual(raster.signed(0xFFFE), -2)
 
 
-class Scales(unittest.TestCase):
-    def test_a_line_level_with_the_horizon_has_no_scale(self) -> None:
-        self.assertIsNone(raster.scales(lookup(), state(), 0))
+class Product(unittest.TestCase):
+    def test_a_half_against_a_half_is_a_quarter(self) -> None:
+        self.assertEqual(raster.product(0x4000, 0x4000), 0x2000)
 
-    def test_a_distance_the_part_was_never_asked_about_has_no_scale(self) -> None:
-        self.assertIsNone(raster.scales(lookup(), state(), -9999))
+    def test_it_keeps_the_sign(self) -> None:
+        self.assertEqual(raster.product(-0x4000, 0x4000), -0x2000)
 
-    def test_the_measured_pair_at_the_top_of_the_screen(self) -> None:
-        self.assertEqual(raster.scales(lookup(), state(), -50), (-32, -149))
+    def test_it_rounds_down_rather_than_towards_nought(self) -> None:
+        self.assertEqual(raster.product(-1, 3), -1)
 
-    def test_the_measured_pair_partway_down(self) -> None:
-        self.assertEqual(raster.scales(lookup(), state(), -46), (-35, -163))
+    def test_nought_against_anything_is_nought(self) -> None:
+        self.assertEqual(raster.product(0, 0x7FFF), 0)
 
-    def test_another_measured_pair_further_down(self) -> None:
-        self.assertEqual(raster.scales(lookup(), state(), -45), (-35, -166))
 
-    def test_two_distances_sharing_a_reciprocal_share_a_scale(self) -> None:
-        self.assertEqual(
-            raster.scales(lookup(), state(), -36), raster.scales(lookup(), state(), -35)
+class Normalise(unittest.TestCase):
+    def test_a_value_already_in_range_is_left_alone(self) -> None:
+        self.assertEqual(raster.normalise(0x4000), (0x4000, 0))
+
+    def test_it_doubles_until_the_top_two_bits_differ(self) -> None:
+        self.assertEqual(raster.normalise(0x2000), (0x4000, 1))
+
+    def test_a_negative_value_normalises_the_same_way(self) -> None:
+        self.assertEqual(raster.normalise(-48), (-48 << 9, 9))
+
+    def test_the_most_negative_word_is_already_normalised(self) -> None:
+        self.assertEqual(raster.normalise(-0x8000), (-0x8000, 0))
+
+    def test_nought_is_answered_untouched_so_the_loop_ends(self) -> None:
+        self.assertEqual(raster.normalise(0), (0, 0))
+
+
+class Reciprocal(unittest.TestCase):
+    def test_it_reads_the_entry_the_magnitude_names(self) -> None:
+        table = list(_table())
+        table[0x10] = 1234
+
+        self.assertEqual(raster.reciprocal(0x4010, 9, table)[0], 1234)
+
+    def test_a_negative_input_answers_the_entry_negated(self) -> None:
+        table = list(_table())
+        table[0x10] = 1234
+
+        self.assertEqual(raster.reciprocal(-0x4010, 9, table)[0], -1234)
+
+    def test_the_most_negative_word_reads_the_highest_entry(self) -> None:
+        table = list(_table())
+        table[-1] = 999
+
+        self.assertEqual(raster.reciprocal(-0x8000, 0, table)[0], -999)
+
+    def test_the_exponent_is_the_doubling_count_less_six(self) -> None:
+        self.assertEqual(raster.reciprocal(0x4000, 9, _table())[1], 3)
+
+    def test_a_distance_of_nought_takes_the_part_own_answer(self) -> None:
+        self.assertEqual(raster.reciprocal(0, 0, _table()), raster.ON_NOUGHT)
+
+
+class Scaled(unittest.TestCase):
+    def test_a_shift_of_one_halves_the_normalised_value(self) -> None:
+        self.assertEqual(raster.scaled(0x4000, 14), 0x2000)
+
+    def test_it_shifts_arithmetically_so_a_negative_stays_negative(self) -> None:
+        self.assertEqual(raster.scaled(-0x4000, 14), -0x2000)
+
+    def test_an_exponent_that_lands_exactly_hands_the_value_back(self) -> None:
+        self.assertEqual(raster.scaled(0x4000, 15), 0x4000)
+
+    def test_an_exponent_above_that_clamps_high(self) -> None:
+        self.assertEqual(raster.scaled(0x4000, 16), raster.CLAMP_HIGH)
+
+    def test_a_negative_value_clamps_one_short_of_the_lowest_word(self) -> None:
+        self.assertEqual(raster.scaled(-0x8000, 16), raster.CLAMP_LOW)
+
+    def test_a_shift_past_the_table_gives_nought_rather_than_a_sign_fill(self) -> None:
+        self.assertEqual(raster.scaled(-0x4000, -1), 0)
+
+    def test_the_normalise_inside_it_is_paid_back_by_the_shift(self) -> None:
+        self.assertEqual(raster.scaled(0x2000, 15), 0x2000)
+
+
+class Scanline(unittest.TestCase):
+    def test_the_second_scale_carries_the_first_chain_mantissa(self) -> None:
+        state = _state(
+            step=0,
+            horizon=0x4000,
+            first_mantissa=0x7FFF,
+            first_exponent=15,
+            second_mantissa=0x4000,
+            second_exponent=15,
         )
 
-    def test_a_line_below_the_horizon_is_not_a_mirror_of_one_above(self) -> None:
-        below = raster.scales(lookup(), state(), 50)
-        above = raster.scales(lookup(), state(), -50)
-        assert below is not None and above is not None
-        self.assertNotEqual(below, (-above[0], -above[1]))
+        near, far = raster.scanline(state, 0, _table(0x4000))
 
-    def test_the_pair_below_the_horizon_is_two_short_of_the_mirror(self) -> None:
-        below = raster.scales(lookup(), state(), 50)
-        above = raster.scales(lookup(), state(), -50)
-        assert below is not None and above is not None
-        self.assertEqual(below, (-above[0] - 2, -above[1] - 2))
+        self.assertEqual(far, raster.scaled(raster.product(0x4000, near), 30))
 
-    def test_a_shift_from_folding_reaches_both_values(self) -> None:
-        flat = raster.scales({-46: (23302, 0)}, state(), -46)
-        folded = raster.scales({-46: (23302, -1)}, state(), -46)
-        assert flat is not None and folded is not None
-        self.assertNotEqual(flat, folded)
+    def test_the_line_moves_the_distance_through_the_step(self) -> None:
+        state = _state(step=0x7FFF, horizon=0, first_mantissa=0x4000, first_exponent=3)
 
-    def test_the_second_value_moves_with_the_first_mantissa(self) -> None:
-        one = raster.scales(lookup(), state(), -46)
-        two = raster.scales(lookup(), state({raster.FIRST_MANTISSA: 12288}), -46)
-        assert one is not None and two is not None
-        self.assertNotEqual(one[1], two[1])
-
-    def test_an_exponent_large_enough_to_drive_the_shift_negative_has_no_scale(self) -> None:
-        self.assertIsNone(raster.scales(lookup(), state({raster.FIRST_EXPONENT: 40}), -50))
-
-    def test_a_second_exponent_large_enough_to_drive_its_shift_negative_has_no_scale(self) -> None:
-        self.assertIsNone(raster.scales(lookup(), state({raster.SECOND_EXPONENT: 40}), -50))
+        self.assertNotEqual(
+            raster.scanline(state, 1, _table())[0],
+            raster.scanline(state, 40, _table())[0],
+        )
 
 
 class Answer(unittest.TestCase):
-    def test_it_sends_four_words_a_scanline(self) -> None:
-        self.assertEqual(len(raster.answer(lookup(), state(), -104, 7)), 28)
+    def test_it_gives_four_words_a_scanline(self) -> None:
+        found = raster.answer(_state(), 0, 7, _table())
 
-    def test_the_first_scanline_matches_what_the_part_answered(self) -> None:
-        self.assertEqual(raster.answer(lookup(), state(), -104, 1), (-32, 0, 0, -149))
+        self.assertEqual(len(found), 28)
 
-    def test_an_identity_matrix_zeroes_the_two_off_diagonal_words(self) -> None:
-        got = raster.answer(lookup(), state(), -104, 1)
-        self.assertEqual((got[1], got[2]), (0, 0))
+    def test_the_first_group_belongs_to_the_line_the_argument_names(self) -> None:
+        state = _state(step=0x7FFF, horizon=0, first_mantissa=0x4000, first_exponent=15)
+        state[raster.MATRIX[0]] = 0x7FFF
 
-    def test_a_line_with_no_scale_sends_four_noughts(self) -> None:
-        self.assertEqual(raster.answer(lookup(), state({raster.HORIZON: 0}), -1, 1), (0, 0, 0, 0))
+        whole = raster.answer(state, 40, 2, _table())
+        one = raster.answer(state, 40, 1, _table())
+
+        self.assertEqual(whole[:4], one)
+
+    def test_every_word_is_a_word(self) -> None:
+        state = _state(first_mantissa=0x7FFF, first_exponent=15)
+        state[raster.MATRIX[0]] = -0x7FFF
+
+        self.assertTrue(all(0 <= one < 0x10000 for one in raster.answer(state, -5, 4, _table())))
 
 
 class Shortfall(unittest.TestCase):
-    def test_an_exact_answer_reports_no_wrong_lines(self) -> None:
+    def test_two_streams_that_agree_have_nothing_wrong(self) -> None:
         self.assertEqual(raster.shortfall((1, 2, 3, 4), (1, 2, 3, 4)), (1, 0))
 
-    def test_a_wrong_line_is_counted_rather_than_hidden(self) -> None:
-        self.assertEqual(raster.shortfall((1, 2, 3, 9), (1, 2, 3, 4)), (0, 1))
+    def test_one_word_out_makes_the_whole_scanline_wrong(self) -> None:
+        self.assertEqual(raster.shortfall((1, 2, 3, 4), (1, 2, 3, 5)), (0, 1))
 
-    def test_it_counts_only_as_far_as_the_shorter_of_the_two(self) -> None:
-        self.assertEqual(raster.shortfall((1, 2, 3, 4), (1, 2, 3, 4) * 3), (1, 0))
+    def test_it_counts_every_scanline(self) -> None:
+        self.assertEqual(raster.shortfall((0,) * 8, (0,) * 8), (2, 0))
+
+    def test_it_stops_at_the_shorter_of_the_two(self) -> None:
+        self.assertEqual(raster.shortfall((0,) * 4, (0,) * 12), (1, 0))
+
+
+class File(unittest.TestCase):
+    def test_the_module_is_here(self) -> None:
+        self.assertTrue((ROOT / "raster.py").exists())
 
 
 if __name__ == "__main__":

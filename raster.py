@@ -1,127 +1,185 @@
-"""What `$0a` computes, read off the part rather than off its instructions.
+"""What `$0a` computes, read out of the part's own program stage by stage.
 
 `$0a` is the command the cartridge asks for most: 78% of every access in the
-recording is the loop that reads its answer. Until now this project could only
-replay that answer from a table, which covers the recording and nothing else.
+recording is the loop that reads its answer. It answers 764 words in one region
+and 704 in another, and no table can hold it, so the cartridge has to compute it.
 
-The shape, established by watching the part's memory rather than by decoding
-operands. Once a frame `$02` deposits five constants and a matrix. Then each
-call to `$0a` walks down the screen from a starting line given as its single
-argument, and for every line does this:
+This is that arithmetic, written as the cartridge computes it. It is the
+reference `asm/dsp1-ground.asm` mirrors: same stages, same rounding, same two
+saturating exits, so a disagreement between the two is a fault in one of them
+rather than a difference of approach.
 
-    d = line + horizon                  how far this line is from the horizon
-    r = reciprocal of d                 a table read, never a divide
-    A = first scale, from r             one mantissa and one exponent
-    B = second scale, carried out of A  the other mantissa and exponent
+The chain, per scanline, with the part's own addresses:
 
-and then sends four words, each the high half of a product against the matrix:
-A against the first entry, B against the second, A against the third, B against
-the fourth.
+    $366  distance    (step * line) >> 15, plus the horizon
+    $36a  normalise   $003a: double while the top two bits agree, keeping the
+                      last value that fitted, and count the doublings
+    $36b  reciprocal  $00d3: a mantissa, and an exponent that is the count less
+                      six. A table over the normalised range, because that
+                      routine refines rather than reads
+    $36d  first pair  mantissa = (first mantissa from $02 * reciprocal) >> 15
+                      exponent = reciprocal exponent + first exponent from $02
+    $371  first scale $0077: normalise again, then shift right by fifteen less
+                      the exponent, or saturate
+    $377  second pair mantissa = (second mantissa from $02 * the first
+                      chain's mantissa, before its shift) >> 15
+                      exponent = the first exponent plus the second from $02
+    $37a  second scale the same $0077
+    $382  the answer  four words, the two scales against four matrix words
 
-Why the reciprocal is passed in rather than worked out here. The part holds
-`2**20 / x` for x from 32 to 64 in quarter steps, based at word 101, which is
-the value it keeps in `RAM[$00]`. Which entry a line selects is decided by a
-normalise loop, and that loop is the one part of this command still not read.
+Why six earlier attempts at this failed, and none of them was close. Every one
+tried to recover a single number per scanline from the answers. There is none to
+recover: the chain carries two normalisations, two saturating exits and a
+mantissa with its own exponent, and the second scale is a cascade off the first
+rather than a second branch off the reciprocal. That cascade is why the conflicts
+tracked the first exponent rather than the horizon, which read as noise.
 
-It is not a function of the distance. Holding the distance at -46 and changing
-only the horizon gives -35 at a horizon of 53, 60 and 80, then -34 at 40 and a
-different second value again at 120. So the same distance reached from a
-different starting line takes a different entry, and a table keyed on distance
-cannot be right. Solving one from the recording bears that out: across the calls
-that use it, 30 distances of 192 are contradicted outright, meaning no single
-value reproduces every line that asks for them.
+And an answer word is not a scale. It is a scale multiplied by a matrix word and
+shifted, which against `$7fff` is one less than the scale. Reading answers as
+scales quietly voided three separate measurements before it was caught.
 
-That is why this takes the mapping as an argument instead of building one. A
-caller with a correct mapping gets exact answers, and a caller with a mapping
-keyed on the wrong thing gets `shortfall` telling it so, rather than a routine
-that quietly rounds a wrong answer into a plausible one.
-
-What the earlier operand decode got wrong, and how it was caught. That reading
-put the matrix at `RAM[$bf]` and its neighbours. Driving `$02` on its own and
-then reading the part's memory showed those four words still nought while a real
-run plainly produced output from them, so the decode was set aside and the part
-watched directly instead. The matrix is at `RAM[$7f]`, `RAM[$7e]`, `RAM[$6f]`
-and `RAM[$6e]`, and `$02` writes it. The two commands that answer nothing, `$01`
-and `$11`, write four words each and touch none of it.
+Checked against the part on 60 argument sets drawn from all three recordings:
+43,440 answer words, every one of them exact, against the part and against the
+recordings both.
 """
 
 from collections.abc import Mapping, Sequence
 
+WORD = 0x10000
+SIGN = 0x8000
+
 MATRIX = (0x7F, 0x7E, 0x6F, 0x6E)
 """Where `$02` leaves the matrix that `$0a` multiplies by."""
 
+STEP = 0x49
 HORIZON = 0xC8
 FIRST_MANTISSA = 0x4C
 FIRST_EXPONENT = 0xCC
 SECOND_MANTISSA = 0x4B
 SECOND_EXPONENT = 0xCB
-"""The five constants `$02` deposits and `$0a` reads on every scanline."""
+"""The six constants `$02` deposits and `$0a` reads on every scanline."""
 
-FIRST_SHIFT = 27
-"""What the first scale is shifted down by before its exponent is taken off.
-
-Measured against the part across eight exponents and fourteen mantissas, every
-one of them exact.
-"""
-
-SECOND_SHIFT = 42
-"""The same for the second scale, which carries the first one's product forward.
-
-That carrying is the reason changing the first mantissa moves the second value
-as well, which is what showed these are one calculation rather than two.
-"""
+NORMAL_LOW = 0x4000
+"""The lowest magnitude the normalise loop can leave, and so the table's base."""
 
 PRODUCT_SHIFT = 15
-"""How the output stage takes the high half of a product."""
+"""How the multiplier takes the high half of a product."""
+
+EXPONENT_BASE = 6
+"""What the reciprocal's exponent is the doubling count less.
+
+Read off the part: `$0077`'s caller seeds `b` with seven and `$003a` takes the
+doubling count off it, then `$00d3` answers one less its own input exponent.
+"""
+
+ON_NOUGHT = (0x7FFF, 0x2F)
+"""What `$00d3` answers for a distance of nought, at `$0f2` and `$0f3`.
+
+An exponent large enough that the shift below saturates, which is the part's own
+answer to a scanline exactly level with the horizon.
+"""
+
+CLAMP_HIGH = 0x7FFF
+CLAMP_LOW = -0x7FFF
+"""What `$0077` clamps to at `$083` and `$085`.
+
+Not `$8000`. The part loads `$8001`, so the most negative scale it can give back
+is one short of the most negative word.
+"""
+
+SHIFT_LIMIT = 16
+"""Past this the part reads a word of its own ROM that is nought.
+
+`$0077` shifts by multiplying by a power of two out of the data ROM. Words `$022`
+through `$030` hold 1 up to 16,384, and `$000` through `$021` are all nought, so
+a shift of sixteen or more is a multiply by nought rather than a sign fill.
+"""
 
 
-def scales(
-    reciprocal: Mapping[int, tuple[int, int]], state: Mapping[int, int], distance: int
-) -> tuple[int, int] | None:
-    """The two per-scanline values, or nothing where the line has no answer.
+def signed(word: int) -> int:
+    word &= 0xFFFF
+    return word - WORD if word & SIGN else word
 
-    A line level with the horizon has none, because the distance it would divide
-    by is nought. The part is never asked for one, and neither is this. A
-    distance the part was never asked about is also nothing rather than a guess.
 
-    The one taken away at the end is taken away whichever side of the horizon the
-    line falls, and that is the whole of the sign handling. Reading it as an
-    addition whose sign followed the line fitted every distance above the horizon
-    and none below it, which is how the mistake showed up: the sky agreed and the
-    ground did not.
+def product(one: int, two: int) -> int:
+    """What the part's multiplier leaves: the product doubled, high word kept.
+
+    Rounded down, including for a negative product, which is the same arithmetic
+    `op_00_body` in `asm/dsp1-ops.asm` performs.
     """
-    entry = reciprocal.get(distance)
-    if distance == 0 or entry is None:
-        return None
-    value, folded = entry
-    first = FIRST_SHIFT - state[FIRST_EXPONENT] + folded
-    second = SECOND_SHIFT - state[FIRST_EXPONENT] - state[SECOND_EXPONENT] + folded
-    if first < 0 or second < 0:
-        return None
-    product = state[FIRST_MANTISSA] * value
-    whole = product >> first
-    carried = (product * state[SECOND_MANTISSA]) >> second
-    if distance > 0:
-        return whole - 1, carried - 1
-    return -whole - 1, -carried - 1
+    return signed((signed(one) * signed(two) * 2 >> 16) & 0xFFFF)
+
+
+def normalise(value: int) -> tuple[int, int]:
+    """`$003a`: double while the top two bits agree, keeping the last that fitted.
+
+    Answers the value and the count of doublings. Nought is answered untouched,
+    because doubling it never changes its sign and the loop would not end.
+    """
+    value = signed(value)
+    if value == 0:
+        return 0, 0
+    count = 0
+    while (value >> 15 & 1) == (value >> 14 & 1):
+        value = signed((value << 1) & 0xFFFF)
+        count += 1
+    return value, count
+
+
+def reciprocal(held: int, count: int, table: Sequence[int]) -> tuple[int, int]:
+    """`$00d3`, as one read of a table over the range the normalise loop leaves.
+
+    The sign is not in the table. The part strips it at `$0d6`, refines the
+    magnitude, and negates the answer at `$0f0`, so one half of the range answers
+    both halves. The one magnitude that cannot be negated in a word is clamped
+    the way the part's own absolute value clamps it.
+    """
+    if held == 0:
+        return ON_NOUGHT
+    magnitude = min(abs(held), CLAMP_HIGH)
+    mantissa = table[magnitude - NORMAL_LOW]
+    return (mantissa if held > 0 else -mantissa), count - EXPONENT_BASE
+
+
+def scaled(mantissa: int, exponent: int) -> int:
+    """`$0077`: normalise, work out the shift, and take one of its three exits."""
+    held, count = normalise(mantissa)
+    over = exponent - count - PRODUCT_SHIFT
+    if over == 0:
+        return held
+    if over > 0:
+        return CLAMP_HIGH if held >= 0 else CLAMP_LOW
+    places = -over
+    if places >= SHIFT_LIMIT:
+        return 0
+    return held >> places
+
+
+def scanline(state: Mapping[int, int], line: int, table: Sequence[int]) -> tuple[int, int]:
+    """The two scales for one scanline."""
+    held, count = normalise(product(state[STEP], line) + state[HORIZON])
+    mantissa, exponent = reciprocal(held, count, table)
+    first = product(state[FIRST_MANTISSA], mantissa)
+    first_exponent = exponent + state[FIRST_EXPONENT]
+    second = product(state[SECOND_MANTISSA], first)
+    return (
+        scaled(first, first_exponent),
+        scaled(second, first_exponent + state[SECOND_EXPONENT]),
+    )
 
 
 def answer(
-    reciprocal: Mapping[int, tuple[int, int]],
-    state: Mapping[int, int],
-    start: int,
-    lines: int,
+    state: Mapping[int, int], start: int, lines: int, table: Sequence[int]
 ) -> tuple[int, ...]:
-    """The whole stream `$0a` sends, four words a scanline."""
+    """The whole stream `$0a` sends, four words a scanline.
+
+    The first group belongs to the line the argument names, not the one after it.
+    """
     out: list[int] = []
     for step in range(lines):
-        pair = scales(reciprocal, state, start + 1 + step + state[HORIZON])
-        if pair is None:
-            out.extend((0, 0, 0, 0))
-            continue
-        near, far = pair
+        near, far = scanline(state, start + step, table)
         for value, at in ((near, MATRIX[0]), (far, MATRIX[1]), (near, MATRIX[2]), (far, MATRIX[3])):
-            out.append((value * state[at]) >> PRODUCT_SHIFT)
+            out.append(product(state[at], value) & 0xFFFF)
     return tuple(out)
 
 

@@ -7,24 +7,39 @@ this project has not measured, so a routine that recomputes them is a routine
 that is nearly right. A table of what the part actually says is exact by
 construction and no input can miss it.
 
-Two are needed and both are functions of a single sixteen bit word, which is
-what makes them tables rather than impossibilities:
+Three are needed, and each is a function of one sixteen bit word, which is what
+makes them tables rather than impossibilities:
 
-    reciprocal   65,536 entries   the mantissa `$10` answers, per input
+    reciprocal   16,384 entries   the mantissa `$00d3` answers, per normalised input
     sine         65,536 entries   what `$04` multiplies a magnitude by
     cosine       65,536 entries   the same, for the other half
 
-Neither is checked in. They are built here, on the machine of whoever has the
+None is checked in. They are built here, on the machine of whoever has the
 part, into the ignored build directory, and the assembler folds them in. That is
 the same arrangement the four formula tables have, with the part standing in for
 the formula.
 
+Why the reciprocal is 16,384 entries rather than 65,536. It is only ever asked
+for a value that has just come out of the part's own normalise loop at `$003a`,
+which doubles until signed overflow and therefore always leaves a magnitude in
+`[$4000, $7fff]`. That bound comes from reading the loop, not from watching which
+values a recording happened to ask for, so the table is complete by construction
+and no input can miss it. The sign is not stored either: `$00d3` takes the
+magnitude, refines it, and negates the answer on the way out, so one half of the
+range answers both.
+
+Why it is driven as a routine rather than as a command. `$10` answers a mantissa
+too, but through a wrapper that scales and shifts it, so its answers are not the
+mantissa `$0a` reads. Setting the program counter to `$00d3` and stepping asks
+the part the question `$0a` asks. The routine makes no calls of its own, so one
+level of return stack is enough to catch it coming back.
+
 One thing to know about driving the part for this. A fresh part per question
 answers 68 a second and one part asked repeatedly answers 5,145, which is the
 difference between four hours and thirteen seconds. Reuse is only safe because
-both commands were measured to carry no state: the same arguments answer the
-same way on a part just reset and on one driven through thousands of other
-questions first, and `ask` is checked against the fresh-part path.
+these were measured to carry no state: the same arguments answer the same way on
+a part just reset and on one driven through thousands of other questions first,
+and `ask` is checked against the fresh-part path.
 """
 
 import struct
@@ -35,9 +50,36 @@ from typing import Any
 import hardware
 
 WHOLE = 0x10000
-"""How many values a sixteen bit word takes, and so how long each table is."""
+"""How many values a sixteen bit word takes, and so how long the trig tables are."""
 
-RECIPROCAL = 0x10
+NORMAL_LOW = 0x4000
+NORMAL_HIGH = 0x8000
+"""The range the part's own normalise loop leaves a magnitude in.
+
+Read off `$003a`: it doubles while the top two bits agree and steps back on the
+doubling that would have overflowed, so what comes out has bit 14 set and bit 15
+clear. Every value the reciprocal is ever asked for has been through it.
+"""
+
+RECIPROCAL_ENTRY = 0x0D3
+"""Where the reciprocal routine begins inside the part's program."""
+
+SENTINEL = 0x7FF
+"""An address to put on the return stack, so a return is visible from outside.
+
+The routine does not reach it and nothing is executed there. It is a value to
+recognise: the part comes back to whatever was pushed, so pushing something the
+program never contains turns a return into an observable event.
+"""
+
+RECIPROCAL_STEPS = 200
+"""How long to let one reciprocal run before calling it stuck.
+
+The longest path through `$00d3` is about thirty instructions. Two hundred is far
+past that and short enough that a routine which never returns is reported rather
+than waited on.
+"""
+
 SINE_AND_COSINE = 0x04
 
 STEPS = 3000
@@ -76,19 +118,54 @@ def ask(part: Any, command: int, words: Sequence[int], answers: int) -> tuple[in
     return tuple(got[k] | got[k + 1] << 8 for k in range(0, len(got) - 1, 2))
 
 
-def reciprocal(
-    part: Any, count: int = WHOLE, watch: Callable[[int], None] | None = None
-) -> tuple[int, ...]:
-    """The mantissa `$10` answers for every input it can be given.
+class Runaway(Exception):
+    """A routine driven directly that did not come back.
 
-    The exponent is left out on purpose. It is a count of leading zeros less the
-    second argument, which is a handful of instructions and needs no table.
+    Raised rather than left to the caller as a wrong number, because a table
+    built from a runaway holds whatever the accumulator happened to have.
+    """
+
+
+def refined(part: Any, value: int) -> int:
+    """One reciprocal mantissa, by running the part's own routine on that value.
+
+    The exponent is left out on purpose. It comes back as one less the exponent
+    handed in, measured across the whole range, so the cartridge computes it from
+    the normalise count in two instructions and needs no table for it.
+    """
+    core = part.core
+    core.registers.sp = 1
+    core.registers.stack[0] = SENTINEL
+    core.registers.a = value & 0xFFFF
+    core.registers.b = 0
+    core.registers.pc = RECIPROCAL_ENTRY
+    for _ in range(RECIPROCAL_STEPS):
+        core.step()
+        if core.registers.pc == SENTINEL:
+            return signed(core.registers.word("a"))
+    raise Runaway(
+        f"the reciprocal at ${RECIPROCAL_ENTRY:03x} did not return for ${value:04x}"
+        f" within {RECIPROCAL_STEPS} instructions"
+    )
+
+
+def reciprocal(
+    part: Any,
+    low: int = NORMAL_LOW,
+    high: int = NORMAL_HIGH,
+    watch: Callable[[int], None] | None = None,
+) -> tuple[int, ...]:
+    """The mantissa `$00d3` answers across the range the normalise loop produces.
+
+    Positive magnitudes only. A negative input takes the same path with its sign
+    stripped and the answer negated, which is two instructions in the cartridge
+    rather than another 32 KiB.
     """
     found = []
-    for value in range(count):
-        found.append(ask(part, RECIPROCAL, (value, 0), 2)[0])
-        if watch is not None and value % 4096 == 0:
-            watch(value)
+    for value in range(low, high):
+        found.append(refined(part, value))
+        if watch is not None and (value - low) % 4096 == 0:
+            watch(value - low)
     return tuple(found)
 
 
@@ -153,8 +230,8 @@ def main(argv: tuple[str, ...] | list[str] = (), say: Any = print) -> int:
     into.mkdir(exist_ok=True)
     part = hardware.load("snesdsp").Chip(argv[0])
 
-    say(f"driving the {argv[0]} for {WHOLE:,} reciprocals")
-    values = reciprocal(part, watch=lambda at: say(f"  {at:,}"))
+    say(f"driving the {argv[0]} for {NORMAL_HIGH - NORMAL_LOW:,} reciprocals")
+    values = reciprocal(part, NORMAL_LOW, NORMAL_HIGH, watch=lambda at: say(f"  {at:,}"))
     say(f"  wrote {write(into / 'reciprocal.bin', values):,} bytes")
 
     say(f"driving it for {WHOLE:,} angles, six magnitudes each")
