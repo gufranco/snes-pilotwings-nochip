@@ -67,6 +67,19 @@ static void maybe_dump_wram(void)
     }
     fwrite(ram, 1, span, out);
     fclose(out);
+
+    void *vram = get_memory(RETRO_MEMORY_VIDEO_RAM);
+    const size_t vspan = get_memory_size(RETRO_MEMORY_VIDEO_RAM);
+    if (!vram || !vspan) {
+        return;
+    }
+    snprintf(path, sizeof(path), "%s/vram-%06lu.bin", wram_dir, frame_number);
+    out = fopen(path, "wb");
+    if (!out) {
+        return;
+    }
+    fwrite(vram, 1, vspan, out);
+    fclose(out);
 }
 
 static long tick_at = -1;
@@ -88,6 +101,18 @@ static void write_held(unsigned long tick)
     if (shot_dir) {
         snprintf(path, sizeof(path), "%s/frame-%06lu.ppm", shot_dir, tick);
         write_shot(path);
+    }
+    if (wram_dir && get_memory) {
+        void *vram = get_memory(RETRO_MEMORY_VIDEO_RAM);
+        const size_t span = get_memory_size(RETRO_MEMORY_VIDEO_RAM);
+        if (vram && span) {
+            snprintf(path, sizeof(path), "%s/vram-%06lu.bin", wram_dir, tick);
+            FILE *out = fopen(path, "wb");
+            if (out) {
+                fwrite(vram, 1, span, out);
+                fclose(out);
+            }
+        }
     }
     if (wram_dir && !held_ram.empty()) {
         snprintf(path, sizeof(path), "%s/wram-%06lu.bin", wram_dir, tick);
