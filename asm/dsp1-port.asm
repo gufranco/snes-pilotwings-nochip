@@ -428,17 +428,34 @@ dsp_write:
     brl .done
 
 .complete:
-    ; Every argument is in. Three commands answer nothing at all: $80 resets the
-    ; part, and $01 and $11 set the state later commands are keyed on. There is
-    ; nothing to look up for those, so they stop here.
+    ; Every argument is in. The command's own arguments are kept first, before
+    ; anything else, because three commands answer nothing and two of those three
+    ; are exactly the ones later commands are keyed on.
     ;
-    ; This is a correctness fix before it is a saving. Reaching the lookup with
-    ; a command that has no answer runs it to the fallback, and the fallback's
-    ; first branch hands $80 to the signed-product routine, which borrows the
-    ; console's one hardware multiplier. The game uses that multiplier too, and
-    ; $4202 and $4203 are write only, so there is no way to give back what was
-    ; in them. Not touching it is the only fix available.
+    ; That ordering is the whole of a fault that lasted from the first build to
+    ; the day it was found. The width check below used to come first and jump
+    ; straight to the end for a command that answers nothing, which is right for
+    ; the lookup and wrong for the carry: $11 answers nothing, $13 and $1b are
+    ; keyed on $11's arguments, and $13 is the command this cartridge asks more
+    ; than any other. Its carried half stayed at the game's own $55 fill for
+    ; every one of the 65,332 calls a recording holds, so its key matched no row,
+    ; and every one of those answers came from the fallback instead of the table.
     rep #$30
+    sep #$20
+    lda.l !PORT_CMD
+    rep #$30
+    and.w #$00FF
+    sta.l !CMDL
+    jsr port_carry
+
+    ; Now the lookup, and only for a command that has something to look up.
+    ;
+    ; Skipping it is a correctness fix before it is a saving. Reaching the lookup
+    ; with a command that has no answer runs it to the fallback, and the
+    ; fallback's first branch hands $80 to the signed-product routine, which
+    ; borrows the console's one hardware multiplier. The game uses that
+    ; multiplier too, and $4202 and $4203 are write only, so there is no way to
+    ; give back what was in them. Not touching it is the only fix available.
     sep #$20
     lda.l !PORT_CMD
     rep #$30
@@ -451,17 +468,12 @@ dsp_write:
 +
 
     ; The lookup moves the direct page itself, so nothing has to be done here.
-    sep #$20
-    lda.l !PORT_CMD
     rep #$30
-    and.w #$00FF
-    sta.l !CMDL
-
     lda.l !PORT_AT
     and.w #$00FF
     asl a
     tax
-    beq .carried
+    beq .append
 -
     dex
     dex
@@ -469,41 +481,6 @@ dsp_write:
     sta.l !ARGL,x
     cpx.w #$0000
     bne -
-
-.carried:
-    ; Keep this command's arguments if later commands are keyed on them.
-    lda.l !CMDL
-    cmp.w #$0002
-    bne ++
-    ldx.w #$000C
--
-    lda.l !PORT_ARGS,x
-    sta.l !CARRY_02,x
-    dex
-    dex
-    bpl -
-    bra .append
-++
-    cmp.w #$0011
-    bne ++
-    ldx.w #$0006
--
-    lda.l !PORT_ARGS,x
-    sta.l !CARRY_11,x
-    dex
-    dex
-    bpl -
-    bra .append
-++
-    cmp.w #$0014
-    bne .append
-    ldx.w #$000A
--
-    lda.l !PORT_ARGS,x
-    sta.l !CARRY_14,x
-    dex
-    dex
-    bpl -
 
 .append:
     ; And append the set this command is keyed on, after its own arguments.
@@ -632,6 +609,55 @@ dsp_write:
     lda.l !PORT_VALUE
     plp
     rtl
+
+; ---------------------------------------------------------------------------
+; Keep this command's arguments, if later commands are keyed on them.
+;
+; Three commands carry for others, and two of the three answer nothing at all, so
+; this has to run before anything that skips ahead on a command having no answer.
+; It used to sit after that skip, which left $11's arguments unwritten for the
+; life of the project and every $13 and $1b keyed on the game's own $55 fill.
+;
+; In:  !CMDL the command, !PORT_ARGS its arguments.
+; Out: the matching !CARRY block, or nothing when this command carries for none.
+; ---------------------------------------------------------------------------
+port_carry:
+    rep #$30
+
+    lda.l !CMDL
+    cmp.w #$0002
+    bne ++
+    ldx.w #$000C
+-
+    lda.l !PORT_ARGS,x
+    sta.l !CARRY_02,x
+    dex
+    dex
+    bpl -
+    rts
+++
+    cmp.w #$0011
+    bne ++
+    ldx.w #$0006
+-
+    lda.l !PORT_ARGS,x
+    sta.l !CARRY_11,x
+    dex
+    dex
+    bpl -
+    rts
+++
+    cmp.w #$0014
+    bne +
+    ldx.w #$000A
+-
+    lda.l !PORT_ARGS,x
+    sta.l !CARRY_14,x
+    dex
+    dex
+    bpl -
++
+    rts
 
 ; ---------------------------------------------------------------------------
 ; The game read the data port.
