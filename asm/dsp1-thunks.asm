@@ -122,4 +122,79 @@ thunk_lda_1814x:
     jsl hook_lda_1814x
     rts
 
-print "thunks end at ", hex(thunk_lda_1814x+5), ", the run they sit in ends at $00AE6A"
+; And the twenty in the four blocks beyond the flight model, which read the
+; same tables and never write them.
+
+thunk_lda_1aea:
+    jsl hook_lda_1aea
+    rts
+
+thunk_lda_1848:
+    jsl hook_lda_1848
+    rts
+
+thunk_lda_185a:
+    jsl hook_lda_185a
+    rts
+
+thunk_lda_1858:
+    jsl hook_lda_1858
+    rts
+
+thunk_lda_1828:
+    jsl hook_lda_1828
+    rts
+
+thunk_lda_182a:
+    jsl hook_lda_182a
+    rts
+
+thunk_lda_182c:
+    jsl hook_lda_182c
+    rts
+
+thunk_lda_182e:
+    jsl hook_lda_182e
+    rts
+
+thunk_cmp_182c:
+    jsl hook_cmp_182c
+    rts
+
+thunk_cmp_182e:
+    jsl hook_cmp_182e
+    rts
+
+thunk_lda_1820x:
+    jsl hook_lda_1820x
+    rts
+
+thunk_lda_1828x:
+    jsl hook_lda_1828x
+    rts
+
+thunk_lda_1840x:
+    jsl hook_lda_1840x
+    rts
+
+thunk_lda_1860x:
+    jsl hook_lda_1860x
+    rts
+
+thunk_lda_1ac3:
+    jsl hook_lda_1ac3
+    rts
+
+thunk_lda_1870:
+    jsl hook_lda_1870
+    rts
+
+thunk_lda_1876:
+    jsl hook_lda_1876
+    rts
+
+thunk_ldx_1af9:
+    jsl hook_ldx_1af9
+    rts
+
+print "thunks end at ", hex(thunk_ldx_1af9+5), ", the run they sit in ends at $00AE6A"

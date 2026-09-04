@@ -84,6 +84,13 @@
 ;   and #$0010        Keep one bit and discard the rest, to test it.
 ; ===========================================================================
 
+; The three flag bits two of the hooks below have to set by hand, because the
+; instruction they end on does not set them. Defined here rather than beside their
+; first use, since the assembler resolves a define where it reads it.
+!FLAG_NEGATIVE = $80
+!FLAG_OVERFLOW = $40
+!FLAG_ZERO     = $02
+
 !HOOK_WORD = !PORTRAM+56        ; one word in transit, kept clear of !PORT_WORD
                                 ; because dsp_write uses that one while these
                                 ; hooks are inside it
@@ -515,6 +522,163 @@ hook_lda_1808y:
     %mirrored($1808)
 
 ; ---------------------------------------------------------------------------
+; The four other blocks, which read the same tables and never write them.
+;
+; $00:D03F, $00:D1F1, $00:D447 and $00:D5D8 reach work RAM twenty three times
+; between them, and every one is a load or a compare. A long form exists for all but one,
+; so all but one is the instruction it replaces with a bank in front of it.
+;
+; Which addresses these are is not guesswork: each block was decoded from its own
+; push, at the widths the `sep` or `rep` before that push leaves, and the walk was
+; required to land exactly on the `plb` that closes the block. That matters here
+; more than anywhere else in this file. An earlier audit decoded every block at
+; one fixed width and reported an `sbc $30c2,y` in the first of them, which would
+; have been the only access in the set naming the console's own registers rather
+; than memory. There is no such instruction. $00:D031 is `sep #$30`, so that block
+; runs eight bits wide, where `lda $1aea` is followed by `cmp #$0a` and a branch;
+; read sixteen bits wide the same bytes spell a three byte compare and the walk
+; drifts for four instructions before landing back on the port access after them.
+; ---------------------------------------------------------------------------
+hook_lda_1aea:
+    lda.l (!MIRROR_BANK<<16)|$1AEA
+    rtl
+
+hook_lda_1848:
+    lda.l (!MIRROR_BANK<<16)|$1848
+    rtl
+
+hook_lda_185a:
+    lda.l (!MIRROR_BANK<<16)|$185A
+    rtl
+
+hook_lda_1858:
+    lda.l (!MIRROR_BANK<<16)|$1858
+    rtl
+
+hook_lda_1828:
+    lda.l (!MIRROR_BANK<<16)|$1828
+    rtl
+
+hook_lda_182a:
+    lda.l (!MIRROR_BANK<<16)|$182A
+    rtl
+
+hook_lda_182c:
+    lda.l (!MIRROR_BANK<<16)|$182C
+    rtl
+
+hook_lda_182e:
+    lda.l (!MIRROR_BANK<<16)|$182E
+    rtl
+
+hook_cmp_182c:
+    cmp.l (!MIRROR_BANK<<16)|$182C
+    rtl
+
+hook_cmp_182e:
+    cmp.l (!MIRROR_BANK<<16)|$182E
+    rtl
+
+hook_lda_1ac3:
+    lda.l (!MIRROR_BANK<<16)|$1AC3
+    rtl
+
+hook_lda_1870:
+    lda.l (!MIRROR_BANK<<16)|$1870
+    rtl
+
+hook_lda_1876:
+    lda.l (!MIRROR_BANK<<16)|$1876
+    rtl
+
+hook_lda_1820x:
+    lda.l (!MIRROR_BANK<<16)|$1820,x
+    rtl
+
+hook_lda_1828x:
+    lda.l (!MIRROR_BANK<<16)|$1828,x
+    rtl
+
+hook_lda_1840x:
+    lda.l (!MIRROR_BANK<<16)|$1840,x
+    rtl
+
+hook_lda_1860x:
+    lda.l (!MIRROR_BANK<<16)|$1860,x
+    rtl
+
+; ---------------------------------------------------------------------------
+; `ldx $1af9`, the one of the twenty with no long form and the one whose flags
+; are read.
+;
+; `bne` is the instruction after it, so the zero flag decides which of two paths
+; the block takes. The stack trick the port's own `ldx` hook uses leaves the
+; caller's flags rather than the loaded value's, which is safe there and would be
+; wrong here.
+;
+; So the bank moves, the original instruction runs, and the two flags it sets are
+; carried back by hand into the caller's own flag byte on the stack, the way
+; hook_bit_status carries the three it sets. The accumulator is parked in memory
+; rather than on the stack, because every way of pulling it back would write the
+; flags this has just gone to the trouble of setting. Restoring it before the
+; final `plp` is what lets that `plp` be the last thing to touch the flags.
+; ---------------------------------------------------------------------------
+!MIRROR_HELD  = !PORTRAM+60     ; the accumulator, while the bank is borrowed
+!MIRROR_FLAGS = !PORTRAM+62     ; the two flags the load set, on their way back
+
+hook_ldx_1af9:
+    php                         ; the caller's flags
+    sta.l !MIRROR_HELD          ; and its accumulator, at whatever width it has
+    phb
+
+    sep #$20
+    lda #!MIRROR_BANK
+    pha
+    plb                         ; the bank the game thinks it already has
+
+    lda $02,s
+    and #$10                    ; the index width, set meaning eight bits
+    beq .wide
+
+    sep #$10
+    ldx $1AF9
+    bra .got
+
+.wide:
+    rep #$10
+    ldx $1AF9
+
+.got:
+    php                         ; what the load left, on top of the bank
+    sep #$20
+
+    lda $01,s
+    and #!FLAG_NEGATIVE|!FLAG_ZERO
+    sta.l !MIRROR_FLAGS
+
+    lda $03,s                   ; the caller's flags, with room made for those two
+    and #(~(!FLAG_NEGATIVE|!FLAG_ZERO))&$FF
+    ora.l !MIRROR_FLAGS
+    sta $03,s
+
+    pla                         ; done with the load's flags
+    plb                         ; the caller's bank
+
+    lda $01,s                   ; and its accumulator, at its own width
+    and #$20
+    bne .narrow
+
+    rep #$20
+    lda.l !MIRROR_HELD
+    plp                         ; last, so nothing after it writes a flag
+    rtl
+
+.narrow:
+    lda.l !MIRROR_HELD
+    plp
+    rtl
+
+; ---------------------------------------------------------------------------
 ; `bit $c000`: test the status without disturbing anything.
 ;
 ; The three of these are all polls, and the branch after each reads the sign, so
@@ -528,9 +692,6 @@ hook_lda_1808y:
 ; are: negative from its top bit, which is set; overflow from the bit below,
 ; which is not; and zero from the accumulator anded with it.
 ; ---------------------------------------------------------------------------
-!FLAG_NEGATIVE = $80
-!FLAG_OVERFLOW = $40
-!FLAG_ZERO     = $02
 
 hook_bit_status:
     php

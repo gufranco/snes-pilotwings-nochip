@@ -303,7 +303,7 @@ HOOKED = (
     (0x04D83, 0x04DAD),
     (0x04DCD, 0x050A8),
     (0x051F7, 0x05280),
-    (0x0547C, 0x05679),
+    (0x05447, 0x05679),
 )
 """The runs of the game's own code whose accesses are replaced one at a time.
 
@@ -369,6 +369,38 @@ this would then be answering the wrong question for it.
 ACCESS_BYTES = 3
 """The length of one of these instructions, and of the call that replaces it."""
 
+WINDOWED = (
+    (0x0004E, 0x00070),
+    (0x00071, 0x000C5),
+    (0x01601, 0x01656),
+    (0x04AA4, 0x04B10),
+    (0x04B13, 0x04BB3),
+    (0x04B4A, 0x04BB3),
+    (0x04DB3, 0x04FCE),
+    (0x0503F, 0x050AB),
+    (0x051F1, 0x05285),
+    (0x05447, 0x054AA),
+    (0x05507, 0x0554C),
+    (0x055D8, 0x05682),
+)
+"""The twelve blocks the redirect covers: each push of the part's bank to its pull.
+
+These bound `MIRRORED` and nothing else. A mirrored access is an ordinary work RAM
+instruction that only needs rerouting where the data bank is the window, so its
+bounds are the blocks rather than the runs in `HOOKED`, which are clusters of port
+accesses and take in the code between blocks as well. Two instructions at
+$00:D55F and $00:D581 sit in such a gap and spell shapes this table knows; they run
+with the game's own data bank and must be left alone.
+
+Each end is as far as a walk from the push reaches, following every branch that
+stays inside the block, at the widths that block runs in. Following the branches is
+what makes them right rather than nearly right: $00:D03F has two arms, and the one
+a linear walk sees ends at $00:D068 while the other runs on to $00:D0AA and holds
+three of these accesses. The fifth and sixth blocks share an end, because the
+routine for `$10` falls through into the push before `$02` rather than pulling its
+own bank back.
+"""
+
 MIRRORED = {
     (0x6D, 0x0130): "thunk_adc_0130",
     (0x8D, 0x0130): "thunk_sta_0130",
@@ -377,51 +409,88 @@ MIRRORED = {
     (0xBD, 0x1810): "thunk_lda_1810x",
     (0xBD, 0x1812): "thunk_lda_1812x",
     (0xBD, 0x1814): "thunk_lda_1814x",
+    (0xAD, 0x1AEA): "thunk_lda_1aea",
+    (0xAD, 0x1848): "thunk_lda_1848",
+    (0xAD, 0x185A): "thunk_lda_185a",
+    (0xAD, 0x1858): "thunk_lda_1858",
+    (0xAD, 0x1828): "thunk_lda_1828",
+    (0xAD, 0x182A): "thunk_lda_182a",
+    (0xAD, 0x182C): "thunk_lda_182c",
+    (0xAD, 0x182E): "thunk_lda_182e",
+    (0xCD, 0x182C): "thunk_cmp_182c",
+    (0xCD, 0x182E): "thunk_cmp_182e",
+    (0xBD, 0x1820): "thunk_lda_1820x",
+    (0xBD, 0x1828): "thunk_lda_1828x",
+    (0xBD, 0x1840): "thunk_lda_1840x",
+    (0xBD, 0x1860): "thunk_lda_1860x",
+    (0xAD, 0x1AC3): "thunk_lda_1ac3",
+    (0xAD, 0x1870): "thunk_lda_1870",
+    (0xAD, 0x1876): "thunk_lda_1876",
+    (0xAE, 0x1AF9): "thunk_ldx_1af9",
 }
-"""The accesses inside those runs that are not the part, and the thunk each takes.
+"""The accesses inside those blocks that are not the part, and the thunk each takes.
 
-Keyed on the opcode and the whole operand rather than on a page, because these
-are ordinary memory and there is nothing about the address that marks it. Each
-entry is one instruction the flight model uses to reach its own work RAM through
-the bank mirror, which the redirect breaks; asm/dsp1-hooks.asm says what each one
-carries and what leaving it alone cost.
+Keyed on the opcode and the whole operand rather than on a page, because these are
+ordinary memory and there is nothing about the address that marks it. Each entry is
+one instruction the game uses to reach its own work RAM through the bank mirror,
+which the redirect breaks; asm/dsp1-hooks.asm says what each one carries and what
+leaving them alone cost.
 
-Every entry is a shape the disassembler in `patch.retail.test.py` confirms is a
-real instruction at every offset this matches, which is what keeps a coincidence
-in a table of data from being turned into a call.
+Thirty one sites across the twelve blocks: eight in the flight model, and twenty
+three in the four blocks after it. All but one read a table or compare against one
+and never write it, so a long instruction is the whole body; `ldx $1af9` is the one
+with no long form and the one whose flags a branch reads.
+
+Bounded by `WINDOWED` rather than `HOOKED` for the reason that table gives. Every
+entry is a shape the disassembler in `patch.retail.test.py` confirms is a real
+instruction at every offset this matches, which is what keeps a coincidence in a
+table of data from being turned into a call.
 """
 
 
 def hooked(rom: bytes, stubs: Mapping[str, int]) -> tuple[bytes, int]:
-    """The image with every access inside HOOKED turned into a call to its thunk.
+    """The image with every three byte access turned into a call to its thunk.
 
-    Found by the bytes rather than by decoding the region, which is safe here and
-    checked: `patch.retail.test.py` disassembles the same run, tracking the
-    register widths, and fails unless the two agree on every access and on its
-    length. A scan that drifted from the instruction boundaries would replace an
-    operand and leave a branch pointing into the middle of a call.
+    Two scans over two sets of bounds. The part's own accesses are found inside
+    `HOOKED`, by an operand no ordinary instruction in those runs carries; the
+    game's accesses to its own memory are found inside `WINDOWED`, by the whole
+    three bytes, because their operands are ordinary addresses that appear
+    elsewhere in the same runs meaning something else.
+
+    Found by the bytes rather than by decoding, which is safe here and checked:
+    `patch.retail.test.py` disassembles each block at the widths it runs in and
+    fails unless the two agree on every access and on its length. A scan that
+    drifted from the instruction boundaries would replace an operand and leave a
+    branch pointing into the middle of a call.
     """
     out = bytearray(rom)
-    replaced = 0
+    found: dict[int, str] = {}
     for start, end in HOOKED:
         for at in range(start, min(end, len(rom)) - 2):
-            page = out[at + 2]
             if out[at + 1] != 0x00:
-                name = MIRRORED.get((out[at], out[at + 1] | page << 8))
-            elif page == PORT_PAGE:
+                continue
+            page = out[at + 2]
+            if page == PORT_PAGE:
                 name = HOOKS.get(out[at])
             elif page == STATUS_PAGE:
                 name = STATUS_HOOKS.get(out[at])
             else:
-                name = MIRRORED.get((out[at], out[at + 1] | page << 8))
-            if name is None:
                 continue
-            target = stubs[name]
-            out[at] = JSR
-            out[at + 1] = target & 0xFF
-            out[at + 2] = target >> 8 & 0xFF
-            replaced += 1
-    return bytes(out), replaced
+            if name is not None:
+                found[at] = name
+
+    for start, end in WINDOWED:
+        for at in range(start, min(end, len(rom)) - 2):
+            name = MIRRORED.get((out[at], out[at + 1] | out[at + 2] << 8))
+            if name is not None:
+                found[at] = name
+
+    for at, name in found.items():
+        target = stubs[name]
+        out[at] = JSR
+        out[at + 1] = target & 0xFF
+        out[at + 2] = target >> 8 & 0xFF
+    return bytes(out), len(found)
 
 
 def spanned(rom: bytes, stubs: Mapping[str, int]) -> bytes:
@@ -487,7 +556,7 @@ def main(argv: Sequence[str] = (), say: Any = print) -> int:
     out, replaced = hooked(out, stubs)
     out, moved = redirected(out)
     say(f"{moved} data bank pushes redirected")
-    say(f"{replaced} accesses in the flight model replaced one at a time")
+    say(f"{replaced} three byte accesses replaced one at a time")
     out = declared(out, fast="--fast" in argv)
     out = checksummed(out)
     Path(argv[2]).write_bytes(out)

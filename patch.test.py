@@ -38,6 +38,24 @@ STUBS = {
     "thunk_lda_1810x": 0x00AD78,
     "thunk_lda_1812x": 0x00AD7D,
     "thunk_lda_1814x": 0x00AD82,
+    "thunk_lda_1aea": 0x00AD87,
+    "thunk_lda_1848": 0x00AD8C,
+    "thunk_lda_185a": 0x00AD91,
+    "thunk_lda_1858": 0x00AD96,
+    "thunk_lda_1828": 0x00AD9B,
+    "thunk_lda_182a": 0x00ADA0,
+    "thunk_lda_182c": 0x00ADA5,
+    "thunk_lda_182e": 0x00ADAA,
+    "thunk_cmp_182c": 0x00ADAF,
+    "thunk_cmp_182e": 0x00ADB4,
+    "thunk_lda_1ac3": 0x00ADB9,
+    "thunk_lda_1870": 0x00ADBE,
+    "thunk_lda_1876": 0x00ADC3,
+    "thunk_lda_1820x": 0x00ADC8,
+    "thunk_lda_1828x": 0x00ADCD,
+    "thunk_lda_1840x": 0x00ADD2,
+    "thunk_lda_1860x": 0x00ADD7,
+    "thunk_ldx_1af9": 0x00ADDC,
 }
 
 
@@ -390,6 +408,45 @@ class HookedTest(unittest.TestCase):
 
         self.assertEqual(replaced, len(patch.HOOKED))
 
+    def _windowed(self, body: bytes) -> bytes:
+        out = bytearray(0x60000)
+        at = patch.WINDOWED[0][0]
+        out[at : at + len(body)] = body
+        return bytes(out)
+
+    def test_an_access_to_the_games_own_memory_becomes_a_call(self) -> None:
+        opcode, operand = next(iter(patch.MIRRORED))
+        body = bytes([opcode, operand & 0xFF, operand >> 8])
+
+        out, _ = patch.hooked(self._windowed(body), STUBS)
+
+        at = patch.WINDOWED[0][0]
+        self.assertEqual(out[at], patch.JSR)
+        self.assertEqual(
+            out[at + 1] | out[at + 2] << 8, STUBS[patch.MIRRORED[opcode, operand]] & 0xFFFF
+        )
+
+    def test_the_same_access_outside_a_block_is_left_alone(self) -> None:
+        """The reason `MIRRORED` is bounded by the blocks and not by the runs.
+
+        Two instructions at $00:D55F and $00:D581 spell shapes this table knows and
+        sit in a gap between two blocks, where the game's own data bank is in force
+        and they already reach the memory they mean to.
+        """
+        opcode, operand = next(iter(patch.MIRRORED))
+        rom = bytearray(0x60000)
+        at = max(end for _, end in patch.WINDOWED)
+        rom[at : at + 3] = bytes([opcode, operand & 0xFF, operand >> 8])
+
+        out, replaced = patch.hooked(bytes(rom), STUBS)
+
+        self.assertEqual(out[at], opcode)
+        self.assertEqual(replaced, 0)
+
+    def test_every_shape_the_blocks_hold_has_a_thunk(self) -> None:
+        for key, name in patch.MIRRORED.items():
+            self.assertIn(name, STUBS, f"{key[0]:#04x} {key[1]:#06x}")
+
     def test_a_read_of_the_status_takes_its_own_thunk(self) -> None:
         out, _ = patch.hooked(self._region(bytes([0xAC, 0x00, 0xC0])), STUBS)
 
@@ -449,6 +506,15 @@ class BuildTest(unittest.TestCase):
             "thunk_lda_1800y 00AD6E\nthunk_lda_1808y 00AD73\n"
             "thunk_lda_1810x 00AD78\nthunk_lda_1812x 00AD7D\n"
             "thunk_lda_1814x 00AD82\n"
+            "thunk_lda_1aea 00AD87\nthunk_lda_1848 00AD8C\n"
+            "thunk_lda_185a 00AD91\nthunk_lda_1858 00AD96\n"
+            "thunk_lda_1828 00AD9B\nthunk_lda_182a 00ADA0\n"
+            "thunk_lda_182c 00ADA5\nthunk_lda_182e 00ADAA\n"
+            "thunk_cmp_182c 00ADAF\nthunk_cmp_182e 00ADB4\n"
+            "thunk_lda_1ac3 00ADB9\nthunk_lda_1870 00ADBE\n"
+            "thunk_lda_1876 00ADC3\nthunk_lda_1820x 00ADC8\n"
+            "thunk_lda_1828x 00ADCD\nthunk_lda_1840x 00ADD2\n"
+            "thunk_lda_1860x 00ADD7\nthunk_ldx_1af9 00ADDC\n"
         )
 
         code = patch.main(

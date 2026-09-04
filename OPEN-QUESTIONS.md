@@ -2422,14 +2422,39 @@ measurement per change, and the window stays where it is.
 | before | 200 bytes differ, stepping to 650 at frame 175 and never recovering |
 | after | 45 to 65 bytes differ, no step, through frame 405 |
 
-Nineteen bytes differ at every frame. Twelve are three patched calls inside code
-the game copies into work RAM and executes there, which cannot match by
-construction. The other seven are `$0181`, `$0182` and `$01E2` through `$01E6`,
-which this build writes and the cartridge leaves at the console's power-on fill.
-That is the next thread.
+### The rest of them, and what finding them took
 
-The remaining windowed accesses to the game's own memory are still reading nought:
-five table loads in the flight model are now routed, and `$1AEA`, `$30C2,y`,
-`$1820,x`, `$1828,x`, `$1840,x`, `$1848`, `$185A`, `$1858`, `$1860,x`, `$182A`,
-`$182C`, `$182E` and `$1AF9` in four other blocks are not. Whether the demo reaches
-those blocks at all has not been measured.
+All 31 are routed now. Getting the list right needed two corrections to how the
+blocks are read, and both had already produced a wrong answer once.
+
+**A block is decoded at the widths it runs in, and those are not the same for
+every block.** The first audit used one pair for all twelve and reported an
+`sbc $30c2,y` in the block at `$00:D03F`, which would have been the only one of
+these naming the console's own register space rather than memory. `$00:D031` is
+`sep #$30`, so that block runs eight bits wide, and the same bytes there spell
+`lda $1aea`, `cmp #$0a` and a branch. Four instructions later the walk lands back
+on the port access after them, which is why a scan for the port cannot tell the
+two readings apart. `patch.retail.test.py` now carries a width pair per block and
+a test that fails if one of them moves an access or invents one.
+
+**A block is walked by following its branches, not by falling through.** The same
+block has two arms. The one a linear walk sees ends at `$00:D068`; the other
+begins at `$00:D06C`, runs to `$00:D0AA`, and holds `lda $1ac3`, `lda $1876` and
+`lda $1870`. A fall-through walk misses all three.
+
+The bounds also matter in the other direction. Two instructions at `$00:D55F` and
+`$00:D581` spell shapes this set knows and sit in the gap between two blocks,
+where the game's own data bank is in force and they already reach what they mean
+to. Bounding the search by the blocks rather than by the port-access runs is what
+leaves them alone.
+
+| frames 69 to 405, work RAM against the cartridge at the same game frame | |
+|---|---|
+| with eight routed | 30 to 110 a frame, with one-frame spikes to 641 and 195 near 375 |
+| with all 31 routed | 30 to 60 a frame, worst 133 outside the last sampled frame |
+
+Twenty two bytes differ at every frame. Twelve are three patched calls inside code
+the game copies into work RAM and executes there, which cannot match by
+construction. The other ten are `$0182` through `$0186` and `$01E2` through
+`$01E6`, which this build writes and the cartridge leaves at the console's
+power-on fill. That is the next thread.
