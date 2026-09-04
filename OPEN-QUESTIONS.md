@@ -2626,3 +2626,76 @@ Then the table search at 3.51, which is around 435 bisect steps a frame across
 twenty odd commands. `$06` alone is 75,278 rows and seventeen steps, ten times a
 frame. An index on the first byte of the key would cut eight steps off every
 search of it, at 256 entries a command in ROM.
+
+## 32. The panel was never missing, and the flicker was one interrupt
+
+**The instrument panel and the sky are drawn on every picture now.** They were
+drawn correctly all along, on one picture in sixteen, and the fifteen between
+them were the flicker.
+
+### What the screen actually is
+
+The flight screen is not one picture. It is three bands, and the console is told
+to change what it draws between them from an interrupt fired at a named scanline:
+
+| scanline | what its handler does |
+|---|---|
+| 47 | sets the sky layer's scroll from `$1ff0` through `$1ff3` |
+| 94 | sets the drawing mode from `$f14d` and the layers from `$1fef`, which is what turns the panel band into the ground band |
+| 255 | `$f1da`, a bare `rts` |
+
+Each handler arms the next from `$18fa` and `$18fd` and steps a counter at
+`$0080`. The sequence is armed from the top by `$00:f168`, reached through
+`jsr $fe7e` at `$00:ec92`, once per frame of the game's clock.
+
+### Why that is enough on the cartridge and not here
+
+On the retail cartridge one frame of the game's clock is one picture, so nobody
+has to tell the two apart. Here the part answers in software and one frame of
+that clock is about eleven to sixteen pictures. The sequence is armed once, runs
+once, and the pictures after it are drawn with what the last interrupt left
+behind: the ground band's mode and layers over the whole screen. No panel, no
+sky, and the ground's own mode stretched across the top.
+
+### What the measurements ruled out first
+
+Four things were measured and none of them was it, which is worth recording
+because each looked plausible and each cost a build:
+
+| suspected | measured |
+|---|---|
+| video memory | byte for byte identical between a bright picture and the dark one after it |
+| the HDMA channels | all eleven registers of all eight channels identical between the two |
+| this project's tables stamping on the game | `$7e:e000` through `$7e:ffff` holds the power-on fill in retail across twenty samples of the demo; the differences there are our own tables mid-rebuild |
+| forcing every HDMA channel on | raised the brightness and wrecked the ground, because the channels it turns on have no tables |
+
+The diff that pointed the right way was by row rather than by byte: rows 0 to 46
+and 48 to 93 differ and rows 94 to 223 do not, and 47 and 94 are exactly the two
+scanlines the interrupts fire on.
+
+### The fix, and why it goes where it goes
+
+The third interrupt is the only thing in the game that happens once per picture
+rather than once per frame of the game's clock, and in the retail cartridge it
+does nothing at all. So `patch.py` points its table entry at
+`asm/dsp1-raster.asm`, which arms the sequence from the top. Scanline 255 is
+below the picture, so the work lands between one picture and the next.
+
+`$00:f168` itself is deliberately not called. It ends by enabling interrupts and
+is shared with screens that are not the flight, and a build that called it
+stopped working the moment the demo reached the runway. The rearm reads the same
+four tables `$00:f168` reads rather than repeating its numbers, and does nothing
+at all unless `$1fef` holds `$13`, which is the flight.
+
+### What it cost and what it changed
+
+| measure | before | after |
+|---|---|---|
+| screen brightness across sixteen pictures of the demo | 83.6 to 114.7, spread 31.1 | 114.3 to 114.4, spread 0.05 |
+| console frames per frame of the game's clock | 11.41 | 11.15 |
+| the flight model, `$1800` to `$1aff`, against a build without the rearm | | identical on all 271 game frames compared |
+
+The flight model being identical is what says this is a display change and
+nothing else. The display buffers differ by 15 to 100 bytes a frame, which is the
+sprite shadow caught at a slightly different moment inside a game frame that is
+eleven pictures long.

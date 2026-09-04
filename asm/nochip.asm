@@ -16,6 +16,9 @@
 ;                       and so too small for a call to reach this bank
 ;   dsp1-thunks.asm     what those three byte calls land on, in the game's own
 ;                       bank, in a run measured to be unread
+;   dsp1-raster.asm     the one interrupt per picture that starts the flight
+;                       screen's three band sequence again. Same bank and the
+;                       same run, for the same reason
 ;   dsp1-window.asm     the bank the game's redirected accesses land in
 ;   dsp1-tables.asm     the four tables the chip's formulas rebuild
 ;   dsp1-derived.asm    the three tables taken from the chip itself
@@ -66,6 +69,7 @@ code_end:
 
 incsrc "dsp1-tables.asm"
 incsrc "dsp1-thunks.asm"
+incsrc "dsp1-raster.asm"
 incsrc "dsp1-window.asm"
 incsrc "dsp1-derived.asm"
 incsrc "../build/state02-data.asm"
@@ -130,3 +134,4 @@ print "SYM thunk_lda_1ac3 ", hex(thunk_lda_1ac3)
 print "SYM thunk_lda_1870 ", hex(thunk_lda_1870)
 print "SYM thunk_lda_1876 ", hex(thunk_lda_1876)
 print "SYM thunk_ldx_1af9 ", hex(thunk_ldx_1af9)
+print "SYM raster_rearm ", hex(raster_rearm)

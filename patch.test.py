@@ -56,6 +56,7 @@ STUBS = {
     "thunk_lda_1840x": 0x00ADD2,
     "thunk_lda_1860x": 0x00ADD7,
     "thunk_ldx_1af9": 0x00ADDC,
+    "raster_rearm": 0x00ADE1,
 }
 
 
@@ -281,6 +282,31 @@ class MainTest(unittest.TestCase):
         )
 
         self.assertEqual(code, 1)
+
+
+class RearmTest(unittest.TestCase):
+    def test_the_third_handler_points_at_the_rearm(self) -> None:
+        rom = _image()
+
+        out = patch.rearmed(rom, STUBS)
+
+        at = patch.RASTER_THIRD
+        self.assertEqual(out[at] | out[at + 1] << 8, STUBS["raster_rearm"] & 0xFFFF)
+
+    def test_the_first_two_handlers_are_left_alone(self) -> None:
+        rom = bytearray(_image())
+        rom[patch.RASTER_THIRD - 4 : patch.RASTER_THIRD] = b"\x95\xf1\xad\xf1"
+
+        out = patch.rearmed(bytes(rom), STUBS)
+
+        self.assertEqual(out[patch.RASTER_THIRD - 4 : patch.RASTER_THIRD], b"\x95\xf1\xad\xf1")
+
+    def test_it_changes_two_bytes_and_no_others(self) -> None:
+        rom = _image()
+
+        out = patch.rearmed(rom, STUBS)
+
+        self.assertEqual(sum(1 for one, two in zip(rom, out, strict=True) if one != two), 2)
 
 
 class RedirectTest(unittest.TestCase):
@@ -515,6 +541,7 @@ class BuildTest(unittest.TestCase):
             "thunk_lda_1876 00ADC3\nthunk_lda_1820x 00ADC8\n"
             "thunk_lda_1828x 00ADCD\nthunk_lda_1840x 00ADD2\n"
             "thunk_lda_1860x 00ADD7\nthunk_ldx_1af9 00ADDC\n"
+            "raster_rearm 00ADE1\n"
         )
 
         code = patch.main(

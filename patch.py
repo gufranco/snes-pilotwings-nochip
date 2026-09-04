@@ -264,6 +264,15 @@ one without. asm/dsp1-port.asm puts that byte at every address the poll can
 name.
 """
 
+RASTER_THIRD = 0x0714B
+"""The third entry of the raster chain's handler table, as a file position.
+
+The table is at $00:F147 and holds three addresses, one per interrupt of the
+flight screen's band sequence. The first two do the sky scroll and the mode
+change; the third is $F1DA, a bare return. `rearmed` points this one somewhere
+that does something.
+"""
+
 SPANS = (
     (0x04AA8, 0x04AB9, "dsp_route_0a"),
     (0x04AB9, 0x04AD1, "dsp_horizon"),
@@ -517,6 +526,31 @@ def spanned(rom: bytes, stubs: Mapping[str, int]) -> bytes:
     return bytes(out)
 
 
+def rearmed(rom: bytes, stubs: Mapping[str, int]) -> bytes:
+    """The image with the flight screen's closing interrupt made to start again.
+
+    The flight screen is drawn in three bands, and the game changes the console's
+    mode between them from an interrupt fired at a named scanline. Three of them
+    run per picture, and the third, at scanline 255, does nothing: the retail
+    entry points at a bare return. The sequence is started again by the game's
+    own routine, called once per frame of the game's clock.
+
+    Retail can leave it there because one frame of its clock is one picture. This
+    conversion answers in software, one frame now spans about sixteen pictures,
+    and fifteen of them are drawn with what the last interrupt left behind: the
+    ground's mode over the whole screen, with no instrument panel and no sky.
+
+    So the third entry is pointed at asm/dsp1-raster.asm instead, which arms the
+    sequence from the top. It is the only thing in the game that happens once per
+    picture rather than once per frame of the game's clock.
+    """
+    out = bytearray(rom)
+    target = stubs["raster_rearm"]
+    out[RASTER_THIRD] = target & 0xFF
+    out[RASTER_THIRD + 1] = target >> 8 & 0xFF
+    return bytes(out)
+
+
 def redirected(rom: bytes) -> tuple[bytes, int]:
     """The image with every push of the part's bank naming this project's instead."""
     out = bytearray(rom)
@@ -564,6 +598,7 @@ def main(argv: Sequence[str] = (), say: Any = print) -> int:
     out = applied(rom, where, stubs)
     out = spanned(out, stubs)
     out, replaced = hooked(out, stubs)
+    out = rearmed(out, stubs)
     out, moved = redirected(out)
     say(f"{moved} data bank pushes redirected")
     say(f"{replaced} three byte accesses replaced one at a time")

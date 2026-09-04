@@ -400,6 +400,51 @@ class Replaced(unittest.TestCase):
         self.assertEqual(replaced, len(_decoded_accesses(self.rom)))
 
 
+class RasterChain(unittest.TestCase):
+    """That the handler table is where and what asm/dsp1-raster.asm assumes.
+
+    The rearm reads the same four tables the game's own arming routine reads and
+    replaces only the third handler. Every one of those addresses is a constant
+    written into this project rather than derived, so each is checked against the
+    dump instead of trusted.
+    """
+
+    @override
+    def setUp(self) -> None:
+        rom = _rom()
+        if rom is None:
+            self.skipTest("no cartridge dump in roms/, so there is no table to read")
+        self.rom = rom
+
+    def test_the_table_holds_the_three_handlers_the_chain_runs(self) -> None:
+        at = patch.RASTER_THIRD - 4
+
+        got = tuple(self.rom[at + k] | self.rom[at + k + 1] << 8 for k in (0, 2, 4))
+
+        self.assertEqual(got, (0xF195, 0xF1AD, 0xF1DA))
+
+    def test_the_third_handler_is_a_bare_return(self) -> None:
+        self.assertEqual(self.rom[0xF1DA - 0x8000], 0x60)
+
+    def test_the_arming_routine_reads_the_tables_the_rearm_reads(self) -> None:
+        arming = self.rom[0xF168 - 0x8000 : 0xF194 - 0x8000]
+
+        for opcode, table in ((0xBD, 0xF14D), (0xBD, 0xF150), (0xBC, 0xF153)):
+            self.assertIn(bytes((opcode, table & 0xFF, table >> 8)), arming, hex(table))
+
+    def test_the_tail_reads_the_two_scanline_tables_the_rearm_reads(self) -> None:
+        tail = self.rom[0xF1B9 - 0x8000 : 0xF1DE - 0x8000]
+
+        for table in (0x18FA, 0x18FD):
+            self.assertIn(bytes((0xBC, table & 0xFF, table >> 8)), tail, hex(table))
+
+    def test_the_step_counter_is_where_the_rearm_writes_it(self) -> None:
+        dispatch = self.rom[0xF1DE - 0x8000 : 0xF1F6 - 0x8000]
+
+        self.assertIn(bytes((0xAE, 0x80, 0x00)), dispatch)
+        self.assertIn(bytes((0x6C, 0x76, 0x00)), self.rom[0xF1DB - 0x8000 : 0xF1DE - 0x8000])
+
+
 def _decoded_accesses(rom: bytes) -> dict[int, Any]:
     return {
         one.offset: one

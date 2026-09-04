@@ -55,9 +55,9 @@ to be.
 | the accesses in those runs that are not the part at all | all 31 routed. The window is ROM, so the game's own three byte reads and writes of its work RAM through the bank mirror answered nought and went nowhere; one of them is the counter the demo's next phase waits on. OPEN-QUESTIONS section 30 |
 | why the demo left the retail course at game frame 175 | closed. The counter at `$0130` never counted, so the phase it gates never began |
 | the demo | flies, draws its ground, and tracks the retail cartridge's own flight through game frame 405, which is as far as the comparison has been run. Work RAM differs by 30 to 60 bytes a frame, 22 of them at every frame and twelve of those a patched call the game copies into work RAM |
-| the instrument panel | still missing, and not `$0a`. Nothing has been measured about it yet |
+| the instrument panel | drawn on every picture. It was there all along on one picture in sixteen: the flight screen is three bands separated by two scanline interrupts, the sequence is armed once per frame of the game's clock, and one frame of that clock is now sixteen pictures. The third interrupt does nothing in the retail cartridge and is the only thing that happens once per picture, so it arms the sequence again. Screen brightness across the demo went from a spread of 31.1 to one of 0.05, at the retail cartridge's own level. OPEN-QUESTIONS section 32 |
 | whether the image has to grow | yes, to 3.75 MB, which is inside what a low cartridge addresses |
-| speed | 11.5 console frames per frame of the game's own clock, measured over a fixed 250 frames of the flight so the scenery is the same, against 19.6 before. Still mostly the multiply: the six a scanline are 47% of the whole. OPEN-QUESTIONS sections 25 and 31 have the split |
+| speed | 11.2 console frames per frame of the game's own clock, measured over a fixed 250 frames of the flight so the scenery is the same, against 19.6 before. Still mostly the multiply: the six a scanline are 47% of the whole. OPEN-QUESTIONS sections 25 and 31 have the split |
 
 ### How much of the game it covers
 
@@ -619,6 +619,7 @@ Analysis modules in Python, each with its tests beside it.
 | [`asm/dsp1-port.asm`](asm/dsp1-port.asm) | the stubs the game's own accesses become, and the runs replaced whole |
 | [`asm/dsp1-ground.asm`](asm/dsp1-ground.asm) | `$0a`, the command that draws the ground, and the three tables it reads |
 | [`asm/dsp1-window.asm`](asm/dsp1-window.asm) | the bank the game's redirected accesses land in |
+| [`asm/dsp1-raster.asm`](asm/dsp1-raster.asm) | the interrupt that starts the flight screen's three band sequence again, once per picture |
 | [`asm/dsp1-ops.asm`](asm/dsp1-ops.asm) | the three commands whose arithmetic is known exactly |
 | [`asm/dsp1-tables.asm`](asm/dsp1-tables.asm) | the four tables the part's own formulas rebuild, entry for entry |
 | [`asm/dsp1-derived.asm`](asm/dsp1-derived.asm) | where the three tables taken from the part are placed |
