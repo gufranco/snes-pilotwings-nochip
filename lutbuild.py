@@ -130,7 +130,7 @@ def sliced(raw: bytes) -> tuple[bytes, ...]:
     return tuple(raw[at : at + BANK_BYTES] for at in range(0, max(len(raw), 1), BANK_BYTES))
 
 
-FIRST_BANK = 0x19
+FIRST_BANK = 0x99
 """The bank the table starts in, chosen so that all of it stays addressable.
 
 This is a low cartridge, so only banks $00 to $7D carry anything: $7E and $7F

@@ -523,7 +523,7 @@ class BuildTest(unittest.TestCase):
                 str(into / "symbols.txt"),
                 str(into / "out.sfc"),
                 str(sites.CARTRIDGE_BYTES),
-                "--fast",
+                "--slow",
             ),
             say=lambda _: None,
         )

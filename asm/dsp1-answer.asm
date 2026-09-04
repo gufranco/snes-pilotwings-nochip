@@ -172,12 +172,12 @@
                                 ; through $000FE3 across a full run of the demo,
                                 ; and everything here fits in $0D00 to $0D61.
 
-!LUT      = $198000             ; where lutbuild.py's blob starts, and it
+!LUT      = $998000             ; where lutbuild.py's blob starts, and it
                                 ; has to be the bank lut-map.asm gives it:
                                 ; naming a different one here reads whatever
                                 ; else is there as the index, so every command
                                 ; misses and every answer falls back
-!LUTBANK  = $0019               ; and the bank that is. This has to agree with
+!LUTBANK  = $0099               ; and the bank that is. This has to agree with
                                 ; !LUT above: lut_place builds every row address
                                 ; from it, so a stale bank here reads whatever
                                 ; lives there as though it were the rows, the
@@ -304,11 +304,24 @@ lut_place:
 
     clc
     adc.w #!LUTBANK             ; counted from wherever the table was placed
+
+    ; Two banks in the middle of the address space are the console's memory
+    ; rather than the cartridge, so a table that starts below them has to step
+    ; over them and a table that starts above them does not. Which of those is
+    ; the case is known when this is assembled, so the test is made then rather
+    ; than on every row.
+    ;
+    ; It used to be made here on every row, unconditionally, and moving the
+    ; table into the mirror where the cartridge reads three cycles faster put
+    ; every bank of it above the hole. The comparison then answered the same way
+    ; every time and two banks were added to every row address in the table.
+if !LUTBANK < !WORKRAM
     cmp.w #!WORKRAM
     bcc +
     clc
     adc #$0002                  ; past the two banks that are memory, not ROM
 +
+endif
     sta !SCRATCH+2
     rts
 

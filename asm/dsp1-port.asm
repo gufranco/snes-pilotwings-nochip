@@ -198,6 +198,7 @@
                                 ; is why nothing before this ever noticed.
 
 !NO_COMMAND   = $00FF           ; no command is part way through
+!MEMSEL       = $00420D         ; three cycle reads above bank $80, once set
 
 ; ---------------------------------------------------------------------------
 ; How many argument words each command takes, indexed by the command byte.
@@ -783,6 +784,17 @@ dsp_ignore:
 ; ---------------------------------------------------------------------------
 dsp_port_reset:
     php
+
+    ; The cartridge answers a read in three cycles rather than four everywhere
+    ; above bank $80, but only once this register says so, and a game written
+    ; for the slower timing never says so. This project's own code and tables all
+    ; live in that second view, so the game's own banks are untouched by it and
+    ; only what this adds gets faster. Set here because this runs once, on the
+    ; first write the game makes to the port.
+    sep #$20
+    lda #$01
+    sta.l !MEMSEL
+
     rep #$10                    ; a sixteen bit index, for the loop below
     sep #$20
     lda #$00

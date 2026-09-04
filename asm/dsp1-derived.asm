@@ -95,31 +95,31 @@
 ; The sign is not stored. $00d3 strips it at $0d6, refines the magnitude, and
 ; negates the answer at $0f0, so one half of the range answers both halves and
 ; asm/dsp1-ground.asm puts the sign back in two instructions.
-org $738000
+org $F38000
 dsp1_reciprocal_of:
 incbin "../build/reciprocal-0.bin"
 
 ; What $04 multiplies a magnitude by, per angle, for the first half it answers.
 ; A whole turn is 65,536, so the index is the angle with nothing done to it.
-org $118000
+org $918000
 dsp1_sine_of:
 incbin "../build/sine-0.bin"
-org $128000
+org $928000
 incbin "../build/sine-1.bin"
-org $138000
+org $938000
 incbin "../build/sine-2.bin"
-org $148000
+org $948000
 incbin "../build/sine-3.bin"
 
 ; The same, for the second half.
-org $158000
+org $958000
 dsp1_cosine_of:
 incbin "../build/cosine-0.bin"
-org $168000
+org $968000
 incbin "../build/cosine-1.bin"
-org $178000
+org $978000
 incbin "../build/cosine-2.bin"
-org $188000
+org $988000
 incbin "../build/cosine-3.bin"
 
 print "reciprocal of starts at ", hex(dsp1_reciprocal_of)

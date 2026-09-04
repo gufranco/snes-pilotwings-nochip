@@ -55,7 +55,7 @@ this project can be built for.
 BANK_BYTES = 0x8000
 """What one low addressed bank holds, and so what one table may not exceed."""
 
-FIRST_BANK = 0x70
+FIRST_BANK = 0xF0
 """The first bank free for these.
 
 The game holds $00 to $0F, this project's code $10, the sine and cosine taken

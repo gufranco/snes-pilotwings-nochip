@@ -111,9 +111,19 @@ HEADER_CHECKSUM = 0x7FDE
 FAST = 0x10
 """The bit in the speed byte that asks for three cycle ROM reads instead of four.
 
-It applies only to banks $80 and above, so setting it is worth nothing unless
-the code that benefits is reached through that mirror, and it changes the timing
-of everything the game does rather than only of what this conversion added.
+It applies only to banks $80 and above, which is why it was worth nothing until
+this project moved its own code and tables into that view of the image. It is
+worth 9% of the running time now, measured on the demo's own frame counter, and
+it changes the timing of nothing the game does: the game lives in banks $00 to
+$0F and is read at the slower speed whatever this bit says.
+
+The bit only advertises the capability. What acts on it is $420D, which
+dsp_port_reset sets on the first write the game makes to the port, because a
+game written for the slower timing never sets it itself.
+
+`--slow` leaves both alone. The reason to reach for it is a cartridge whose ROM
+is too slow for three cycle reads, which a flash cartridge is not and an
+unmarked reproduction might be.
 """
 
 
@@ -543,7 +553,7 @@ def symbols(where: Path) -> dict[str, int]:
 
 def main(argv: Sequence[str] = (), say: Any = print) -> int:
     if len(argv) < 4:
-        say("usage: patch.py <rom> <symbols> <out> <game bytes> [--fast]")
+        say("usage: patch.py <rom> <symbols> <out> <game bytes> [--slow]")
         return 2
     rom = Path(argv[0]).read_bytes()
     where = plan(rom, limit=int(argv[3]))
@@ -557,7 +567,7 @@ def main(argv: Sequence[str] = (), say: Any = print) -> int:
     out, moved = redirected(out)
     say(f"{moved} data bank pushes redirected")
     say(f"{replaced} three byte accesses replaced one at a time")
-    out = declared(out, fast="--fast" in argv)
+    out = declared(out, fast="--slow" not in argv)
     out = checksummed(out)
     Path(argv[2]).write_bytes(out)
     for line in report(where):

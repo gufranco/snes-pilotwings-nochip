@@ -56,6 +56,17 @@ MOST_STEPS = 40000
 
 MULTIPLICAND = 0x004202
 MULTIPLIER = 0x004203
+
+MIRROR = 0x7F
+"""Which banks a bank number names the same bytes as.
+
+Every bank from $80 up is a second view of the one 128 below it, and this
+project reads its own tables through that view because the cartridge answers
+three cycles faster there. A model that took the bank at face value read past
+the end of the image and answered nought, which is what $04 did until this
+was added.
+"""
+
 PRODUCT = 0x004216
 
 
@@ -86,7 +97,7 @@ class Console:
             return self.cells[at]
         bank, inside = at >> 16, at & 0xFFFF
         if self.image and inside >= 0x8000:
-            offset = bank * 0x8000 + (inside - 0x8000)
+            offset = (bank & MIRROR) * 0x8000 + (inside - 0x8000)
             if offset < len(self.image):
                 return self.image[offset]
         return 0

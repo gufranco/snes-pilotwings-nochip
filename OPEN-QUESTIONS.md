@@ -2458,3 +2458,78 @@ the game copies into work RAM and executes there, which cannot match by
 construction. The other ten are `$0182` through `$0186` and `$01E2` through
 `$01E6`, which this build writes and the cartridge leaves at the console's
 power-on fill. That is the next thread.
+
+
+## 31. Where the time goes, and the tenth of it that came back
+
+**17.72 console frames per frame of the game's own clock**, down from 19.55.
+Measured on `RAM[$1a1c]`, which both cartridges step once per frame of their own
+loop, over 7,000 console frames in the middle of the flight.
+
+### The split
+
+Each row is the whole flight re-measured with one piece stubbed out, so the
+difference from the row above is what that piece costs.
+
+| build | console frames per game frame | what the gap is |
+|---|---|---|
+| as it stands | 17.72 | |
+| `mul16` returning at once | 12.32 | 5.40, the multiply itself |
+| `op_00_body` returning at once | 9.42 | 2.90 more, the sign handling around it |
+
+So the multiply is 47% of the running time, and it is asked 1,061 times a frame:
+six per scanline of the ground, 176 scanlines.
+
+That count was 471 the first time it was measured, which is the same number with
+a sixteen bit counter that had wrapped once. A per-call cost worked out from the
+wrapped count is a factor of two wrong, and it made the routine look far more
+expensive per call than it is.
+
+### What was tried on it
+
+**The screen's own multiplier.** $211B and $211C multiply sixteen signed bits by
+eight signed with no wait, where $4202 multiplies eight unsigned by eight and
+needs eight cycles before the answer can be read. Two of the first replace four
+of the second and the sign handling disappears with them.
+
+It came out at 17.99 against 19.55, a twelfth, and the ground it produced
+differed from the cartridge's on a third of its words. Both halves of that are
+reasons not to keep it: the saving is small because the cost is the thirty two
+bit bookkeeping around the multiply rather than the multiply, and a wrong answer
+is not worth a twelfth of anything. Reverted.
+
+### What was kept
+
+**The second view of the cartridge.** Everything above bank $80 is the same ROM
+read three cycles faster instead of four, once $420D says so. This project's
+code and tables now live there and the game's own banks do not, so the game's
+timing is untouched.
+
+Two things had to be true before it was worth anything, and the second was not:
+
+| | |
+|---|---|
+| the header bit at $7FD5 | set by `patch.py`, and by itself worth nothing |
+| $420D | never written, because a game built for the slower timing never writes it. `dsp_port_reset` writes it now |
+
+Moving the code alone gave 18.13. Moving the tables with it gave 17.72.
+
+**One bank arithmetic assumption broke on the way.** `lut_place` stepped over
+banks $7E and $7F, which are memory rather than cartridge, by comparing every row
+address against them. Every bank in the second view is above that comparison, so
+it answered the same way every time and added two banks to every row address in
+the table. The demo ran, faster, and read the wrong rows: 31,000 bytes of work
+RAM away from the cartridge instead of 20. The comparison is made when the file
+is assembled now, since which side of the hole the table sits on is known then.
+
+**And one in the model.** `routines.py` mapped a bank straight onto a file offset
+with no mask, so a read of bank $91 ran off the end of the image and answered
+nought. `$04` reads its trig tables that way and started answering nought with
+it. The mirror is in the model now.
+
+### What is left
+
+The multiply, at 47%. Neither a faster multiply nor a cheaper wrapper moves it
+much, because what it spends its time on is assembling a thirty two bit product
+out of sixteen bit pieces. Fewer of them is the lever, and the six per scanline
+are six distinct products with nothing shared between them.

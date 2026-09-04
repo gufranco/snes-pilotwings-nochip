@@ -34,12 +34,24 @@
 ; the recorded answers in $19 to $6F, $02's three state tables in $70 to $72, the
 ; reciprocal taken from the chip in $73, and the window the redirected accesses
 ; land in at $7D.
+;
+; Everything this project adds is then addressed through the second view rather
+; than the first: $90 for the code, $91 to $98 for the trig, $99 to $EF for the
+; recorded answers, $F0 to $F2 for the state and $F3 for the reciprocal. Same
+; bytes, same file, and the cartridge answers a read there in three cycles
+; instead of four once $420D is set, which dsp_port_reset does on the first
+; write the game makes. Measured on the demo's own frame counter: 19.55 console
+; frames per frame of the game's clock before, 17.72 after.
+;
+; The window at $7D is not moved. It is the bank the game's own data bank is
+; pointed at, and the game reads it with three byte instructions that carry no
+; bank at all, so the speed of it is not this project's to choose.
 
 lorom
 
 incsrc "../build/state02-map.asm"
 
-org $108000
+org $908000
 !PORTRAM = $7FDC00              ; measured free: the game never wrote $7FDB76
                                 ; through $7FFBFF across a full run of the demo
 
