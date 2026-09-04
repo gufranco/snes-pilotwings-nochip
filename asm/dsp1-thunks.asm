@@ -75,8 +75,16 @@ thunk_ldy_status:
     jsl hook_ldy_status
     rts
 
-thunk_adc:
-    jsl hook_adc
+thunk_ldx_status:
+    jsl hook_ldx_status
     rts
 
-print "thunks end at ", hex(thunk_adc+5), ", the run they sit in ends at $00AD6A"
+thunk_adc:
+    jsl dsp_read_adc
+    rts
+
+thunk_bit_status:
+    jsl hook_bit_status
+    rts
+
+print "thunks end at ", hex(thunk_bit_status+5), ", the run they sit in ends at $00AE6A"

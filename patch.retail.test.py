@@ -88,19 +88,28 @@ def _rom() -> bytes | None:
 
 
 def _decoded(rom: bytes) -> Any:
+    """Every instruction in every hooked region, decoded from that region's start.
+
+    Region by region rather than in one pass, because a walk that runs past a
+    routine's end decodes the next one at the wrong register widths and reports
+    instructions that are not there. That is not a hypothetical: bounds taken
+    from such a walk once put 44 bytes of ordinary arithmetic inside a region.
+    """
     hardware.install()
     from mos65xx import opcodes65816
 
-    start, end = patch.HOOKED
-    listing = opcodes65816.disassemble(
-        rom,
-        start,
-        start + BANK,
-        count=6000,
-        m=WIDE_ACCUMULATOR,
-        x=NARROW_INDEX,
-    )
-    return [one for one in listing if start <= one.offset < end]
+    found = []
+    for start, end in patch.HOOKED:
+        listing = opcodes65816.disassemble(
+            rom,
+            start,
+            start + BANK,
+            count=6000,
+            m=WIDE_ACCUMULATOR,
+            x=NARROW_INDEX,
+        )
+        found += [one for one in listing if start <= one.offset < end]
+    return found
 
 
 class Accesses(unittest.TestCase):
@@ -119,14 +128,16 @@ class Accesses(unittest.TestCase):
         self.scanned = self._scanned(rom)
 
     def _scanned(self, rom: bytes) -> set[int]:
-        start, end = patch.HOOKED
-        return {
-            at
-            for at in range(start, min(end, len(rom)) - 2)
-            if rom[at] in patch.HOOKS
-            and rom[at + 1] == 0x00
-            and rom[at + 2] in (patch.PORT_PAGE, patch.STATUS_PAGE)
-        }
+        found = set()
+        for start, end in patch.HOOKED:
+            for at in range(start, min(end, len(rom)) - 2):
+                if rom[at + 1] != 0x00:
+                    continue
+                port = rom[at + 2] == patch.PORT_PAGE and rom[at] in patch.HOOKS
+                status = rom[at + 2] == patch.STATUS_PAGE and rom[at] in patch.STATUS_HOOKS
+                if port or status:
+                    found.add(at)
+        return found
 
     def test_the_scan_finds_every_access_the_disassembler_does(self) -> None:
         self.assertEqual(set(self.real) - self.scanned, set())
@@ -181,7 +192,15 @@ class Accesses(unittest.TestCase):
 
     def test_every_shape_the_region_holds_has_a_thunk_named_for_it(self) -> None:
         for one in self.real.values():
-            self.assertIn(self.rom[one.offset], patch.HOOKS, f"{one.address:#06x}")
+            table = patch.HOOKS if one.operand == 0x8000 else patch.STATUS_HOOKS
+            self.assertIn(self.rom[one.offset], table, f"{one.address:#06x}")
+
+    def test_nothing_tests_the_data_port_the_way_only_the_status_is_tested(self) -> None:
+        """`bit` reads the status and never the port, which is what lets its hook
+        answer a constant instead of taking a word off the answer."""
+        for one in self.real.values():
+            if one.mnemonic == "bit":
+                self.assertEqual(one.operand, patch.STATUS_FROM, f"{one.address:#06x}")
 
 
 class Replaced(unittest.TestCase):
@@ -191,21 +210,27 @@ class Replaced(unittest.TestCase):
         if rom is None:
             self.skipTest("no cartridge dump in roms/, so there is nothing to replace")
         self.rom = rom
-        self.stubs = dict.fromkeys({*patch.HOOKS.values(), patch.STATUS_THUNK}, 0x00AD28)
+        named = {*patch.HOOKS.values(), *patch.STATUS_HOOKS.values()}
+        self.stubs = dict.fromkeys(named, 0x00AD28)
 
     def test_it_replaces_every_access_and_nothing_else(self) -> None:
         out, _ = patch.hooked(self.rom, self.stubs)
 
-        start, end = patch.HOOKED
         changed = {at for at in range(len(self.rom)) if self.rom[at] != out[at]}
-        self.assertTrue(all(start <= at < end for at in changed))
+        inside = {at for start, end in patch.HOOKED for at in range(start, end)}
+        self.assertEqual(changed - inside, set())
 
-    def test_it_leaves_the_rest_of_the_image_alone(self) -> None:
+    def test_it_leaves_everything_before_the_first_region_alone(self) -> None:
         out, _ = patch.hooked(self.rom, self.stubs)
 
-        start, end = patch.HOOKED
-        self.assertEqual(out[:start], self.rom[:start])
-        self.assertEqual(out[end:], self.rom[end:])
+        first = patch.HOOKED[0][0]
+        self.assertEqual(out[:first], self.rom[:first])
+
+    def test_it_leaves_everything_after_the_last_region_alone(self) -> None:
+        out, _ = patch.hooked(self.rom, self.stubs)
+
+        last = patch.HOOKED[-1][1]
+        self.assertEqual(out[last:], self.rom[last:])
 
     def test_the_count_it_reports_is_what_the_disassembler_finds(self) -> None:
         _, replaced = patch.hooked(self.rom, self.stubs)

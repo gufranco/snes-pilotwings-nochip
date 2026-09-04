@@ -297,18 +297,52 @@ hook_ldy_status:
     rtl
 
 ; ---------------------------------------------------------------------------
-; `adc $8000`: take the next word and add it.
+; `ldx $c000`: the same poll, reading into X instead.
+;
+; One of these, at $00:CAFE, and the `bpl` after it is the wait it ends.
+; ---------------------------------------------------------------------------
+hook_ldx_status:
+    php
+    rep #$30
+    pha
+
+    lda $03,s
+    and #$0010
+    beq .wide
+
+    pla
+    plp
+    ldx.b #$80
+    rtl
+
+.wide:
+    pla
+    plp
+    ldx.w #!STATUS_READY
+    rtl
+
+; ---------------------------------------------------------------------------
+; Take the next word and compute with it: `adc` and `eor`.
 ;
 ; The add happens here rather than having its flags reproduced. That is the whole
-; reason this shape has a hook of its own: an add sets negative, overflow, zero
-; and carry together, and the only thing that gets all four right on every input
-; is an add.
+; reason these have hooks of their own: an add sets negative, overflow, zero and
+; carry together, and the only thing that gets all four right on every input is
+; an add.
 ;
 ; The accumulator is pushed and pulled at the caller's own width, so the same
 ; number of bytes come back off the stack as went on, and the carry the caller
 ; arrived with is restored by the `plp` immediately before the add.
+;
+; Both are reached two ways. The flight model asks in three bytes through a thunk,
+; and seven other places in the game ask in four, as `adc $3f8000` and
+; `eor $3f8000`, which is a long instruction the same size as the call replacing
+; it. Those seven went unreplaced from the first build until 2026-09-04: the
+; driver model this project is checked against searches for the long store and
+; the long load, and neither of these is either. One of them decides whether an
+; exchange happens at all, so `$06`, the command this cartridge asks most, was
+; never asked.
 ; ---------------------------------------------------------------------------
-hook_adc:
+dsp_read_adc:
     php                         ; the caller's flags, the carry among them
     pha                         ; and the value being added to
 
@@ -318,4 +352,71 @@ hook_adc:
     pla
     plp
     adc.l !HOOK_WORD
+    rtl
+
+dsp_read_eor:
+    php
+    pha
+
+    jsl dsp_read
+    sta.l !HOOK_WORD
+
+    pla
+    plp
+    eor.l !HOOK_WORD
+    rtl
+
+; ---------------------------------------------------------------------------
+; `bit $c000`: test the status without disturbing anything.
+;
+; The three of these are all polls, and the branch after each reads the sign, so
+; the flags have to be right. They cannot be set the way hook_ldy_status sets
+; them, by ending on a real instruction, because `bit` against an immediate is
+; the one form that sets zero alone: negative and overflow come only from a
+; fetch, and a fetch needs an addressing mode `bit` does not have here.
+;
+; So the three bits it sets are worked out and written into the flags the caller
+; gets back. Against the status, which is the same constant on every read, they
+; are: negative from its top bit, which is set; overflow from the bit below,
+; which is not; and zero from the accumulator anded with it.
+; ---------------------------------------------------------------------------
+!FLAG_NEGATIVE = $80
+!FLAG_OVERFLOW = $40
+!FLAG_ZERO     = $02
+
+hook_bit_status:
+    php
+    rep #$30
+    pha
+
+    lda $03,s
+    and #$0010
+    beq .wide
+
+    lda.w #$0080                ; eight bit index and accumulator both see the
+    bra .test                   ; ready byte alone
+
+.wide:
+    lda.w #!STATUS_READY        ; and a wide read sees both halves of it
+
+.test:
+    sta.l !HOOK_WORD
+    lda $01,s                   ; the accumulator, as it was pushed
+    and.l !HOOK_WORD
+    beq .zero
+
+    lda $03,s                   ; not zero, so clear that flag and set negative
+    and.w #(~(!FLAG_ZERO|!FLAG_OVERFLOW))&$FFFF
+    ora.w #!FLAG_NEGATIVE
+    bra .kept
+
+.zero:
+    lda $03,s
+    and.w #(~!FLAG_OVERFLOW)&$FFFF
+    ora.w #(!FLAG_NEGATIVE|!FLAG_ZERO)
+
+.kept:
+    sta $03,s
+    pla
+    plp
     rtl

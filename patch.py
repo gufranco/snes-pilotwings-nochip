@@ -38,6 +38,25 @@ LDA_LONG = 0xAF
 JSL = 0x22
 JSR = 0x20
 
+COMBINING = {0x6F: "dsp_read_adc", 0x4F: "dsp_read_eor"}
+"""Long instructions that read the part and compute with what they read.
+
+`adc $3f8000` and `eor $3f8000` are four bytes and reach the part the same way a
+long load does, and neither is a load. The driver model this project is checked
+against searches for the long store and the long load only, so it reports neither,
+and every one of these went unreplaced from the first build until they were found:
+seven sites, reading whatever the answer table happens to hold at $3f8000 and
+computing with it.
+
+One of them decides whether an exchange happens at all. `adc $3f8000` at
+$00:A1AD is followed by `bmi`, and the branch skips the whole of `$06`, which is
+the command this cartridge asks more often than any other. So `$06` was never
+asked, and the flight model has been running without it.
+
+The encoding is exact rather than heuristic, the same way the model's own search
+is: no other instruction puts that bank and that address in those three bytes.
+"""
+
 FIRST_BANK = 0x30
 LAST_BANK = 0x3F
 """The banks the part answered in on this board.
@@ -51,6 +70,16 @@ These match snes-driver-python's window for this part on a low cartridge, which
 is held against a library of real cartridges rather than against a reading of
 one. They are restated here so that a change to either is a visible
 disagreement rather than a silent one.
+"""
+
+PORT_FROM = 0x8000
+"""Where the part's window starts inside a bank.
+
+Below this is the console's own system area rather than the cartridge, so a long
+instruction naming it is not reaching the part however much its bank looks like
+it. `classify` needs no such bound because the driver model has already applied
+the window before it is asked; `combining` does its own search and so applies it
+here.
 """
 
 STATUS_FROM = 0xC000
@@ -101,6 +130,29 @@ def classify(rom: bytes, at: int) -> str | None:
     return "dsp_status" if status else "dsp_read"
 
 
+def combining(rom: bytes, limit: int | None = None) -> dict[int, str]:
+    """Every long read-modify access to the part, and the stub each one needs.
+
+    Separate from the driver model's own search because the model reports loads
+    and stores, which is the right answer to the question it asks. These are a
+    third shape, and they are found here rather than by widening that model,
+    because the model is held against a library of real cartridges and this is
+    one cartridge's habit.
+    """
+    edge = len(rom) if limit is None else limit
+    found: dict[int, str] = {}
+    for at in range(min(edge, len(rom)) - SITE_BYTES + 1):
+        stub = COMBINING.get(rom[at])
+        if stub is None or rom[at + 1] != 0x00:
+            continue
+        if not FIRST_BANK <= rom[at + 3] <= LAST_BANK:
+            continue
+        if not PORT_FROM <= (rom[at + 1] | rom[at + 2] << 8) < STATUS_FROM:
+            continue
+        found[at] = stub
+    return found
+
+
 def plan(rom: bytes, limit: int | None = None, reached: Any = None) -> dict[int, str]:
     """Every site in the game's own code, and the stub each one needs.
 
@@ -115,6 +167,10 @@ def plan(rom: bytes, limit: int | None = None, reached: Any = None) -> dict[int,
     scanner reports long loads and stores, which is exactly what fits in four
     bytes; anything else reaching the window would need the routine around it
     moved, which is a different job from this one.
+
+    `combining` adds the third shape the scanner does not report, a long
+    instruction that reads the part and computes with what it reads. Those are
+    four bytes as well, so they are replaced the same way.
     """
     edge = len(rom) if limit is None else limit
     found: dict[int, str] = {}
@@ -124,6 +180,7 @@ def plan(rom: bytes, limit: int | None = None, reached: Any = None) -> dict[int,
         stub = classify(rom, at)
         if stub is not None:
             found[at] = stub
+    found.update(combining(rom, edge))
     return found
 
 
@@ -233,19 +290,34 @@ would leave the stack one byte out and black the screen.
 """
 
 
-HOOKED = (0x04DB3, 0x054B0)
-"""The run of the game's own code whose accesses are replaced one at a time.
+HOOKED = (
+    (0x00054, 0x000C4),
+    (0x0160A, 0x0164F),
+    (0x04AAC, 0x04BA5),
+    (0x04DCD, 0x050A8),
+    (0x051F7, 0x05280),
+    (0x0547C, 0x05679),
+)
+"""The runs of the game's own code whose accesses are replaced one at a time.
 
-$00:CDB3 to $00:D4B0, which is the flight model. It reaches the part the same way
-the three runs above do, by setting the data bank and using three byte absolute
-instructions, and unlike them it cannot be lifted out whole: its 110 accesses are
-interleaved with the game's own arithmetic, which clamps, negates and accumulates
-between them. Replacing the region means rewriting how the plane flies.
+Twelve places set the data bank to the part and then use three byte absolute
+instructions, which have no room for a four byte call and nothing in the operand
+a scanner of long instructions can recognise. Those twelve overlap into these six
+runs, which hold 200 accesses between them.
 
-Leaving them is not an option either. Every one of those accesses reads nought,
-because the bank they land in is ROM, and 17,730 calls a recording go through
-them. The flight model runs on those noughts, which is what stops the demo
-holding the retail cartridge's own course past 174 frames.
+Three of the twelve are one run of code that talks to the part and then stops, and
+those are lifted out whole by SPANS instead. The rest are not shaped that way: the
+flight model's accesses are interleaved with its own clamping and accumulating,
+so replacing the region means rewriting how the plane flies.
+
+The bounds come from disassembling forward from each of the twelve pushes,
+stopping where that routine returns, and clustering the accesses found. Stopping
+at the return is what makes them right: a walk that runs past it decodes the next
+routine at the wrong register widths and reports accesses that are not there,
+which put 44 bytes of ordinary arithmetic inside a region and broke the flight
+from its thirty eighth frame.
+`patch.retail.test.py` re-derives them and fails if the byte scan below and a
+disassembler that tracks the register widths disagree on so much as one access.
 """
 
 HOOKS = {
@@ -258,18 +330,26 @@ HOOKS = {
     0xAE: "thunk_ldx",
     0x6D: "thunk_adc",
 }
-"""Which thunk each access takes, by the opcode standing there.
+"""Which thunk each access to the data port takes, by the opcode standing there.
 
-Nine shapes across the 110 accesses, counted rather than assumed, and `ldy` is
-the one that appears twice because it reads both the data port and the status
-register. `hooked` tells those two apart by the operand.
-
-A `jsr` is three bytes and so is every one of these instructions, which is the
-whole reason this works where a four byte call does not. asm/dsp1-hooks.asm says
-what each thunk has to preserve.
+Counted across the 200 accesses rather than assumed. A `jsr` is three bytes and
+so is every one of these instructions, which is the whole reason this works where
+a four byte call does not. asm/dsp1-hooks.asm says what each thunk preserves.
 """
 
-STATUS_THUNK = "thunk_ldy_status"
+STATUS_HOOKS = {
+    0xAC: "thunk_ldy_status",
+    0xAE: "thunk_ldx_status",
+    0x2C: "thunk_bit_status",
+}
+"""And which one each access to the status register takes.
+
+Separate from the table above because the status answers a constant and the data
+port does not, so a read of it needs no fetch at all: the thunk sets the flags the
+instruction would have set and leaves the registers alone. `bit` appears only
+here, and `patch.retail.test.py` fails if one ever names the data port, because
+this would then be answering the wrong question for it.
+"""
 
 ACCESS_BYTES = 3
 """The length of one of these instructions, and of the call that replaces it."""
@@ -285,23 +365,25 @@ def hooked(rom: bytes, stubs: Mapping[str, int]) -> tuple[bytes, int]:
     operand and leave a branch pointing into the middle of a call.
     """
     out = bytearray(rom)
-    start, end = HOOKED
     replaced = 0
-    for at in range(start, min(end, len(rom)) - 2):
-        name = HOOKS.get(out[at])
-        if name is None or out[at + 1] != 0x00:
-            continue
-        page = out[at + 2]
-        if page == PORT_PAGE:
+    for start, end in HOOKED:
+        for at in range(start, min(end, len(rom)) - 2):
+            if out[at + 1] != 0x00:
+                continue
+            page = out[at + 2]
+            if page == PORT_PAGE:
+                name = HOOKS.get(out[at])
+            elif page == STATUS_PAGE:
+                name = STATUS_HOOKS.get(out[at])
+            else:
+                continue
+            if name is None:
+                continue
             target = stubs[name]
-        elif page == STATUS_PAGE:
-            target = stubs[STATUS_THUNK]
-        else:
-            continue
-        out[at] = JSR
-        out[at + 1] = target & 0xFF
-        out[at + 2] = target >> 8 & 0xFF
-        replaced += 1
+            out[at] = JSR
+            out[at + 1] = target & 0xFF
+            out[at + 2] = target >> 8 & 0xFF
+            replaced += 1
     return bytes(out), replaced
 
 

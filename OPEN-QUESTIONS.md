@@ -2258,3 +2258,85 @@ snapshot here lands at an arbitrary point inside the game's own loop and several
 hundred working variables differ from the first frame onward for that reason
 alone. The claim that survives is the narrower one it rested on: the arguments
 `$02` is asked with match the recording's, frame for frame, until 175.
+
+## 29. Seven accesses the scanner was never looking for
+
+**Found 2026-09-04 by logging every exchange the cartridge completes and diffing
+that against the recording's own, rather than by reading code.**
+
+### The measurement that found it
+
+A throwaway build wrote the command byte of every completed exchange into a ring
+in work RAM. Dumping it beside the recording's command stream showed the two are
+not the same shape:
+
+    the recording   11 13 06 13 06 13 06 13 06 11 13 06 ...
+    ours            11 13    13    13    13    11 13    ...
+
+`$06` was not happening at all. It is the command this cartridge asks most often,
+74,261 times in one recording, and it had never once been asked.
+
+### Why
+
+`$00:A1AD` holds `adc $3f8000`, a long instruction that reads the part and adds
+what it reads to the accumulator. The `bmi` after it decides whether the whole
+`$06` exchange happens.
+
+`patch.py` never replaced it. It classifies a site by opcode and knew two: the
+long store and the long load. So `adc` read the byte the answer table happens to
+hold at `$3f8000`, and the branch after it went whichever way that byte said.
+
+Seven sites are like that: six `adc` and one `eor`. The driver model this project
+is checked against does not report them either, and for a good reason: it answers
+"where does this cartridge reach the part", and it answers it for the two shapes
+every cartridge uses. A read-modify-write against a coprocessor port is this
+cartridge's own habit. So `patch.py` searches for those two shapes itself, with
+the same exact encoding test, and says why in `COMBINING`.
+
+### And five more windowed regions
+
+Entry 28 hooked one run of three byte accesses, `$00:CDB3` to `$00:D4B0`, on the
+strength of one push of the part's bank. There are twelve such pushes. Clustering
+the accesses each one leads to gives six runs holding 199 accesses, not one run
+holding 110:
+
+| run | accesses |
+|---|---|
+| `$00:8054` to `$00:80C4` | 18 |
+| `$00:960A` to `$00:964F` | 12 |
+| `$00:CAAC` to `$00:CBA5` | 31 |
+| `$00:CDCD` to `$00:D0A8` | 77 |
+| `$00:D1F7` to `$00:D280` | 25 |
+| `$00:D47C` to `$00:D679` | 36 |
+
+Two shapes appear only in the new runs: `bit` on the status, and `ldx` on it.
+`bit` needs care, because `bit` against an immediate is the one form that sets
+zero alone, so its hook works out the three flags a real read would set and writes
+them into the flags the caller gets back.
+
+### A bound taken from a bad walk
+
+The first attempt at those bounds broke the flight from its thirty eighth frame.
+The clusterer disassembled forward from each push for a fixed distance, ran past
+the end of the routine, decoded the next one at the wrong register widths, and
+reported accesses that are not there. Forty four bytes of ordinary arithmetic
+ended up inside a region and were replaced with calls.
+
+Stopping the walk where the routine returns fixes it, and `patch.retail.test.py`
+now decodes each region from its own start for the same reason.
+
+### What it did not fix
+
+The demo still leaves the retail cartridge's course at game frame 175, with the
+same values as before every one of these fixes. Three real faults were found and
+fixed in one session and none of them is the trigger:
+
+| fault | how long it had been there | effect |
+|---|---|---|
+| seven long read-modify accesses unreplaced | since the first build | `$06` never asked |
+| `$11`'s arguments never kept | since the first build | `$13` and `$1b` keyed on the game's own fill |
+| five windowed runs unhooked | since entry 28 | 89 more accesses reading nought |
+
+Speed is ruled out as the cause. Overclocking the console's processor to snes9x's
+"max" setting takes the flight from a fifteenth of speed to a seventh, and the
+divergence stays at game frame 175 exactly.

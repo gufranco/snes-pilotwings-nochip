@@ -141,6 +141,12 @@ static int16_t cb_input_state(unsigned port, unsigned, unsigned, unsigned id)
 static bool cb_environment(unsigned cmd, void *data)
 {
     switch (cmd) {
+    case RETRO_ENVIRONMENT_GET_VARIABLE: {
+        struct retro_variable *asked = (struct retro_variable *)data;
+        const char *chosen = getenv(asked->key);
+        asked->value = chosen;
+        return chosen != NULL;
+    }
     case RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY:
     case RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY:
         *(const char **)data = ".";

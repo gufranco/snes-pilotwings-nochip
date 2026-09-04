@@ -25,6 +25,10 @@ STUBS = {
     "thunk_ldx": 0x00AD46,
     "thunk_ldy_status": 0x00AD4B,
     "thunk_adc": 0x00AD50,
+    "thunk_bit_status": 0x00AD55,
+    "thunk_ldx_status": 0x00AD5A,
+    "dsp_read_adc": 0x0F8900,
+    "dsp_read_eor": 0x0F8A00,
 }
 
 
@@ -303,48 +307,105 @@ class SpannedTest(unittest.TestCase):
         self.assertEqual(out[end], 0xAB)
 
 
+class CombiningTest(unittest.TestCase):
+    def _image(self, opcode: int, page: int = 0x80, bank: int = 0x3F) -> bytes:
+        out = bytearray(0x10000)
+        out[0x100:0x104] = bytes([opcode, 0x00, page, bank])
+        return bytes(out)
+
+    def test_a_long_add_from_the_port_is_a_site(self) -> None:
+        self.assertEqual(patch.combining(self._image(0x6F)), {0x100: "dsp_read_adc"})
+
+    def test_a_long_exclusive_or_from_the_port_is_a_site(self) -> None:
+        self.assertEqual(patch.combining(self._image(0x4F)), {0x100: "dsp_read_eor"})
+
+    def test_a_long_store_is_left_to_the_driver_model(self) -> None:
+        self.assertEqual(patch.combining(self._image(0x8F)), {})
+
+    def test_a_bank_outside_the_window_is_not_a_site(self) -> None:
+        self.assertEqual(patch.combining(self._image(0x6F, bank=0x2F)), {})
+
+    def test_an_address_below_the_port_is_not_a_site(self) -> None:
+        self.assertEqual(patch.combining(self._image(0x6F, page=0x70)), {})
+
+    def test_it_stops_where_the_game_does(self) -> None:
+        self.assertEqual(patch.combining(self._image(0x6F), limit=0x80), {})
+
+    def test_the_plan_carries_them_with_the_rest(self) -> None:
+        rom = bytearray(sites.CARTRIDGE_BYTES)
+        rom[0x8000:0x8004] = bytes([patch.STA_LONG, 0x00, 0x80, 0x3F])
+        rom[0x8004:0x8008] = bytes([0x6F, 0x00, 0x80, 0x3F])
+        rom[0x7FD5] = 0x20
+
+        where = patch.plan(bytes(rom))
+
+        self.assertEqual(where.get(0x8004), "dsp_read_adc")
+
+
 class HookedTest(unittest.TestCase):
     def _region(self, body: bytes) -> bytes:
         out = bytearray(0x10000)
-        out[patch.HOOKED[0] : patch.HOOKED[0] + len(body)] = body
+        at = patch.HOOKED[0][0]
+        out[at : at + len(body)] = body
         return bytes(out)
 
     def test_a_store_to_the_port_becomes_a_call(self) -> None:
         out, _ = patch.hooked(self._region(bytes([0x8D, 0x00, 0x80])), STUBS)
 
-        at = patch.HOOKED[0]
+        at = patch.HOOKED[0][0]
         self.assertEqual(out[at], patch.JSR)
         self.assertEqual(out[at + 1] | out[at + 2] << 8, STUBS["thunk_sta"] & 0xFFFF)
 
     def test_every_shape_the_region_holds_has_a_thunk(self) -> None:
-        for opcode, name in patch.HOOKS.items():
+        for opcode, name in {**patch.HOOKS, **patch.STATUS_HOOKS}.items():
             self.assertIn(name, STUBS, f"{opcode:#04x}")
+
+    def test_a_read_of_the_status_by_bit_takes_its_own_thunk(self) -> None:
+        out, _ = patch.hooked(self._region(bytes([0x2C, 0x00, 0xC0])), STUBS)
+
+        at = patch.HOOKED[0][0]
+        self.assertEqual(out[at + 1] | out[at + 2] << 8, STUBS["thunk_bit_status"] & 0xFFFF)
+
+    def test_bit_on_the_data_port_is_left_alone(self) -> None:
+        out, _ = patch.hooked(self._region(bytes([0x2C, 0x00, 0x80])), STUBS)
+
+        self.assertEqual(out[patch.HOOKED[0][0]], 0x2C)
+
+    def test_every_region_is_searched(self) -> None:
+        rom = bytearray(0x60000)
+        for start, _ in patch.HOOKED:
+            rom[start : start + 3] = bytes([0x8D, 0x00, 0x80])
+
+        _, replaced = patch.hooked(bytes(rom), STUBS)
+
+        self.assertEqual(replaced, len(patch.HOOKED))
 
     def test_a_read_of_the_status_takes_its_own_thunk(self) -> None:
         out, _ = patch.hooked(self._region(bytes([0xAC, 0x00, 0xC0])), STUBS)
 
-        at = patch.HOOKED[0]
+        at = patch.HOOKED[0][0]
         self.assertEqual(out[at + 1] | out[at + 2] << 8, STUBS["thunk_ldy_status"] & 0xFFFF)
 
     def test_a_read_of_the_port_and_of_the_status_are_told_apart(self) -> None:
         port, _ = patch.hooked(self._region(bytes([0xAC, 0x00, 0x80])), STUBS)
         status, _ = patch.hooked(self._region(bytes([0xAC, 0x00, 0xC0])), STUBS)
 
-        at = patch.HOOKED[0]
+        at = patch.HOOKED[0][0]
         self.assertNotEqual(port[at + 1 : at + 3], status[at + 1 : at + 3])
 
-    def test_an_access_outside_the_region_is_left_alone(self) -> None:
-        rom = bytearray(0x10000)
-        rom[patch.HOOKED[1] : patch.HOOKED[1] + 3] = bytes([0x8D, 0x00, 0x80])
+    def test_an_access_outside_every_region_is_left_alone(self) -> None:
+        rom = bytearray(0x60000)
+        gap = patch.HOOKED[0][1]
+        rom[gap : gap + 3] = bytes([0x8D, 0x00, 0x80])
 
         out, _ = patch.hooked(bytes(rom), STUBS)
 
-        self.assertEqual(out[patch.HOOKED[1]], 0x8D)
+        self.assertEqual(out[gap], 0x8D)
 
     def test_something_that_is_not_an_access_is_left_alone(self) -> None:
         out, _ = patch.hooked(self._region(bytes([0x8D, 0x01, 0x80])), STUBS)
 
-        self.assertEqual(out[patch.HOOKED[0]], 0x8D)
+        self.assertEqual(out[patch.HOOKED[0][0]], 0x8D)
 
     def test_it_counts_what_it_replaced(self) -> None:
         body = bytes([0x8D, 0x00, 0x80]) * 3
@@ -371,6 +432,8 @@ class BuildTest(unittest.TestCase):
             "thunk_sta 00AD28\nthunk_lda 00AD2D\nthunk_sty 00AD32\n"
             "thunk_stx 00AD37\nthunk_stz 00AD3C\nthunk_ldy 00AD41\n"
             "thunk_ldx 00AD46\nthunk_ldy_status 00AD4B\nthunk_adc 00AD50\n"
+            "thunk_bit_status 00AD55\nthunk_ldx_status 00AD5A\n"
+            "dsp_read_adc 0F8900\ndsp_read_eor 0F8A00\n"
         )
 
         code = patch.main(
