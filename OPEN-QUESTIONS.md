@@ -2108,3 +2108,82 @@ hundred argument sets, and shared with three other commands.
 None of it changes an answer, so all of it can be checked against
 `raster.retail.test.py` and against the running cartridge, which is the point of
 having pinned the arithmetic before optimising it.
+
+## 27. What is left before the demo is the demo, and it is not `$0a`
+
+**Measured 2026-09-03 by matching our run against the retail cartridge frame for
+frame on the game's own frame counter, rather than on console frames.**
+
+### The demo is exact for 174 game frames and then stops being
+
+`RAM[$1a1c]` steps once per frame of the game's own loop, in both cartridges, so
+it lines the two runs up whatever speed either is running at. Compared that way:
+
+| game frame | work RAM differing, first 8 KiB | what it is |
+|---|---|---|
+| 160 to 174 | around 380 bytes | the port's own state, the same every frame |
+| 175 onward | 790 and climbing | the flight has diverged |
+
+At frame 174 the retail cartridge levels out: `$58` goes from nought to one and
+the pitch at `$2a` starts coming down, 14170 to 14167 to 14164. Ours keeps
+turning, walking `$54` past 197 and never making the transition at all.
+
+Everything up to that point is exact. Every `$02` key our cartridge asks in those
+174 frames is one the recordings hold, so the lookup hits and all eight words the
+game derives from `$02` match the part. `$0a`'s 704 words match on every frame
+sampled, before the divergence and after it.
+
+### Sixteen sites still answer nought
+
+The cause is not arithmetic. Classifying every command site in the recording by
+the instruction that reaches the part:
+
+| how the cartridge reaches the part | sites | calls |
+|---|---|---|
+| a four byte long store, replaced one for one | 12 | 160,939 |
+| the redirected window, replaced whole | 3 | 20,834 |
+| **the redirected window, nothing answering** | **16** | **17,730** |
+
+Those sixteen are `$00:CDB3` to `$00:D4B0`, which is the flight physics, and they
+ask `$00` seven times, `$0d` twice, and `$01`, `$03`, `$0e`, `$14` and `$28` once
+each. Every one of them reads nought back, because the window is ROM filled with
+nought. The physics runs on those noughts, which is why it holds a turn it should
+have come out of.
+
+### Why the three that are replaced could be and these cannot, yet
+
+`$02`, `$0a` and `$10` are each one run of code that talks to the part and then
+stops, so a run can be lifted out whole and answered in one call. This region is
+not shaped that way: 104 separate accesses to the part are interleaved with the
+game's own arithmetic, which clamps, negates and accumulates between them.
+Replacing the region whole means reimplementing the flight model, which is not on
+the table.
+
+And no single access can be replaced where it stands. They are three byte
+absolute instructions, because the data bank is already pointing at the part, and
+a call is four bytes.
+
+### The route that fits
+
+Pairs of instructions do fit. `lda $36` and `sta $8000` are five bytes together,
+which is a four byte call and one byte spare, and that spare byte is enough to
+carry the direct page offset the load used:
+
+    lda $36 / sta $8000     ->     jsl dsp_send_dp : db $36
+
+The routine reads that byte through the return address the call pushed, uses it
+as the offset, hands the word to the port, and returns one byte further on. The
+same shape covers taking an answer back, and a handful of variants cover the
+loads that are immediate, indexed or off the stack.
+
+104 accesses across sixteen exchanges, and the shapes they take were counted
+rather than guessed: 23 are a direct page load into a store, 13 a `sty`, 12 a
+plain read, and the rest a long tail of about twenty forms. It is mechanical work
+that `patch.py` can generate, and it is the next thing to do.
+
+### What this does not say
+
+That routing those sixteen is enough. It is necessary: the physics cannot be
+right while part of it reads nought. Whether anything else is also wrong is a
+question for after they answer, and the frame-for-frame comparison above is the
+measurement that will say.

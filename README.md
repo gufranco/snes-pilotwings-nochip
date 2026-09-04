@@ -50,7 +50,8 @@ to be.
 | the fallback, in 65816 | answers every command, including keys no recording holds, without looping |
 | `$0a` | written in 65816, exact: 43,440 of 43,440 answer words against the part, on 60 argument sets across all three recordings |
 | the three commands the game asks for through its redirected window | routed, so `$02`'s state and `$0a`'s starting line reach the cartridge |
-| the demo | flies, and draws its ground. The cartridge's own 704 words match the part on the arguments the running game supplies, on every frame sampled through six thousand |
+| the other sixteen sites that reach the part through that window | not routed. 17,730 calls in the flight physics still read nought, which is what stops the demo after 174 game frames. OPEN-QUESTIONS section 27 |
+| the demo | flies, and draws its ground, and holds the retail cartridge's own flight exactly for 174 game frames before the unanswered sites above pull it off course |
 | the instrument panel | still missing, and not `$0a`. Nothing has been measured about it yet |
 | whether the image has to grow | yes, to 3.75 MB, which is inside what a low cartridge addresses |
 | speed | the flight runs at a fifteenth of speed, measured against a frame counter the game itself steps. A quarter of that is the lookup and the port rather than `$0a`; OPEN-QUESTIONS section 25 has the split |
