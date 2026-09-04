@@ -207,6 +207,64 @@ class ReportTest(unittest.TestCase):
         self.assertTrue(any("$13" in one for one in lines))
 
 
+class AxesTest(unittest.TestCase):
+    def _built(self, keys: tuple[tuple[int, ...], ...], words: int) -> dict[int, Any]:
+        return {0x13: (tuple((key, (0,)) for key in keys), words, 1)}
+
+    def test_a_whole_product_is_found(self) -> None:
+        keys = tuple((one, two) for one in (5, 9) for two in (1, 2, 3))
+
+        found = lutbuild.axes(self._built(keys, 2))
+
+        self.assertEqual(found, {0x13: ((5, 9), (1, 2, 3))})
+
+    def test_a_set_with_a_combination_missing_is_not(self) -> None:
+        keys = tuple((one, two) for one in (5, 9) for two in (1, 2, 3))[:-1]
+
+        self.assertEqual(lutbuild.axes(self._built(keys, 2)), {})
+
+    def test_a_command_with_no_rows_is_skipped(self) -> None:
+        self.assertEqual(lutbuild.axes({0x13: ((), 2, 1)}), {})
+
+    def test_a_stride_is_what_one_step_of_that_word_covers(self) -> None:
+        self.assertEqual(lutbuild.strides(((5, 9), (1, 2, 3), (7,))), (3, 1, 1))
+
+    def test_the_strides_of_one_word_are_one(self) -> None:
+        self.assertEqual(lutbuild.strides(((5, 9, 11),)), (1,))
+
+    def test_the_row_a_stride_names_is_the_row_the_key_sorts_to(self) -> None:
+        values = ((5, 9), (1, 2, 3))
+        keys = sorted(one for one in ((a, b) for a in values[0] for b in values[1]))
+
+        for row, key in enumerate(keys):
+            got = sum(
+                values[at].index(word) * covered
+                for at, (word, covered) in enumerate(
+                    zip(key, lutbuild.strides(values), strict=True)
+                )
+            )
+            self.assertEqual(got, row, key)
+
+    def test_the_source_names_every_command_it_found(self) -> None:
+        text = lutbuild.axes_source({0x13: ((5, 9), (1, 2, 3))})
+
+        self.assertIn("lut_axes_table:", text)
+        self.assertIn("dw 1", text.splitlines()[6])
+        self.assertIn("dw $0013, lut_axes_13", text)
+        self.assertIn("lut_axes_13:", text)
+
+    def test_the_source_carries_the_counts_and_the_strides(self) -> None:
+        text = lutbuild.axes_source({0x13: ((5, 9), (1, 2, 3))})
+
+        self.assertIn("dw 2, 3", text)
+        self.assertIn("dw $0005, $0009", text)
+        self.assertIn("dw 3, 1", text)
+        self.assertIn("dw $0001, $0002, $0003", text)
+
+    def test_the_source_is_placed_where_the_assembly_expects(self) -> None:
+        self.assertIn(f"org ${lutbuild.AXES_BANK:02X}8000", lutbuild.axes_source({}))
+
+
 class BuildTest(unittest.TestCase):
     def test_it_writes_a_piece_and_a_map(self) -> None:
         into = ROOT / "build" / "lutbuild-test"
@@ -224,6 +282,7 @@ class BuildTest(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertTrue((into / "lut-0.bin").exists())
         self.assertTrue((into / "lut-map.asm").exists())
+        self.assertTrue((into / "lut-axes.asm").exists())
 
 
 class GatherTest(unittest.TestCase):

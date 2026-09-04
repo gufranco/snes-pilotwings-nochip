@@ -24,6 +24,8 @@
 ;   dsp1-derived.asm    the three tables taken from the chip itself
 ;   state02-data.asm    $02's three state tables, built by state02build.py
 ;   lut-map.asm         the recorded answers, built by lutbuild.py
+;   lut-axes.asm        the two commands whose keys are every combination,
+;                       so that their row is counted rather than searched
 ;
 ; The last five are generated or placed at fixed banks by their own files, so
 ; only the code needs an origin here.
@@ -74,6 +76,7 @@ incsrc "dsp1-window.asm"
 incsrc "dsp1-derived.asm"
 incsrc "../build/state02-data.asm"
 incsrc "../build/lut-map.asm"
+incsrc "../build/lut-axes.asm"
 
 print "code          ", dec(code_end-$108000), " bytes"
 print "dsp1_answer at ", hex(dsp1_answer)

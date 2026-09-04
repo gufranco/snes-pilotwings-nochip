@@ -2699,3 +2699,81 @@ The flight model being identical is what says this is a display change and
 nothing else. The display buffers differ by 15 to 100 bytes a frame, which is the
 sprite shadow caught at a slightly different moment inside a game frame that is
 eleven pictures long.
+
+## 33. Two commands that need no search, and two measured dead ends
+
+**10.77 console frames per frame of the game's clock**, from 11.19, measured over
+game frames 250 to 500 so the scenery is the same in both.
+
+### What was changed
+
+`$13` is a quarter of everything the table is ever asked, 65,332 of 257,189 calls
+across a recording, and it has 1,512 rows, so halving them takes eleven compares.
+Each of those compares works out a row's address with a thirty two bit multiply
+before it reads a single word.
+
+None of it was needed. Its seven key words take 1, 7, 8, 9, 1, 3 and 1 distinct
+values, and those multiply to exactly 1,512: the key set is the whole product
+rather than an arbitrary subset. A sorted list of every combination is counting
+in mixed radix, so the row is the sum over the key's words of how far along that
+word's own list the value sits, times the rows one step of it covers. Walking a
+word's values and adding its stride at each step gives that sum with no multiply
+at all.
+
+`lutbuild.py` now finds any command shaped that way and writes the value lists
+and strides to `build/lut-axes.asm`. Two qualify: `$13`, and `$18`, which the
+game asks three times in a whole recording.
+
+A value the block does not hold falls through to the search, which will not find
+it either and will fall back. Nothing here can answer wrongly by being asked for
+something outside the domain.
+
+### Two that were measured and reverted
+
+**A four byte table entry with a signed second table.** The five byte entry is a
+nought followed by the constant times the entry number, so one table answers both
+halves of a multiply: reading from the nought gives the product times 256 and
+reading past it gives the product. The price is paid on every use, because an
+entry's address is its number times five, and that is a shift, a shift, a store,
+an addition and a load, done twice per multiply. Two tables of four byte entries
+make the address two shifts, and holding the second one already signed removes
+the sign correction and its branch as well.
+
+Measured, it is faster where it was meant to be and loses overall:
+
+| | console frames per game frame |
+|---|---|
+| as it stands, five byte entries | 11.19 |
+| four byte entries, both tables built | 11.74 |
+| four byte entries, the signed table left unbuilt | 10.09 |
+
+So the multiply itself came down by 1.10 and building the second table cost 1.65.
+The third row is not a correct build, it is the same instruction stream with the
+second table's contents left as whatever was there, and it is what says the
+multiply and the build can be told apart at all.
+
+Checking each of the four constants on its own rather than in the two pairs the
+searches produce them in changed nothing, 11.75 to 11.74, which sent the search
+for the cost somewhere else. A counter in `ground_build` then said why: it runs
+2.9 times per game frame, not the 2.0 the 54% and 52% repeat rates suggest. A
+table is built 256 entries at a time and read about 264 times, so the ratio is
+close enough to one that doubling what a build writes cannot be paid for by
+anything the reads save.
+
+**An index on the first key word.** Section 31 closed by naming this as the next
+thing to do, on the reasoning that an index over 256 buckets cuts eight steps off
+a seventeen step search. Measured against the keys themselves, it does not: `$06`
+takes 836 distinct values in its first word and 57,342 of its 75,278 rows share
+one high byte, so a byte index takes it from 17 steps to 16. Weighted by how
+often each command is asked, a byte index leaves 93% of the steps and an index on
+the whole first word leaves 82%.
+
+The reasoning was sound and assumed a distribution nobody had looked at. Looking
+at it is what made `$13` visible, which is the change that was worth making.
+
+### What a one entry cache would have bought
+
+Nothing, and it is worth writing down because it is the obvious first idea.
+Across a recording the three busiest commands repeat the previous call's key
+0.1%, 0.0% and 0.7% of the time. The commands that do repeat, `$11` at 99.7% and
+`$0e` at 100%, are a twentieth of the calls between them.

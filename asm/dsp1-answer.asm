@@ -386,6 +386,127 @@ lut_entry:
     rtl
 
 ; ---------------------------------------------------------------------------
+; The row, without a search, for a command whose keys are every combination.
+;
+; ===========================================================================
+; WHY THIS EXISTS
+; ===========================================================================
+;
+; Two of the sixteen commands have keys that are the whole product of a few
+; values per word rather than an arbitrary set. $13 is the one that matters:
+; 1,512 rows, and its seven key words take 1, 7, 8, 9, 1, 3 and 1 distinct
+; values, which multiply to exactly 1,512. $18 is the other, and the game asks
+; it three times in a whole recording.
+;
+; $13 is a quarter of everything the table is ever asked, and halving 1,512 rows
+; takes eleven compares, each of which works out a row's address with a thirty
+; two bit multiply before it can read a single word of it.
+;
+; None of that is needed. The rows are sorted, and a sorted list of every
+; combination is counting in mixed radix: the first key word changes slowest and
+; the last fastest. So the row is the sum, over the key's words, of how far along
+; that word's own list of values the wanted one sits, times the number of rows
+; one step of that word covers. Both of those come out of the block lutbuild.py
+; writes, and the multiply falls out with them: walking a word's values one at a
+; time and adding its stride at each step gives the same number as the position
+; times the stride, without multiplying.
+;
+; A value the block does not hold hands the call to the search, which will not
+; find it either and will fall back. Nothing here can answer wrongly by being
+; asked for something outside the domain.
+;
+; In:  the entry lut_entry found, and the wanted key in !ARG.
+; Out: exactly what lut_find gives: carry set and !MID the row, or carry clear.
+; ---------------------------------------------------------------------------
+!AXBANK = $00F4                 ; where lutbuild.py places the blocks
+
+lut_row:
+    php
+    rep #$30
+
+    ; Is this one of them? The list is two entries long, so it is walked rather
+    ; than searched.
+    lda.l lut_axes_table
+    beq .search
+    sta !SCRATCH+4
+    ldx #$0002                  ; past the count
+.entry:
+    lda.l lut_axes_table,x
+    cmp !CMD
+    beq .block
+    inx
+    inx
+    inx
+    inx
+    dec !SCRATCH+4
+    bne .entry
+
+.search:
+    plp
+    jml lut_find                ; not one of them, so the search answers. jml
+                                ; rather than jsl, because lut_find's own rtl
+                                ; then returns to whoever called this
+
+.block:
+    lda.l lut_axes_table+2,x    ; where this command's block is
+    sta !SCRATCH+0
+    lda.w #!AXBANK
+    sta !SCRATCH+2
+
+    ldy #$0000
+    lda [!SCRATCH],y            ; how many key words the block describes
+    sta !SCRATCH+4
+    iny
+    iny
+
+    stz !MID                    ; the row, built up a word at a time
+    stz !MID+2
+    ldx #$0000                  ; and which key word is being matched, in bytes
+
+.word:
+    lda [!SCRATCH],y            ; how many values this word takes
+    sta !SCRATCH+6
+    iny
+    iny
+    lda [!SCRATCH],y            ; and how many rows one step of it covers
+    sta !SCRATCH+8
+    iny
+    iny
+
+.value:
+    lda.w !PAGE+!ARG,x          ; the wanted word, reached as an absolute
+    cmp [!SCRATCH],y            ; address for the reason lut_compare gives
+    beq .matched
+
+    lda !MID                    ; not this one, so the row moves on by one step
+    clc
+    adc !SCRATCH+8
+    sta !MID
+    bcc +
+    inc !MID+2
++
+    iny
+    iny
+    dec !SCRATCH+6
+    bne .value
+    bra .search                 ; a value no row carries
+
+.matched:
+    iny                         ; past the one that matched and every one after
+    iny                         ; it, so that Y reaches the next word's count
+    dec !SCRATCH+6
+    bne .matched
+
+    inx
+    inx
+    dec !SCRATCH+4
+    bne .word
+
+    plp
+    sec
+    rtl
+
+; ---------------------------------------------------------------------------
 ; Halve the range until the key is found or the range closes.
 ;
 ; Compares word by word, most significant first, because that is the order the
@@ -729,7 +850,7 @@ dsp1_answer:
     jsl lut_entry
     bcc .fallback               ; a command the table has never seen
 
-    jsl lut_find
+    jsl lut_row
     bcc .fallback               ; a key the table has never seen
 
     jsl lut_answer

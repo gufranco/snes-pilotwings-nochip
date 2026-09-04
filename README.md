@@ -57,7 +57,7 @@ to be.
 | the demo | flies, draws its ground, and tracks the retail cartridge's own flight through game frame 405, which is as far as the comparison has been run. Work RAM differs by 30 to 60 bytes a frame, 22 of them at every frame and twelve of those a patched call the game copies into work RAM |
 | the instrument panel | drawn on every picture. It was there all along on one picture in sixteen: the flight screen is three bands separated by two scanline interrupts, the sequence is armed once per frame of the game's clock, and one frame of that clock is now sixteen pictures. The third interrupt does nothing in the retail cartridge and is the only thing that happens once per picture, so it arms the sequence again. Screen brightness across the demo went from a spread of 31.1 to one of 0.05, at the retail cartridge's own level. OPEN-QUESTIONS section 32 |
 | whether the image has to grow | yes, to 3.75 MB, which is inside what a low cartridge addresses |
-| speed | 11.2 console frames per frame of the game's own clock, measured over a fixed 250 frames of the flight so the scenery is the same, against 19.6 before. Still mostly the multiply: the six a scanline are 47% of the whole. OPEN-QUESTIONS sections 25 and 31 have the split |
+| speed | 10.8 console frames per frame of the game's own clock, measured over a fixed 250 frames of the flight so the scenery is the same, against 19.6 before. Still mostly the multiply: the six a scanline are 47% of the whole. OPEN-QUESTIONS sections 25 and 31 have the split |
 
 ### How much of the game it covers
 
@@ -614,7 +614,7 @@ Analysis modules in Python, each with its tests beside it.
 | [`artifacts.manifest.json`](artifacts.manifest.json) | every dump this project reads, and what makes each one itself |
 | [`tools/identify.py`](tools/identify.py) | checks a dump, and says what is wrong when it is |
 | [`asm/nochip.asm`](asm/nochip.asm) | the whole replacement, and where each piece sits in the cartridge |
-| [`asm/dsp1-answer.asm`](asm/dsp1-answer.asm) | the lookup: the index, the binary search, the answer copy |
+| [`asm/dsp1-answer.asm`](asm/dsp1-answer.asm) | the lookup: the index, the binary search, the answer copy, and the two commands that need no search |
 | [`asm/dsp1-fallback.asm`](asm/dsp1-fallback.asm) | what answers when the lookup finds no row |
 | [`asm/dsp1-port.asm`](asm/dsp1-port.asm) | the stubs the game's own accesses become, and the runs replaced whole |
 | [`asm/dsp1-ground.asm`](asm/dsp1-ground.asm) | `$0a`, the command that draws the ground, and the three tables it reads |
