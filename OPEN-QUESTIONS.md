@@ -2567,12 +2567,62 @@ every table stayed as the console left it, with nothing in the source looking
 wrong and the demo running just slowly enough to look plausible. Each table is
 named outright now.
 
+### All six, and a better way to measure
+
+**11.54 console frames per game frame**, from 14.53.
+
+The other two got tables once the search for spare memory was widened from the
+window !PORTRAM sits in to the whole 128 kilobytes. Measured the same way, bytes
+holding the console's power-on fill in every one of 600 retail frames, the
+longest run is $7E:E000 to $7E:FFFF at 8,192 bytes, and there are 32,888 bytes
+of them altogether. Four tables need 5,120.
+
+**The measurement had to be fixed first.** Console frames per game frame varies
+with what is on screen, from 10.6 to 13.5 across one run, so timing two builds
+over the same console frames times them on different scenery. Every figure here
+is now the console frames taken to run game frames 250 to 500, which fixes the
+workload.
+
+Under that measure the split of 11.63 is:
+
+| | console frames | |
+|---|---|---|
+| ground_line | 6.56 | of which the six multiplies are 5.46 |
+| the table search | 3.51 | |
+| the answer copy | ~0 | |
+| everything else | ~1.6 | the port, the other commands, and the game itself |
+
+A table lookup is 231 cycles against the general multiply's 350, which is less
+of a gap than it looks like it should be: 37 instructions, four of them long
+reads.
+
+### Three things tried that were slower
+
+**Eight byte entries**, so that an index would be three doublings rather than
+two doublings, a store, an addition and a load. 12.94 against 11.54. The four
+instructions a multiply are real, and the noughts and the build loop walking
+half again as far cost more.
+
+**The answer base in the header**, so that lut_answer would not multiply the row
+count by the key width on every call. 11.63 against 11.54, and the routine it
+was meant to speed up measures at nothing either way.
+
+**The row offset by shifts** rather than the bit serial loop, chosen from a jump
+table on the width. 11.76 against 11.54. The widths asked for are small enough
+that the loop it replaces was already short.
+
+All three were exact. They are recorded because the reasoning behind each was
+sound and the measurement disagreed, which is the only reason any of them was
+reverted.
+
 ### What is left
 
-The multiply still, and the two of the six that have no table. What stopped
-those was memory rather than shape: their constants are the two scale mantissas,
-and there is no room for a third and fourth table in the 3,839 bytes that are
-genuinely spare.
+The multiply, at 47%. What it spends its time on is not the arithmetic but
+assembling a thirty two bit product out of sixteen bit pieces, and a table has
+not changed that: it replaced four hardware multiplies and their waits with four
+long reads.
 
-The ground matches the cartridge word for word on all 57 frames sampled from 120
-to 400, which is what says the tables are exact rather than close.
+Then the table search at 3.51, which is around 435 bisect steps a frame across
+twenty odd commands. `$06` alone is 75,278 rows and seventeen steps, ten times a
+frame. An index on the first byte of the key would cut eight steps off every
+search of it, at 256 entries a command in ROM.

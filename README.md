@@ -57,7 +57,7 @@ to be.
 | the demo | flies, draws its ground, and tracks the retail cartridge's own flight through game frame 405, which is as far as the comparison has been run. Work RAM differs by 30 to 60 bytes a frame, 22 of them at every frame and twelve of those a patched call the game copies into work RAM |
 | the instrument panel | still missing, and not `$0a`. Nothing has been measured about it yet |
 | whether the image has to grow | yes, to 3.75 MB, which is inside what a low cartridge addresses |
-| speed | the flight runs at 14.3 console frames per frame of the game's own clock, against a counter the game itself steps, from 19.6 before this session. What is left is still mostly the multiply. OPEN-QUESTIONS sections 25 and 31 have the split |
+| speed | 11.5 console frames per frame of the game's own clock, measured over a fixed 250 frames of the flight so the scenery is the same, against 19.6 before. Still mostly the multiply: the six a scanline are 47% of the whole. OPEN-QUESTIONS sections 25 and 31 have the split |
 
 ### How much of the game it covers
 

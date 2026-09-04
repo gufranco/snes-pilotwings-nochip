@@ -183,11 +183,16 @@
 ; The cost is that an index is b times five rather than b times four, which is
 ; three instructions rather than one, and 1,280 bytes a table rather than 1,024.
 ;
+; Eight bytes an entry was tried, so that an index would be three doublings and
+; nothing else. It came out a tenth slower over the same 250 frames, which is
+; the build loop and the noughts walking half again as far for four instructions
+; a multiply, and it is why the awkward stride stays.
+;
 ; ===========================================================================
 ; WHERE THEY LIVE
 ; ===========================================================================
 ;
-; 2,560 bytes at $7FEE00, which is two tables and not four.
+; 5,120 bytes at $7E:E000, which is all four.
 ;
 ; The run !PORTRAM sits in was chosen by keeping the bytes that never changed
 ; across a run of the demo, and a byte the game reads but never writes passes
@@ -197,22 +202,27 @@
 ;
 ; What is actually spare is measured the other way here: bytes that hold the
 ; console's power-on fill in every one of 600 frames of the retail cartridge,
-; which a byte the game reads cannot. That leaves $7FED01 to $7FFBFF, 3,839
-; bytes, and one run of 1,162 below !PORTRAM. Two tables fit; four do not.
+; which a byte the game reads cannot. Scanned across the whole 128 kilobytes
+; rather than across the window !PORTRAM sits in, the longest such run is
+; $7E:E000 to $7E:FFFF, 8,192 bytes, and there are 32,888 bytes of them
+; altogether.
 ;
-; So the two go to the matrix pair, which is four of the six multiplies. The
-; other two keep the general multiply.
+; The measurement is of the demo, so a byte this leaves alone during the demo
+; and the game uses in play would not show. That is the same bet !PORTRAM makes
+; and the same one the frame by frame comparison against the cartridge checks.
 ; ===========================================================================
 ; Each table is named outright rather than reached as a base plus an offset,
 ; because this assembler evaluates left to right: `!MULTAB+!MULSPAN*0+1` is
 ; ((!MULTAB+!MULSPAN)*0)+1, which is 1. Every read went to address 1 and every
 ; table stayed as the console left it, with nothing in the source looking wrong.
-!MULTAB    = $7FEE00            ; the two tables, 1,280 bytes each
-!MULTAB0   = $7FEE00            ; the cosine's
-!MULTAB1   = $7FF300            ; and the sine's
+!MULTAB    = $7EE000            ; the four tables, 1,280 bytes each
+!MULTAB0   = $7EE000            ; the cosine's
+!MULTAB1   = $7EE500            ; the sine's
+!MULTAB2   = $7EEA00            ; the first scale's mantissa
+!MULTAB3   = $7EEF00            ; and the second's
 !MULSPAN   = 1280
 !MULSTRIDE = 5
-!MULTABS   = 2
+!MULTABS   = 4
 
 ; ---------------------------------------------------------------------------
 ; k times v, shifted right fifteen, out of the table built for k.
@@ -531,7 +541,8 @@ ground_line:
     jsr ground_normalise
     jsr ground_reciprocal
 
-    %mul15(!G_MAN1, !G_RA)
+    lda !G_RA
+    %mulk(!MULTAB2)
     sta !G_MA
     lda !G_RB
     clc
@@ -545,7 +556,8 @@ ground_line:
     ; The second scale multiplies the first chain's mantissa, not the
     ; reciprocal. That is the cascade, and it is the whole reason six attempts
     ; to recover this from the answers failed.
-    %mul15(!G_MAN2, !G_MA)
+    lda !G_MA
+    %mulk(!MULTAB3)
     tay                         ; keep it while the exponent is worked out
     lda !G_EXP
     clc
@@ -936,20 +948,23 @@ ground_tables:
 
     lda.w #!MULREADY
     sta !G_AGAIN
-    lda #$0000                  ; nothing built yet, so the check below cannot
+    lda #$0000                  ; nothing built yet, so neither check below can
     sta !G_LAST+0               ; match what it is about to be given: a cosine
-    sta !G_LAST+2               ; and a sine are never both these
+    sta !G_LAST+2               ; and a sine are never both these, nor are two
+    sta !G_LAST+4               ; mantissas
+    sta !G_LAST+6
     dec !G_LAST+0
+    dec !G_LAST+4
 
 .padded:
     lda !G_MAT+0
     cmp !G_LAST+0
-    bne .build
+    bne .matrix
     lda !G_MAT+2
     cmp !G_LAST+2
-    beq .done
+    beq .scale
 
-.build:
+.matrix:
     lda !G_MAT+0
     sta !G_LAST+0
     sta !TMP+0
@@ -965,6 +980,33 @@ ground_tables:
     lda.w #(!MULTAB1&$FFFF)
     sta !TMP+2
     lda.w #(!MULTAB1>>16)
+    sta !TMP+4
+    jsr ground_build
+
+.scale:
+    lda !G_MAN1
+    cmp !G_LAST+4
+    bne .build_scale
+    lda !G_MAN2
+    cmp !G_LAST+6
+    beq .done
+
+.build_scale:
+    lda !G_MAN1
+    sta !G_LAST+4
+    sta !TMP+0
+    lda.w #(!MULTAB2&$FFFF)
+    sta !TMP+2
+    lda.w #(!MULTAB2>>16)
+    sta !TMP+4
+    jsr ground_build
+
+    lda !G_MAN2
+    sta !G_LAST+6
+    sta !TMP+0
+    lda.w #(!MULTAB3&$FFFF)
+    sta !TMP+2
+    lda.w #(!MULTAB3>>16)
     sta !TMP+4
     jsr ground_build
 
