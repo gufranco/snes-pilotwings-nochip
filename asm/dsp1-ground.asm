@@ -11,9 +11,11 @@
 ; least two of them, so the European recording alone would take 8.7 megabytes
 ; against 3.9 for the whole cartridge.
 ;
-; So it is computed. Per scanline: one multiply for the distance, one normalise,
-; one table read for the reciprocal, one multiply and one shift for each of two
-; scales, and four multiplies for the four words it answers with.
+; So it is computed. Per scanline: one normalise, one table read for the
+; reciprocal, one multiply and one shift for each of two scales, and four
+; multiplies for the four words it answers with. The distance the part
+; multiplies out is a running sum here instead, which is the same number
+; rather than a near one: see ground_seed.
 ;
 ; Every stage below was read out of the part's own program and then checked
 ; against the part stage by stage, on 60 argument sets drawn from all three
@@ -127,6 +129,11 @@
 !G_MID     = $A8                ; the row being compared
 !G_ROW     = $AA                ; where that row is, as a long address
 !G_WORK    = $AE                ; the row offset multiply, two words
+
+; The distance, kept as a running thirty two bit product rather than multiplied
+; out on every scanline. See ground_seed for why that is exact rather than close.
+!G_ACC     = $B2                ; the step times the line, to thirty two bits
+!G_STEPHI  = $B6                ; the step's sign, so the running sum can carry
 
 ; ---------------------------------------------------------------------------
 ; The signed fractional product, which is what every multiply here is.
@@ -346,7 +353,11 @@ ground_scale:
 ; Out: !G_OUT+0 through !G_OUT+6, the four words the part answers.
 ; ---------------------------------------------------------------------------
 ground_line:
-    %mul15(!G_STEP, !G_LINE)    ; how far this line is from the viewpoint
+    lda !G_ACC+0                ; the distance, out of the running product:
+    asl a                       ; bit fifteen of the low half into the carry,
+    lda !G_ACC+2                ; then the high half doubled around it, which is
+    rol a                       ; the whole thirty two bit value shifted down
+                                ; fifteen places, sign and all
     clc
     adc !G_HORIZON
 
@@ -387,6 +398,86 @@ ground_line:
     sta !G_OUT+4
     %mul15(!G_MAT+6, !G_S2)
     sta !G_OUT+6
+    rts
+
+; ---------------------------------------------------------------------------
+; The distance, set up once for a whole stream instead of multiplied per line.
+;
+; The part computes `(step * line) >> 15` on every scanline, and `line` steps by
+; one. So the thirty two bit product steps by `step`, and a running sum of it is
+; the same number rather than a near one: the part's multiplier answers the top
+; word of the product doubled, which is bits fifteen through thirty of the
+; product, and those are exactly the bits ground_line reads out of the sum.
+;
+; It cannot overflow. The step is a word and the line runs 176 places from wherever
+; it starts, so the product stays under 2^31 even at the extremes of both.
+;
+; In:  !G_STEP and !G_LINE.
+; Out: !G_ACC the product, !G_STEPHI the step's sign for the running sum to carry.
+; ---------------------------------------------------------------------------
+ground_seed:
+    stz !G_NEG
+
+    lda !G_STEP
+    bpl .stepped
+    inc !G_NEG
+    eor #$FFFF                  ; the multiply below is unsigned, so both
+    inc a                       ; operands go in as magnitudes and the sign is
+.stepped:                       ; put back on the product
+    sta !TMP+0
+
+    lda !G_LINE
+    bpl .lined
+    inc !G_NEG
+    eor #$FFFF
+    inc a
+.lined:
+    sta !TMP+2
+
+    jsl mul16
+
+    lda !G_NEG
+    lsr a
+    bcc .positive               ; both negative or neither, so the product stands
+
+    lda !TMP+4                  ; one of them was, so negate all thirty two bits
+    eor #$FFFF
+    clc
+    adc #$0001
+    sta !TMP+4
+    lda !TMP+6
+    eor #$FFFF
+    adc #$0000
+    sta !TMP+6
+
+.positive:
+    lda !TMP+4
+    sta !G_ACC+0
+    lda !TMP+6
+    sta !G_ACC+2
+
+    lda !G_STEP                 ; the step widened to thirty two bits, so the
+    bpl .up                     ; sum below carries the right way
+    lda #$FFFF
+    bra .kept
+.up:
+    lda #$0000
+.kept:
+    sta !G_STEPHI
+    rts
+
+; ---------------------------------------------------------------------------
+; One line further down the screen.
+; ---------------------------------------------------------------------------
+ground_next:
+    inc !G_LINE
+    lda !G_ACC+0
+    clc
+    adc !G_STEP
+    sta !G_ACC+0
+    lda !G_ACC+2
+    adc !G_STEPHI
+    sta !G_ACC+2
     rts
 
 ; ---------------------------------------------------------------------------
@@ -657,6 +748,7 @@ ground_block:
     sta !G_LINE                 ; which dsp_route_0a works out and keeps, because
                                 ; the game writes it through the window and the
                                 ; port never sees it
+    jsr ground_seed
 
     stz !G_AT
     lda.w #!STREAM_TURNS
@@ -675,7 +767,7 @@ ground_block:
     lda !G_OUT+6
     sta.w !STREAM_TWO+2,x
 
-    inc !G_LINE
+    jsr ground_next
     lda !G_AT
     clc
     adc #$0004
@@ -716,6 +808,7 @@ ground_answer:
 
     lda !ARG+0
     sta !G_LINE
+    jsr ground_seed
     jsr ground_line
 
     lda !G_OUT+0
