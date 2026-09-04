@@ -2128,6 +2128,10 @@ At frame 174 the retail cartridge levels out: `$58` goes from nought to one and
 the pitch at `$2a` starts coming down, 14170 to 14167 to 14164. Ours keeps
 turning, walking `$54` past 197 and never making the transition at all.
 
+Section 30 closes this: the transition is gated on a counter at `$0130` that the
+window redirect had stopped counting, and both cartridges make it once the counter
+does.
+
 Everything up to that point is exact. Every `$02` key our cartridge asks in those
 174 frames is one the recordings hold, so the lookup hits and all eight words the
 game derives from `$02` match the part. `$0a`'s 704 words match on every frame
@@ -2327,9 +2331,8 @@ now decodes each region from its own start for the same reason.
 
 ### What it did not fix
 
-The demo still leaves the retail cartridge's course at game frame 175, with the
-same values as before every one of these fixes. Three real faults were found and
-fixed in one session and none of them is the trigger:
+None of the three moved game frame 175, and section 30 says why: the trigger was
+not an answer at all. They were real faults and they were fixed:
 
 | fault | how long it had been there | effect |
 |---|---|---|
@@ -2337,6 +2340,96 @@ fixed in one session and none of them is the trigger:
 | `$11`'s arguments never kept | since the first build | `$13` and `$1b` keyed on the game's own fill |
 | five windowed runs unhooked | since entry 28 | 89 more accesses reading nought |
 
-Speed is ruled out as the cause. Overclocking the console's processor to snes9x's
-"max" setting takes the flight from a fifteenth of speed to a seventh, and the
-divergence stays at game frame 175 exactly.
+Speed was ruled out as the cause at the same time. Overclocking the console's
+processor to snes9x's "max" setting takes the flight from a fifteenth of speed to a
+seventh, and the divergence stayed at game frame 175 exactly, which is what a
+threshold on a frame counter does and not what a race does.
+
+## 30. Frame 175, and the accesses that were never the part
+
+**The demo now tracks the retail cartridge past game frame 400.** It used to leave
+its course at 175 and never come back. What stopped it was not an answer: every
+answer the table serves was already exact, and the whole search for a wrong answer
+came back empty.
+
+### The measurement that ended the search
+
+Counting table misses per command, with the counters zeroed at first use rather
+than read against whatever the console powered up with:
+
+| command | asked per frame | missed | what a miss means |
+|---|---|---|---|
+| `$00` | 7.9 | every time | its arithmetic, exact, so a miss costs nothing |
+| `$03` | 1.0 | every time | the nearest row instead of the answer |
+| `$0d` | 2.0 | half of them | the same |
+| `$02` `$06` `$0c` `$0e` `$10` `$13` `$14` `$28` | 0.5 to 5.6 | never | |
+
+`$03` misses because its key carries the last `$14`'s six arguments and those were
+nought. `$14` itself hits every time, and its arguments really are nought at that
+point in the demo, which the recording agrees with. So the misses are honest and
+they are not the trigger either.
+
+### What was actually wrong
+
+The conversion redirects the twelve `pea $003F` pushes to a bank it fills, so that
+any access it failed to replace lands somewhere harmless rather than on a part that
+is no longer there. That works for the part. It also moves everything else in those
+blocks, and not everything in them is the part.
+
+The first eight kilobytes of every bank from `$00` to `$3F` mirror work RAM. Bank
+`$3F` address `$09E0` is work RAM `$09E0`, and the game uses that: thirty five
+three byte absolute instructions inside those blocks reach its own memory. The
+window is ROM at every address, so every one of those reads answered nought and
+every one of those writes went nowhere, from the first build.
+
+Two of them decide the demo:
+
+    $00:CF44  adc $0130        a counter, four less every frame
+    $00:CF47  sta $0130
+    $00:CF52  sta $0130        reset once it passes the threshold
+
+The next phase of the demo begins when that counter passes its threshold. At four
+a frame it takes 175 frames to get there. With the counter stuck at nought the
+phase never began, and everything the phase drives, `$13` from `$0e` to nought,
+`$4a` counting, the camera moving, stayed as it was.
+
+### And one access that was the part
+
+`$00:CD87 sbc $8000` is a port read, in a nine instruction subroutine the flight
+model calls three times a frame. The subroutine has no bank push of its own; it is
+called from inside the flight model's block and inherits its bank, so nothing that
+starts from a push finds it and it sits outside every region the clustering
+produced. The read never happened, so every read after it in the same answer was
+one word early.
+
+A shape by this name was added and then removed once before, on the grounds that it
+came from a walk that had decoded past the end of a routine. The walk was bad and
+the instruction is real.
+
+### What was tried and rejected
+
+Moving the window to a bank below `$40` fixes all thirty five in one line, because
+such a bank carries the mirror. Measured: the run came out 30,000 bytes from the
+cartridge at every frame rather than the 200 it was at, because it changes every
+windowed access at once, including the ones that were reading nought from code
+paths whose behaviour then changed. So each one is corrected on its own, with a
+measurement per change, and the window stays where it is.
+
+### Where it stands
+
+| frames 66 to 405, work RAM against the cartridge at the same game frame | |
+|---|---|
+| before | 200 bytes differ, stepping to 650 at frame 175 and never recovering |
+| after | 45 to 65 bytes differ, no step, through frame 405 |
+
+Nineteen bytes differ at every frame. Twelve are three patched calls inside code
+the game copies into work RAM and executes there, which cannot match by
+construction. The other seven are `$0181`, `$0182` and `$01E2` through `$01E6`,
+which this build writes and the cartridge leaves at the console's power-on fill.
+That is the next thread.
+
+The remaining windowed accesses to the game's own memory are still reading nought:
+five table loads in the flight model are now routed, and `$1AEA`, `$30C2,y`,
+`$1820,x`, `$1828,x`, `$1840,x`, `$1848`, `$185A`, `$1858`, `$1860,x`, `$182A`,
+`$182C`, `$182E` and `$1AF9` in four other blocks are not. Whether the demo reaches
+those blocks at all has not been measured.

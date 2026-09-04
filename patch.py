@@ -256,6 +256,7 @@ name.
 
 SPANS = (
     (0x04AA8, 0x04AB9, "dsp_route_0a"),
+    (0x04AB9, 0x04AD1, "dsp_horizon"),
     (0x04AD1, 0x04B0F, "dsp_stream"),
     (0x04B17, 0x04B39, "dsp_route_10"),
     (0x04B4E, 0x04BB2, "dsp_route_02"),
@@ -276,12 +277,17 @@ Five instructions inside that one span account for 12,224,960 of the 15,673,471
 accesses the recording holds, which is 78% of everything the cartridge ever
 asked the part.
 
-Four runs rather than one, because three commands are asked for this way and one
-of them is asked in two places. $02 is the one that mattered most and was found
-last: it writes the ten words $0a reads to draw the ground, and every one of its
-own four answer words came back nought until its run was replaced. $0a's command
-byte and argument go the same way, which is why the line the ground starts at had
-to be recovered rather than read out of the port.
+Four of the five carry an exchange. $02 is the one that mattered most and was
+found last: it writes the ten words $0a reads to draw the ground, and every one
+of its own four answer words came back nought until its run was replaced. $0a's
+command byte and argument go the same way, which is why the line the ground
+starts at had to be recovered rather than read out of the port.
+
+The fifth, `dsp_horizon`, is not an exchange. It is eight instructions of the
+game reaching its own memory, which the redirect breaks because they are three
+byte absolute instructions and the bank they land in is the one being
+redirected. asm/dsp1-port.asm says what they carry and what it cost to leave
+them alone.
 
 None of the four starts at the `pea` that sets the data bank. On the path the
 demo takes, the one before $02 is jumped over, so the byte its closing `plb`
@@ -294,6 +300,7 @@ HOOKED = (
     (0x00054, 0x000C4),
     (0x0160A, 0x0164F),
     (0x04AAC, 0x04BA5),
+    (0x04D83, 0x04DAD),
     (0x04DCD, 0x050A8),
     (0x051F7, 0x05280),
     (0x0547C, 0x05679),
@@ -316,6 +323,13 @@ at the return is what makes them right: a walk that runs past it decodes the nex
 routine at the wrong register widths and reports accesses that are not there,
 which put 44 bytes of ordinary arithmetic inside a region and broke the flight
 from its thirty eighth frame.
+
+$04D83 is not one of those clusters and could not be. It is a nine instruction
+subroutine with no bank push of its own, called three times a frame from inside
+the flight model's block and inheriting its bank, so nothing that starts from a
+push reaches it. One `sbc $8000` sits in it, and it went unreplaced from the first
+build until 2026-09-04: the read never happened, so every read after it in the
+same answer was one word early.
 `patch.retail.test.py` re-derives them and fails if the byte scan below and a
 disassembler that tracks the register widths disagree on so much as one access.
 """
@@ -329,6 +343,7 @@ HOOKS = {
     0xAC: "thunk_ldy",
     0xAE: "thunk_ldx",
     0x6D: "thunk_adc",
+    0xED: "thunk_sbc",
 }
 """Which thunk each access to the data port takes, by the opcode standing there.
 
@@ -354,6 +369,28 @@ this would then be answering the wrong question for it.
 ACCESS_BYTES = 3
 """The length of one of these instructions, and of the call that replaces it."""
 
+MIRRORED = {
+    (0x6D, 0x0130): "thunk_adc_0130",
+    (0x8D, 0x0130): "thunk_sta_0130",
+    (0xB9, 0x1800): "thunk_lda_1800y",
+    (0xB9, 0x1808): "thunk_lda_1808y",
+    (0xBD, 0x1810): "thunk_lda_1810x",
+    (0xBD, 0x1812): "thunk_lda_1812x",
+    (0xBD, 0x1814): "thunk_lda_1814x",
+}
+"""The accesses inside those runs that are not the part, and the thunk each takes.
+
+Keyed on the opcode and the whole operand rather than on a page, because these
+are ordinary memory and there is nothing about the address that marks it. Each
+entry is one instruction the flight model uses to reach its own work RAM through
+the bank mirror, which the redirect breaks; asm/dsp1-hooks.asm says what each one
+carries and what leaving it alone cost.
+
+Every entry is a shape the disassembler in `patch.retail.test.py` confirms is a
+real instruction at every offset this matches, which is what keeps a coincidence
+in a table of data from being turned into a call.
+"""
+
 
 def hooked(rom: bytes, stubs: Mapping[str, int]) -> tuple[bytes, int]:
     """The image with every access inside HOOKED turned into a call to its thunk.
@@ -368,15 +405,15 @@ def hooked(rom: bytes, stubs: Mapping[str, int]) -> tuple[bytes, int]:
     replaced = 0
     for start, end in HOOKED:
         for at in range(start, min(end, len(rom)) - 2):
-            if out[at + 1] != 0x00:
-                continue
             page = out[at + 2]
-            if page == PORT_PAGE:
+            if out[at + 1] != 0x00:
+                name = MIRRORED.get((out[at], out[at + 1] | page << 8))
+            elif page == PORT_PAGE:
                 name = HOOKS.get(out[at])
             elif page == STATUS_PAGE:
                 name = STATUS_HOOKS.get(out[at])
             else:
-                continue
+                name = MIRRORED.get((out[at], out[at + 1] | page << 8))
             if name is None:
                 continue
             target = stubs[name]

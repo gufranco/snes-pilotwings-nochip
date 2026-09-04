@@ -50,10 +50,11 @@ to be.
 | the fallback, in 65816 | answers every command, including keys no recording holds, without looping |
 | `$0a` | written in 65816, exact: 43,440 of 43,440 answer words against the part, on 60 argument sets across all three recordings |
 | the three commands the game asks for through its redirected window | routed, so `$02`'s state and `$0a`'s starting line reach the cartridge |
-| the accesses that reach the part through that window | routed. 199 of them across six runs, each replaced with a call that fits in three bytes |
+| the accesses that reach the part through that window | routed. 177 three byte accesses across seven runs, each replaced with a call that fits in three bytes, plus the five runs replaced whole |
 | the long accesses that read the part and compute with what they read | routed. Seven of them, six `adc` and one `eor`, unreplaced since the first build because the scanner knew only the long load and the long store |
-| why the demo leaves the retail course at game frame 175 | open. Three real faults were found and fixed without moving it, and speed is ruled out. OPEN-QUESTIONS sections 28 and 29 |
-| the demo | flies, and draws its ground, and holds the retail cartridge's own flight exactly for 174 game frames before the unanswered sites above pull it off course |
+| the accesses in those runs that are not the part at all | eight routed. The window is ROM, so the game's own three byte reads and writes of its work RAM through the bank mirror answered nought and went nowhere; one of them is the counter the demo's next phase waits on. OPEN-QUESTIONS section 30 |
+| why the demo left the retail course at game frame 175 | closed. The counter at `$0130` never counted, so the phase it gates never began |
+| the demo | flies, draws its ground, and tracks the retail cartridge's own flight through game frame 405, which is as far as the comparison has been run. Work RAM differs by 45 to 65 bytes a frame, nineteen of them at every frame |
 | the instrument panel | still missing, and not `$0a`. Nothing has been measured about it yet |
 | whether the image has to grow | yes, to 3.75 MB, which is inside what a low cartridge addresses |
 | speed | the flight runs at a fifteenth of speed, measured against a frame counter the game itself steps. A quarter of that is the lookup and the port rather than `$0a`; OPEN-QUESTIONS section 25 has the split |

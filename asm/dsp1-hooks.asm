@@ -367,6 +367,154 @@ dsp_read_eor:
     rtl
 
 ; ---------------------------------------------------------------------------
+; `sbc $8000`, the third read-and-compute shape, and the one that hid longest.
+;
+; It is one instruction, at $00:CD87, inside a nine instruction subroutine the
+; flight model calls three times a frame. The subroutine has no `pea` of its own:
+; it is called from inside the flight model's block and inherits its data bank,
+; so nothing that searches for a bank push finds it, and it sits outside every
+; region the clustering produced.
+;
+; What it cost: a word of the answer never taken. The port serves an answer a
+; word at a time and this read never asked for one, so every read after it in the
+; same answer was one word early, and the subtraction itself worked on the nought
+; the window returns. Two of the three calls enter at $00:CD83 and read; the third
+; enters at $00:CD8A and does not, which is why the site is reached twice a frame
+; rather than three times.
+;
+; A shape by this name was added and then removed once before, on the grounds that
+; it came from a walk that had decoded past the end of a routine. That reading was
+; wrong: the walk was bad, and the instruction is real.
+; ---------------------------------------------------------------------------
+dsp_read_sbc:
+    php
+    pha
+
+    jsl dsp_read
+    sta.l !HOOK_WORD
+
+    pla
+    plp
+    sbc.l !HOOK_WORD
+    rtl
+
+; ===========================================================================
+; THE ACCESSES THAT ARE NOT THE PART AT ALL
+; ===========================================================================
+;
+; The redirect that moves the part's accesses moves everything else in those
+; blocks with it, and not everything in them is the part.
+;
+; On this console the first eight kilobytes of every bank from $00 to $3F mirror
+; work RAM. The cartridge sets its data bank to $3F, so a three byte `lda $1800,y`
+; inside one of those blocks reads work RAM $1800, and the flight model does
+; exactly that: five table reads and a three instruction accumulator at $0130.
+;
+; The window this project sends them to is ROM at every address, so those reads
+; answered nought and those writes went nowhere. The accumulator is the one that
+; showed: it counts down four a frame and the demo's next phase begins when it
+; passes a threshold, so with it stuck at nought the phase never began and the
+; demo stopped agreeing with the cartridge at game frame 175.
+;
+; Each is replaced the same way a port access is, with a `jsr` to a thunk, and
+; each body reaches the same address the long way, in bank $7E, where the mirror
+; points. Three of the five loads index by X, which has a long addressing mode, so
+; those are one instruction. Two index by Y, which has none, and those set the
+; data bank instead.
+; ===========================================================================
+
+!MIRROR_BANK = $7E              ; where the mirror the game is really using points
+!MIRROR_WORD = !PORTRAM+58      ; one word in transit, its own so that a mirrored
+                                ; load inside a port hook cannot tread on !HOOK_WORD
+
+; ---------------------------------------------------------------------------
+; `adc $0130` and `sta $0130`: the accumulator the next phase waits on.
+;
+; Both are exact one for one. A long instruction takes the same accumulator width
+; the short one did and leaves the same flags, so there is nothing to preserve
+; and nothing to reconstruct.
+; ---------------------------------------------------------------------------
+hook_adc_0130:
+    adc.l (!MIRROR_BANK<<16)|$0130
+    rtl
+
+hook_sta_0130:
+    sta.l (!MIRROR_BANK<<16)|$0130
+    rtl
+
+; ---------------------------------------------------------------------------
+; `lda $1810,x`, `lda $1812,x` and `lda $1814,x`: the tables read through X.
+;
+; A long load indexed by X exists, so each of these is the instruction it
+; replaces with a bank in front of it. Width, negative, zero, carry and overflow
+; all come out the way the original left them.
+; ---------------------------------------------------------------------------
+hook_lda_1810x:
+    lda.l (!MIRROR_BANK<<16)|$1810,x
+    rtl
+
+hook_lda_1812x:
+    lda.l (!MIRROR_BANK<<16)|$1812,x
+    rtl
+
+hook_lda_1814x:
+    lda.l (!MIRROR_BANK<<16)|$1814,x
+    rtl
+
+; ---------------------------------------------------------------------------
+; `lda $1800,y` and `lda $1808,y`: the two read through Y, which has no long form.
+;
+; So the bank moves instead of the instruction. The data bank goes to $7E, the
+; original absolute instruction runs unchanged, and the bank goes back.
+;
+; The order is what makes the flags right. `plb` and `plp` both write negative and
+; zero, so neither can come after the load; the value is parked in memory, the
+; bank and the caller's flags are put back, and then a long load of the parked
+; word sets negative and zero from it and leaves carry and overflow alone. That is
+; exactly what the instruction being replaced does, and the carry matters: the
+; `bcc` two instructions after $00:CE80 reads the carry an `asl` set before it.
+;
+; The width is read out of the caller's own flags on the stack, the way every
+; other hook in this file reads it, because an eight bit load must take one byte
+; of the table and not two.
+; ---------------------------------------------------------------------------
+macro mirrored(base)
+    php                         ; the caller's flags, at $02,s once the bank is on
+    phb
+
+    sep #$20
+    lda #!MIRROR_BANK
+    pha
+    plb                         ; the data bank the game thinks it already has
+
+    lda $02,s
+    and #$20                    ; the accumulator width, set meaning eight bits
+    bne ?narrow
+
+    rep #$20
+    lda <base>,y                ; a whole word of the table
+    sta.l !MIRROR_WORD
+    plb
+    plp
+    lda.l !MIRROR_WORD          ; last, so negative and zero come from the value
+    rtl
+
+?narrow:
+    lda <base>,y                ; one byte of it
+    sta.l !MIRROR_WORD
+    plb
+    plp
+    lda.l !MIRROR_WORD
+    rtl
+endmacro
+
+hook_lda_1800y:
+    %mirrored($1800)
+
+hook_lda_1808y:
+    %mirrored($1808)
+
+; ---------------------------------------------------------------------------
 ; `bit $c000`: test the status without disturbing anything.
 ;
 ; The three of these are all polls, and the branch after each reads the sign, so

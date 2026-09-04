@@ -955,6 +955,53 @@ dsp_route_0a:
     rtl
 
 ; ---------------------------------------------------------------------------
+; The four words the horizon carries from one frame to the next.
+;
+; This one is not an exchange at all. It is the game reaching its own memory,
+; and it is here because the redirect that moves the part's accesses moves this
+; as well.
+;
+; The eight instructions at $00:CAB9 copy $09E0 to $09E4, $09E2 to $09E6, $09E8
+; to $09EC and $09EA to $09EE, so that the values $02 left this frame are still
+; readable next frame after $02 has overwritten the originals. They are three
+; byte absolute instructions, so the bank they land in is the data bank, and the
+; data bank at that point is the one patch.py redirects.
+;
+; On the cartridge that bank is $3F, and the first eight kilobytes of every bank
+; from $00 to $3F mirror work RAM, so $3F:09E0 is work RAM $09E0 and the copies
+; land. The window this project sends them to instead is ROM at every address, so
+; for the life of the project the reads returned nought, the writes went nowhere,
+; and those four words held the console's power-on fill for the whole run. The
+; demo diverged from the cartridge at game frame 175 because of it.
+;
+; Moving the window to a bank below $40 would fix this and thirty five other
+; accesses like it in one line, and it was measured: it also changes every other
+; windowed access to the game's own memory at once, and the run came out further
+; from the cartridge rather than closer. So the accesses are corrected one run at
+; a time, with each one measured, and this is the first.
+;
+; The addresses are named long, in bank $7E, which is where the mirror points.
+; The order is the original's, so the accumulator and the flags on the way out
+; are what the last `lda` left, and the widths are untouched: the `rep #$31` in
+; dsp_route_0a above has already made both sixteen bits.
+; ---------------------------------------------------------------------------
+!HORIZON_LIVE = $7E09E0         ; the pair $02 writes every frame
+!HORIZON_KEPT = $7E09E4         ; and the pair this copies them to
+!HORIZON_EDGE = $7E09E8         ; the second pair, the same way
+!HORIZON_HELD = $7E09EC
+
+dsp_horizon:
+    lda.l !HORIZON_LIVE
+    sta.l !HORIZON_KEPT
+    lda.l !HORIZON_LIVE+2
+    sta.l !HORIZON_KEPT+2
+    lda.l !HORIZON_EDGE
+    sta.l !HORIZON_HELD
+    lda.l !HORIZON_EDGE+2
+    sta.l !HORIZON_HELD+2
+    rtl
+
+; ---------------------------------------------------------------------------
 ; $10, in place of the routine that asked for it.
 ;
 ; The original is at $00:CB17, just past the push that sets the data bank, and

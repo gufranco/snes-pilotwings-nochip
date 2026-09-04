@@ -87,4 +87,39 @@ thunk_bit_status:
     jsl hook_bit_status
     rts
 
-print "thunks end at ", hex(thunk_bit_status+5), ", the run they sit in ends at $00AE6A"
+thunk_sbc:
+    jsl dsp_read_sbc
+    rts
+
+; The eight above reach the part. These reach the game's own memory, which the
+; redirect moved along with it. asm/dsp1-hooks.asm says why.
+
+thunk_adc_0130:
+    jsl hook_adc_0130
+    rts
+
+thunk_sta_0130:
+    jsl hook_sta_0130
+    rts
+
+thunk_lda_1800y:
+    jsl hook_lda_1800y
+    rts
+
+thunk_lda_1808y:
+    jsl hook_lda_1808y
+    rts
+
+thunk_lda_1810x:
+    jsl hook_lda_1810x
+    rts
+
+thunk_lda_1812x:
+    jsl hook_lda_1812x
+    rts
+
+thunk_lda_1814x:
+    jsl hook_lda_1814x
+    rts
+
+print "thunks end at ", hex(thunk_lda_1814x+5), ", the run they sit in ends at $00AE6A"

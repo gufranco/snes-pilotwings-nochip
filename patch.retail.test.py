@@ -125,6 +125,11 @@ class Accesses(unittest.TestCase):
             for one in self.listing
             if one.mode == "absolute" and one.operand in (patch.STATUS_FROM, 0x8000)
         }
+        self.mirrored = {
+            one.offset: one
+            for one in self.listing
+            if (rom[one.offset], one.operand) in patch.MIRRORED
+        }
         self.scanned = self._scanned(rom)
 
     def _scanned(self, rom: bytes) -> set[int]:
@@ -138,6 +143,34 @@ class Accesses(unittest.TestCase):
                 if port or status:
                     found.add(at)
         return found
+
+    def _mirrors(self, rom: bytes) -> set[int]:
+        found = set()
+        for start, end in patch.HOOKED:
+            for at in range(start, min(end, len(rom)) - 2):
+                if (rom[at], rom[at + 1] | rom[at + 2] << 8) in patch.MIRRORED:
+                    found.add(at)
+        return found
+
+    def test_every_mirrored_access_the_scan_finds_is_a_real_instruction(self) -> None:
+        """The one place a byte scan could turn data into a call.
+
+        A port access is recognised by an operand of $8000 or $C000, which the
+        game's own data almost never spells. A mirrored access is recognised by an
+        ordinary work RAM address, which it might, so every offset the scan matches
+        has to be an instruction boundary the disassembler agrees with.
+        """
+        self.assertEqual(self._mirrors(self.rom) - set(self.mirrored), set())
+
+    def test_the_scan_finds_every_mirrored_access_the_disassembler_does(self) -> None:
+        self.assertEqual(set(self.mirrored) - self._mirrors(self.rom), set())
+
+    def test_every_mirrored_access_is_as_long_as_the_call_that_replaces_it(self) -> None:
+        for one in self.mirrored.values():
+            self.assertEqual(one.size, patch.ACCESS_BYTES, f"{one.address:#06x}")
+
+    def test_the_region_holds_the_mirrored_accesses_it_is_said_to(self) -> None:
+        self.assertEqual(len(self.mirrored), 8)
 
     def test_the_scan_finds_every_access_the_disassembler_does(self) -> None:
         self.assertEqual(set(self.real) - self.scanned, set())
@@ -210,7 +243,7 @@ class Replaced(unittest.TestCase):
         if rom is None:
             self.skipTest("no cartridge dump in roms/, so there is nothing to replace")
         self.rom = rom
-        named = {*patch.HOOKS.values(), *patch.STATUS_HOOKS.values()}
+        named = {*patch.HOOKS.values(), *patch.STATUS_HOOKS.values(), *patch.MIRRORED.values()}
         self.stubs = dict.fromkeys(named, 0x00AD28)
 
     def test_it_replaces_every_access_and_nothing_else(self) -> None:
@@ -242,7 +275,8 @@ def _decoded_accesses(rom: bytes) -> dict[int, Any]:
     return {
         one.offset: one
         for one in _decoded(rom)
-        if one.mode == "absolute" and one.operand in (patch.STATUS_FROM, 0x8000)
+        if (one.mode == "absolute" and one.operand in (patch.STATUS_FROM, 0x8000))
+        or (rom[one.offset], one.operand) in patch.MIRRORED
     }
 
 

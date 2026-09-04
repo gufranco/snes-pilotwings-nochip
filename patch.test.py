@@ -16,6 +16,7 @@ STUBS = {
     "dsp_route_10": 0x0F8600,
     "dsp_route_02": 0x0F8700,
     "dsp_route_0a": 0x0F8800,
+    "dsp_horizon": 0x0F8B00,
     "thunk_sta": 0x00AD28,
     "thunk_lda": 0x00AD2D,
     "thunk_sty": 0x00AD32,
@@ -29,6 +30,14 @@ STUBS = {
     "thunk_ldx_status": 0x00AD5A,
     "dsp_read_adc": 0x0F8900,
     "dsp_read_eor": 0x0F8A00,
+    "thunk_sbc": 0x00AD5F,
+    "thunk_adc_0130": 0x00AD64,
+    "thunk_sta_0130": 0x00AD69,
+    "thunk_lda_1800y": 0x00AD6E,
+    "thunk_lda_1808y": 0x00AD73,
+    "thunk_lda_1810x": 0x00AD78,
+    "thunk_lda_1812x": 0x00AD7D,
+    "thunk_lda_1814x": 0x00AD82,
 }
 
 
@@ -299,7 +308,8 @@ class SpannedTest(unittest.TestCase):
 
     def test_the_byte_after_the_run_is_untouched(self) -> None:
         rom = bytearray(_image())
-        end = patch.SPANS[0][1]
+        starts = {start for start, _, _ in patch.SPANS}
+        end = next(stop for _, stop, _ in patch.SPANS if stop not in starts)
         rom[end] = 0xAB
 
         out = patch.spanned(bytes(rom), STUBS)
@@ -434,6 +444,11 @@ class BuildTest(unittest.TestCase):
             "thunk_ldx 00AD46\nthunk_ldy_status 00AD4B\nthunk_adc 00AD50\n"
             "thunk_bit_status 00AD55\nthunk_ldx_status 00AD5A\n"
             "dsp_read_adc 0F8900\ndsp_read_eor 0F8A00\n"
+            "dsp_horizon 0F8B00\nthunk_sbc 00AD5F\n"
+            "thunk_adc_0130 00AD64\nthunk_sta_0130 00AD69\n"
+            "thunk_lda_1800y 00AD6E\nthunk_lda_1808y 00AD73\n"
+            "thunk_lda_1810x 00AD78\nthunk_lda_1812x 00AD7D\n"
+            "thunk_lda_1814x 00AD82\n"
         )
 
         code = patch.main(
