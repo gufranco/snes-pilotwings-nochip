@@ -2187,3 +2187,74 @@ That routing those sixteen is enough. It is necessary: the physics cannot be
 right while part of it reads nought. Whether anything else is also wrong is a
 question for after they answer, and the frame-for-frame comparison above is the
 measurement that will say.
+
+## 28. The sixteen sites are routed, and they were not what stops the demo
+
+**Done and measured 2026-09-03.** Entry 27 said routing them was necessary and
+did not say it was sufficient. It was necessary, and it is not sufficient.
+
+### How they were routed
+
+110 accesses across $00:CDB3 to $00:D4B0, each a three byte absolute instruction
+where a four byte call does not fit. `jsr` does fit, because it stays inside the
+bank it is called from, so every one of them became a call to a thunk in the
+game's own bank which calls across to bank $10:
+
+| shape | how many | what answers it |
+|---|---|---|
+| `sta $8000` | 52 | `dsp_write`, unchanged |
+| `sty $8000` | 22 | a hook, because the width is the index register's |
+| `lda $8000` | 19 | `dsp_read`, unchanged |
+| `adc $8000` | 6 | a hook that performs the add rather than reproducing its flags |
+| `ldy $c000` | 3 | a hook, because the poll after it branches on the sign |
+| `stx $8000` | 3 | a hook |
+| `ldx $8000` | 3 | a hook |
+| `stz $8000` | 1 | a hook |
+| `ldy $8000` | 1 | a hook |
+
+**The thunks needed 45 bytes of the game's own bank**, and where they sit was
+measured rather than chosen. $00:AD28 begins 322 bytes of `$ff`, and a run of one
+repeated byte is not proof that nothing reads it, so 1,631 bytes across the
+fourteen such runs in that bank were overwritten with a marker and the demo run
+for 1,800 frames. The console's whole 128 KiB came out byte for byte identical to
+the unmodified build at every frame sampled.
+
+**One deliberate difference.** Neither index register has a long addressing mode,
+so `ldx $8000` and `ldy $8000` move their value through the stack and end with
+the caller's flags rather than flags set from what was loaded. All four of those
+in the region are followed by a store or an `adc`, and the next instruction to
+read negative or zero always comes after one that writes them, so nothing can
+observe it. That is a property of the code rather than of any recording, and
+`patch.retail.test.py` walks forward from each one and fails if a branch on those
+flags comes first.
+
+### They work
+
+`$06` and `$08`, two of the flight model's own variables, now hold what the
+retail cartridge holds at every game frame sampled. Before the routing they held
+a different value on every other frame, because half of what the model read came
+back nought.
+
+### They are not the trigger
+
+The demo still leaves the retail cartridge's course at the same game frame it did
+before, 175, with the same values. Routing 110 accesses that were reading nought
+changed the divergence point by nothing at all.
+
+So the flight model was running on noughts and is not any more, and something
+else decides what happens at frame 174. What that is is the open question. The
+plane is in a level turn up to there, `$54` climbing one a frame, and retail
+stops it at 197 while ours carries on. Neither of the two places that write `$58`
+explains it: one needs a stage counter that reads $0800 in both, and the other
+only ever lowers the value.
+
+### A measurement that was not one
+
+Entry 27 read a diff of the console's memory as showing 174 frames of exact
+agreement and a step change after. The step change is real. The agreement was
+not: a snapshot is taken at a console frame boundary, one game frame is one
+console frame in the retail cartridge and about fifteen in this one, so every
+snapshot here lands at an arbitrary point inside the game's own loop and several
+hundred working variables differ from the first frame onward for that reason
+alone. The claim that survives is the narrower one it rested on: the arguments
+`$02` is asked with match the recording's, frame for frame, until 175.

@@ -36,6 +36,7 @@ import sites
 STA_LONG = 0x8F
 LDA_LONG = 0xAF
 JSL = 0x22
+JSR = 0x20
 
 FIRST_BANK = 0x30
 LAST_BANK = 0x3F
@@ -54,6 +55,10 @@ disagreement rather than a silent one.
 
 STATUS_FROM = 0xC000
 """Where the data port stops and the status register starts inside a bank."""
+
+PORT_PAGE = 0x80
+STATUS_PAGE = 0xC0
+"""The high byte of each, as a three byte instruction spells it."""
 
 SITE_BYTES = 4
 """The length of the instruction at a site, and of the call that replaces it.
@@ -228,6 +233,78 @@ would leave the stack one byte out and black the screen.
 """
 
 
+HOOKED = (0x04DB3, 0x054B0)
+"""The run of the game's own code whose accesses are replaced one at a time.
+
+$00:CDB3 to $00:D4B0, which is the flight model. It reaches the part the same way
+the three runs above do, by setting the data bank and using three byte absolute
+instructions, and unlike them it cannot be lifted out whole: its 110 accesses are
+interleaved with the game's own arithmetic, which clamps, negates and accumulates
+between them. Replacing the region means rewriting how the plane flies.
+
+Leaving them is not an option either. Every one of those accesses reads nought,
+because the bank they land in is ROM, and 17,730 calls a recording go through
+them. The flight model runs on those noughts, which is what stops the demo
+holding the retail cartridge's own course past 174 frames.
+"""
+
+HOOKS = {
+    0x8D: "thunk_sta",
+    0x8C: "thunk_sty",
+    0x8E: "thunk_stx",
+    0x9C: "thunk_stz",
+    0xAD: "thunk_lda",
+    0xAC: "thunk_ldy",
+    0xAE: "thunk_ldx",
+    0x6D: "thunk_adc",
+}
+"""Which thunk each access takes, by the opcode standing there.
+
+Nine shapes across the 110 accesses, counted rather than assumed, and `ldy` is
+the one that appears twice because it reads both the data port and the status
+register. `hooked` tells those two apart by the operand.
+
+A `jsr` is three bytes and so is every one of these instructions, which is the
+whole reason this works where a four byte call does not. asm/dsp1-hooks.asm says
+what each thunk has to preserve.
+"""
+
+STATUS_THUNK = "thunk_ldy_status"
+
+ACCESS_BYTES = 3
+"""The length of one of these instructions, and of the call that replaces it."""
+
+
+def hooked(rom: bytes, stubs: Mapping[str, int]) -> tuple[bytes, int]:
+    """The image with every access inside HOOKED turned into a call to its thunk.
+
+    Found by the bytes rather than by decoding the region, which is safe here and
+    checked: `patch.retail.test.py` disassembles the same run, tracking the
+    register widths, and fails unless the two agree on every access and on its
+    length. A scan that drifted from the instruction boundaries would replace an
+    operand and leave a branch pointing into the middle of a call.
+    """
+    out = bytearray(rom)
+    start, end = HOOKED
+    replaced = 0
+    for at in range(start, min(end, len(rom)) - 2):
+        name = HOOKS.get(out[at])
+        if name is None or out[at + 1] != 0x00:
+            continue
+        page = out[at + 2]
+        if page == PORT_PAGE:
+            target = stubs[name]
+        elif page == STATUS_PAGE:
+            target = stubs[STATUS_THUNK]
+        else:
+            continue
+        out[at] = JSR
+        out[at + 1] = target & 0xFF
+        out[at + 2] = target >> 8 & 0xFF
+        replaced += 1
+    return bytes(out), replaced
+
+
 def spanned(rom: bytes, stubs: Mapping[str, int]) -> bytes:
     """The image with each named run replaced by a call to its routine."""
     out = bytearray(rom)
@@ -288,8 +365,10 @@ def main(argv: Sequence[str] = (), say: Any = print) -> int:
     stubs = symbols(Path(argv[1]))
     out = applied(rom, where, stubs)
     out = spanned(out, stubs)
+    out, replaced = hooked(out, stubs)
     out, moved = redirected(out)
     say(f"{moved} data bank pushes redirected")
+    say(f"{replaced} accesses in the flight model replaced one at a time")
     out = declared(out, fast="--fast" in argv)
     out = checksummed(out)
     Path(argv[2]).write_bytes(out)

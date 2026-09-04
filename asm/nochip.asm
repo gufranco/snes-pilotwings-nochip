@@ -12,6 +12,10 @@
 ;   dsp1-port.asm       the four stubs the game's own accesses are turned into
 ;   dsp1-ground.asm     $0a, the command that draws the ground. After the port,
 ;                       because it reads the port's own state
+;   dsp1-hooks.asm      the flight model's accesses, which are three bytes each
+;                       and so too small for a call to reach this bank
+;   dsp1-thunks.asm     what those three byte calls land on, in the game's own
+;                       bank, in a run measured to be unread
 ;   dsp1-window.asm     the bank the game's redirected accesses land in
 ;   dsp1-tables.asm     the four tables the chip's formulas rebuild
 ;   dsp1-derived.asm    the three tables taken from the chip itself
@@ -45,9 +49,11 @@ incsrc "dsp1-answer.asm"
 incsrc "dsp1-fallback.asm"
 incsrc "dsp1-port.asm"
 incsrc "dsp1-ground.asm"
+incsrc "dsp1-hooks.asm"
 code_end:
 
 incsrc "dsp1-tables.asm"
+incsrc "dsp1-thunks.asm"
 incsrc "dsp1-window.asm"
 incsrc "dsp1-derived.asm"
 incsrc "../build/state02-data.asm"
@@ -72,3 +78,12 @@ print "SYM dsp_stream ", hex(dsp_stream)
 print "SYM dsp_route_10 ", hex(dsp_route_10)
 print "SYM dsp_route_02 ", hex(dsp_route_02)
 print "SYM dsp_route_0a ", hex(dsp_route_0a)
+print "SYM thunk_sta ", hex(thunk_sta)
+print "SYM thunk_lda ", hex(thunk_lda)
+print "SYM thunk_sty ", hex(thunk_sty)
+print "SYM thunk_stx ", hex(thunk_stx)
+print "SYM thunk_stz ", hex(thunk_stz)
+print "SYM thunk_ldy ", hex(thunk_ldy)
+print "SYM thunk_ldx ", hex(thunk_ldx)
+print "SYM thunk_ldy_status ", hex(thunk_ldy_status)
+print "SYM thunk_adc ", hex(thunk_adc)

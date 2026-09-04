@@ -16,6 +16,15 @@ STUBS = {
     "dsp_route_10": 0x0F8600,
     "dsp_route_02": 0x0F8700,
     "dsp_route_0a": 0x0F8800,
+    "thunk_sta": 0x00AD28,
+    "thunk_lda": 0x00AD2D,
+    "thunk_sty": 0x00AD32,
+    "thunk_stx": 0x00AD37,
+    "thunk_stz": 0x00AD3C,
+    "thunk_ldy": 0x00AD41,
+    "thunk_ldx": 0x00AD46,
+    "thunk_ldy_status": 0x00AD4B,
+    "thunk_adc": 0x00AD50,
 }
 
 
@@ -294,6 +303,62 @@ class SpannedTest(unittest.TestCase):
         self.assertEqual(out[end], 0xAB)
 
 
+class HookedTest(unittest.TestCase):
+    def _region(self, body: bytes) -> bytes:
+        out = bytearray(0x10000)
+        out[patch.HOOKED[0] : patch.HOOKED[0] + len(body)] = body
+        return bytes(out)
+
+    def test_a_store_to_the_port_becomes_a_call(self) -> None:
+        out, _ = patch.hooked(self._region(bytes([0x8D, 0x00, 0x80])), STUBS)
+
+        at = patch.HOOKED[0]
+        self.assertEqual(out[at], patch.JSR)
+        self.assertEqual(out[at + 1] | out[at + 2] << 8, STUBS["thunk_sta"] & 0xFFFF)
+
+    def test_every_shape_the_region_holds_has_a_thunk(self) -> None:
+        for opcode, name in patch.HOOKS.items():
+            self.assertIn(name, STUBS, f"{opcode:#04x}")
+
+    def test_a_read_of_the_status_takes_its_own_thunk(self) -> None:
+        out, _ = patch.hooked(self._region(bytes([0xAC, 0x00, 0xC0])), STUBS)
+
+        at = patch.HOOKED[0]
+        self.assertEqual(out[at + 1] | out[at + 2] << 8, STUBS["thunk_ldy_status"] & 0xFFFF)
+
+    def test_a_read_of_the_port_and_of_the_status_are_told_apart(self) -> None:
+        port, _ = patch.hooked(self._region(bytes([0xAC, 0x00, 0x80])), STUBS)
+        status, _ = patch.hooked(self._region(bytes([0xAC, 0x00, 0xC0])), STUBS)
+
+        at = patch.HOOKED[0]
+        self.assertNotEqual(port[at + 1 : at + 3], status[at + 1 : at + 3])
+
+    def test_an_access_outside_the_region_is_left_alone(self) -> None:
+        rom = bytearray(0x10000)
+        rom[patch.HOOKED[1] : patch.HOOKED[1] + 3] = bytes([0x8D, 0x00, 0x80])
+
+        out, _ = patch.hooked(bytes(rom), STUBS)
+
+        self.assertEqual(out[patch.HOOKED[1]], 0x8D)
+
+    def test_something_that_is_not_an_access_is_left_alone(self) -> None:
+        out, _ = patch.hooked(self._region(bytes([0x8D, 0x01, 0x80])), STUBS)
+
+        self.assertEqual(out[patch.HOOKED[0]], 0x8D)
+
+    def test_it_counts_what_it_replaced(self) -> None:
+        body = bytes([0x8D, 0x00, 0x80]) * 3
+
+        _, replaced = patch.hooked(self._region(body), STUBS)
+
+        self.assertEqual(replaced, 3)
+
+    def test_it_counts_nothing_when_there_is_nothing_to_replace(self) -> None:
+        _, replaced = patch.hooked(self._region(bytes([0xEA, 0xEA, 0xEA])), STUBS)
+
+        self.assertEqual(replaced, 0)
+
+
 class BuildTest(unittest.TestCase):
     def test_it_writes_a_patched_image(self) -> None:
         into = ROOT / "build" / "patch-test"
@@ -303,6 +368,9 @@ class BuildTest(unittest.TestCase):
             "dsp_write 0F8100\ndsp_read 0F8200\ndsp_status 0F8300\n"
             "dsp_ignore 0F8400\ndsp_stream 0F8500\ndsp_route_10 0F8600\n"
             "dsp_route_02 0F8700\ndsp_route_0a 0F8800\n"
+            "thunk_sta 00AD28\nthunk_lda 00AD2D\nthunk_sty 00AD32\n"
+            "thunk_stx 00AD37\nthunk_stz 00AD3C\nthunk_ldy 00AD41\n"
+            "thunk_ldx 00AD46\nthunk_ldy_status 00AD4B\nthunk_adc 00AD50\n"
         )
 
         code = patch.main(
