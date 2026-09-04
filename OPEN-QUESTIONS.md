@@ -2527,9 +2527,52 @@ with no mask, so a read of bank $91 ran off the end of the image and answered
 nought. `$04` reads its trig tables that way and started answering nought with
 it. The mirror is in the model now.
 
+### Four of the six multiplies became a table
+
+**14.26 console frames per game frame**, from 17.72.
+
+Every one of the six has the same shape: something that does not change for the
+whole stream, times something that does. Four of them share two constants,
+because ground_state writes the cosine into two of the four matrix words and the
+sine, negated, into the other two. So two tables of the constant times each of
+the 256 byte values answer four of the six, and a product is then two lookups
+and an addition rather than four hardware multiplies, four eight cycle waits and
+a sign put back around the outside.
+
+A table is built by adding the constant to a running sum 256 times, and it is
+built once per stream against 176 scanlines of use. Half the streams do not
+rebuild at all: across the recording the key the matrix is looked up by repeats
+from one frame to the next 54% of the time.
+
+An entry is five bytes, not four: a nought and then the constant times the entry
+number. The nought is what lets one entry answer both halves of a multiply,
+since reading the four bytes after it gives k times b and reading the four
+bytes starting at it gives that times 256, which is the shift the high byte
+needs and which costs eleven instructions to do by hand.
+
+**Two things went wrong, and both were silent.**
+
+The memory the tables went into was not free. !PORTRAM's run was chosen by
+keeping the bytes that never changed across a run of the demo, and a byte the
+game reads but never writes passes that test as easily as one it never touches.
+$7FDE00 is such a byte. Five kilobytes of tables written over it stopped the
+demo before its second frame. What is actually spare was then measured the other
+way: bytes holding the console's power-on fill in every one of 600 frames of the
+retail cartridge, which a byte the game reads cannot. That leaves $7FED01 to
+$7FFBFF, 3,839 bytes, which is two tables and not four.
+
+And the assembler evaluates left to right. `!MULTAB+!MULSPAN*0+1` is
+`((!MULTAB+!MULSPAN)*0)+1`, which is 1. Every table read went to address 1 and
+every table stayed as the console left it, with nothing in the source looking
+wrong and the demo running just slowly enough to look plausible. Each table is
+named outright now.
+
 ### What is left
 
-The multiply, at 47%. Neither a faster multiply nor a cheaper wrapper moves it
-much, because what it spends its time on is assembling a thirty two bit product
-out of sixteen bit pieces. Fewer of them is the lever, and the six per scanline
-are six distinct products with nothing shared between them.
+The multiply still, and the two of the six that have no table. What stopped
+those was memory rather than shape: their constants are the two scale mantissas,
+and there is no room for a third and fourth table in the 3,839 bytes that are
+genuinely spare.
+
+The ground matches the cartridge word for word on all 57 frames sampled from 120
+to 400, which is what says the tables are exact rather than close.

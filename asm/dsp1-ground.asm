@@ -135,6 +135,173 @@
 !G_ACC     = $B2                ; the step times the line, to thirty two bits
 !G_STEPHI  = $B6                ; the step's sign, so the running sum can carry
 
+; The four running sums the table builder carries, and the four constants it is
+; building from, held next to each other so one loop can walk both.
+!G_SUM     = $B8                ; four thirty two bit sums, $B8 to $C7
+!G_LAST    = $C8                ; the four constants the tables were built from
+!G_AGAIN   = $D0                ; nought once the pads have been written
+
+; ===========================================================================
+; SIX MULTIPLIES A SCANLINE, AND HOW FOUR TABLES ANSWER ALL OF THEM
+; ===========================================================================
+;
+; ground_line multiplies six times, and every one of the six has the same shape:
+; a value that is the same for the whole stream, times a value that is not.
+;
+;   the first scale's mantissa   times the reciprocal
+;   the second scale's mantissa  times the first chain
+;   the cosine                   times the first scale
+;   the sine                     times the second scale
+;   the sine negated             times the first scale
+;   the cosine                   times the second scale
+;
+; Four constants, because the last two repeat the first two: ground_state writes
+; the cosine into two of the four matrix words and the sine, negated, into the
+; other two, which is what the part does with them.
+;
+; A multiply by a value that does not change can be a table. Split the varying
+; word into its two bytes and the product is
+;
+;     k * v  =  (k * high byte) * 256  +  (k * low byte)
+;
+; and both halves are one of 256 entries. The table is built by adding k to a
+; running sum 256 times, which is 256 additions against the 256 multiplies it
+; replaces, and it is built once per stream against six uses on each of 176
+; scanlines.
+;
+; ===========================================================================
+; WHY AN ENTRY IS FIVE BYTES AND NOT FOUR
+; ===========================================================================
+;
+; Because both halves above want the same entry, one of them shifted up a byte,
+; and shifting a thirty two bit value up a byte on this processor is eleven
+; instructions. Storing a nought in front of each entry gives both readings for
+; free: read the four bytes after the nought and it is k times b; read the four
+; bytes starting at the nought and it is that times 256, with the byte that
+; falls off the top being the sign extension the shift would have dropped.
+;
+; The cost is that an index is b times five rather than b times four, which is
+; three instructions rather than one, and 1,280 bytes a table rather than 1,024.
+;
+; ===========================================================================
+; WHERE THEY LIVE
+; ===========================================================================
+;
+; 2,560 bytes at $7FEE00, which is two tables and not four.
+;
+; The run !PORTRAM sits in was chosen by keeping the bytes that never changed
+; across a run of the demo, and a byte the game reads but never writes passes
+; that test as easily as a byte it never touches. $7FDE00 is such a byte, and
+; 5,120 bytes of tables written over it stopped the demo before its second
+; frame.
+;
+; What is actually spare is measured the other way here: bytes that hold the
+; console's power-on fill in every one of 600 frames of the retail cartridge,
+; which a byte the game reads cannot. That leaves $7FED01 to $7FFBFF, 3,839
+; bytes, and one run of 1,162 below !PORTRAM. Two tables fit; four do not.
+;
+; So the two go to the matrix pair, which is four of the six multiplies. The
+; other two keep the general multiply.
+; ===========================================================================
+; Each table is named outright rather than reached as a base plus an offset,
+; because this assembler evaluates left to right: `!MULTAB+!MULSPAN*0+1` is
+; ((!MULTAB+!MULSPAN)*0)+1, which is 1. Every read went to address 1 and every
+; table stayed as the console left it, with nothing in the source looking wrong.
+!MULTAB    = $7FEE00            ; the two tables, 1,280 bytes each
+!MULTAB0   = $7FEE00            ; the cosine's
+!MULTAB1   = $7FF300            ; and the sine's
+!MULSPAN   = 1280
+!MULSTRIDE = 5
+!MULTABS   = 2
+
+; ---------------------------------------------------------------------------
+; k times v, shifted right fifteen, out of the table built for k.
+;
+; The same answer op_00_body gives and reached without a multiply. The whole
+; product is formed first and the shift comes last, because a shift of each half
+; separately rounds twice and the part rounds once.
+;
+; The varying word is read as unsigned, so a negative one is too big by 65536
+; and the product with it is too big by k times 65536. That is the constant
+; itself taken off the high half, and the constant is the table's own entry one.
+;
+; In:  A the varying word. Out: A the answer. Uses X and !TMP+0 to !TMP+7.
+; ---------------------------------------------------------------------------
+; ---------------------------------------------------------------------------
+; The lookup itself, inlined at all six sites.
+;
+; Inlined rather than called because the whole of it is thirty instructions and
+; a call to it would be six of those. The tables all sit inside one bank, so an
+; entry is a long read indexed by X and needs no pointer set up first.
+;
+; In:  A the varying word. Out: !TMP+4 and !TMP+6 the whole product.
+; Uses X and !TMP+0 to !TMP+3.
+; ---------------------------------------------------------------------------
+macro mulk_product(table)
+    sta !TMP+0                  ; kept for its sign, at the end
+
+    and #$00FF                  ; the low byte, times five, is where its entry is
+    sta !TMP+2
+    asl a
+    asl a
+    clc
+    adc !TMP+2
+    tax
+    lda.l <table>+1,x           ; past the nought, so this is k times that byte
+    sta !TMP+4
+    lda.l <table>+3,x
+    sta !TMP+6
+
+    lda !TMP+0                  ; and the high byte the same way
+    xba
+    and #$00FF
+    sta !TMP+2
+    asl a
+    asl a
+    clc
+    adc !TMP+2
+    tax
+    lda.l <table>+0,x           ; from the nought, so this is that entry times 256
+    clc
+    adc !TMP+4
+    sta !TMP+4
+    lda.l <table>+2,x
+    adc !TMP+6
+    sta !TMP+6
+
+    lda !TMP+0
+    bpl ?whole
+    lda !TMP+6                  ; a negative word read as unsigned is too big by
+    sec                         ; 65536, so the constant comes off the high half,
+    sbc.l <table>+6             ; and entry one is the constant itself
+    sta !TMP+6
+?whole:
+endmacro
+
+macro mulk(table)
+    %mulk_product(<table>)
+    asl !TMP+4                  ; the whole product left one, high word kept,
+    rol !TMP+6                  ; which is the shift right by fifteen
+    lda !TMP+6
+endmacro
+
+macro mulk_negated(table)
+    %mulk_product(<table>)
+    lda !TMP+4                  ; this site wants the constant negated, and the
+    eor #$FFFF                  ; whole product negated is the same answer, where
+    clc                         ; negating after the shift would round the wrong
+    adc #$0001                  ; way on every product the shift does not divide
+    sta !TMP+4
+    lda !TMP+6
+    eor #$FFFF
+    adc #$0000
+    sta !TMP+6
+
+    asl !TMP+4
+    rol !TMP+6
+    lda !TMP+6
+endmacro
+
 ; ---------------------------------------------------------------------------
 ; The signed fractional product, which is what every multiply here is.
 ;
@@ -390,13 +557,17 @@ ground_line:
 
     ; The four words. The first scale takes the two matrix words the part reads
     ; from $7f and $6f, and the second takes the two from $7e and $6e.
-    %mul15(!G_MAT+0, !G_S1)
+    lda !G_S1
+    %mulk(!MULTAB0)
     sta !G_OUT+0
-    %mul15(!G_MAT+2, !G_S2)
+    lda !G_S2
+    %mulk(!MULTAB1)
     sta !G_OUT+2
-    %mul15(!G_MAT+4, !G_S1)
+    lda !G_S1
+    %mulk_negated(!MULTAB1)
     sta !G_OUT+4
-    %mul15(!G_MAT+6, !G_S2)
+    lda !G_S2
+    %mulk(!MULTAB0)
     sta !G_OUT+6
     rts
 
@@ -716,6 +887,137 @@ ground_state:
     eor #$FFFF                  ; and negated at $6f
     inc a
     sta !G_MAT+4
+
+    jsr ground_tables
+    rts
+
+; ---------------------------------------------------------------------------
+; The four tables the six multiplies read, rebuilt when their constant moves.
+;
+; A table is 256 entries of five bytes: a nought, then the constant times the
+; entry number as thirty two bits. The nought is what lets the same entry answer
+; both halves of a multiply, and it never changes, so it is written once ever
+; rather than on every rebuild.
+;
+; Two of the four come from the scale table and two from the matrix table, and
+; those two searches are keyed on different arguments, so the pairs are checked
+; separately. Across the recording the matrix key repeats from one frame to the
+; next 54% of the time and the scale keys 52%, so about half the rebuilds do not
+; happen.
+;
+; !G_AGAIN is a word rather than a flag because the memory it sits in is the
+; game's own and starts as whatever the console powered up with. A flag would
+; read as set about half the time.
+; ---------------------------------------------------------------------------
+!MULREADY = $A57E               ; what !G_AGAIN holds once the noughts are in
+
+ground_tables:
+    lda !G_AGAIN
+    cmp.w #!MULREADY
+    beq .padded
+
+    ; The noughts, one per entry across all four tables, and never again.
+    ;
+    ; Five increments rather than an addition, because an addition needs the
+    ; accumulator and the accumulator is holding the nought being written.
+    sep #$20
+    lda #$00
+    ldx.w #$0000
+-
+    sta.l !MULTAB,x
+    inx
+    inx
+    inx
+    inx
+    inx
+    cpx.w #(!MULSPAN*!MULTABS)
+    bcc -
+    rep #$20
+
+    lda.w #!MULREADY
+    sta !G_AGAIN
+    lda #$0000                  ; nothing built yet, so the check below cannot
+    sta !G_LAST+0               ; match what it is about to be given: a cosine
+    sta !G_LAST+2               ; and a sine are never both these
+    dec !G_LAST+0
+
+.padded:
+    lda !G_MAT+0
+    cmp !G_LAST+0
+    bne .build
+    lda !G_MAT+2
+    cmp !G_LAST+2
+    beq .done
+
+.build:
+    lda !G_MAT+0
+    sta !G_LAST+0
+    sta !TMP+0
+    lda.w #(!MULTAB0&$FFFF)
+    sta !TMP+2
+    lda.w #(!MULTAB0>>16)
+    sta !TMP+4
+    jsr ground_build
+
+    lda !G_MAT+2
+    sta !G_LAST+2
+    sta !TMP+0
+    lda.w #(!MULTAB1&$FFFF)
+    sta !TMP+2
+    lda.w #(!MULTAB1>>16)
+    sta !TMP+4
+    jsr ground_build
+
+.done:
+    rts
+
+; ---------------------------------------------------------------------------
+; One table: the constant times nought, then times one, and so on to 255.
+;
+; Additions rather than multiplies, which is the whole point: 256 of them build
+; what 256 multiplies would, and the six uses on each of 176 scanlines then cost
+; no multiply at all.
+;
+; The sum is stored before it moves on, so entry nought is nought.
+;
+; In:  !TMP+0 the constant, !TMP+2 the table as a long address.
+; Out: the table filled. Uses Y and !TMP+6 to !TMP+11.
+; ---------------------------------------------------------------------------
+ground_build:
+    lda !TMP+0
+    bpl +
+    lda #$FFFF                  ; the constant's sign, for the high half of the
+    bra ++                      ; running sum to carry
++
+    lda #$0000
+++
+    sta !TMP+6
+
+    stz !TMP+8
+    stz !TMP+10
+
+    ldy #$0001                  ; entry nought's four value bytes, past its nought
+-
+    lda !TMP+8
+    sta [!TMP+2],y
+    iny
+    iny
+    lda !TMP+10
+    sta [!TMP+2],y
+    iny
+    iny
+    iny                         ; and on to the next entry's
+
+    lda !TMP+8
+    clc
+    adc !TMP+0
+    sta !TMP+8
+    lda !TMP+10
+    adc !TMP+6
+    sta !TMP+10
+
+    cpy.w #(!MULSPAN+1)
+    bcc -
     rts
 
 ; ---------------------------------------------------------------------------
