@@ -69,6 +69,82 @@ static void maybe_dump_wram(void)
     fclose(out);
 }
 
+static long tick_at = -1;
+static unsigned long tick_from = 0;
+static unsigned long tick_to = 0;
+static long tick_last = -1;
+static std::vector<uint16_t> held_frame;
+static unsigned held_width = 0;
+static unsigned held_height = 0;
+static unsigned held_pitch = 0;
+static std::vector<unsigned char> held_ram;
+static unsigned long tick_after = 0;
+static unsigned long tick_countdown = 0;
+static long tick_pending = -1;
+
+static void write_held(unsigned long tick)
+{
+    char path[512];
+    if (shot_dir) {
+        snprintf(path, sizeof(path), "%s/frame-%06lu.ppm", shot_dir, tick);
+        write_shot(path);
+    }
+    if (wram_dir && !held_ram.empty()) {
+        snprintf(path, sizeof(path), "%s/wram-%06lu.bin", wram_dir, tick);
+        FILE *out = fopen(path, "wb");
+        if (out) {
+            fwrite(held_ram.data(), 1, held_ram.size(), out);
+            fclose(out);
+        }
+    }
+}
+
+static void maybe_shoot_tick(void)
+{
+    if (tick_at < 0 || !get_memory) {
+        return;
+    }
+    const unsigned char *ram = (const unsigned char *)get_memory(RETRO_MEMORY_SYSTEM_RAM);
+    const size_t span = get_memory_size(RETRO_MEMORY_SYSTEM_RAM);
+    if (!ram || span < (size_t)tick_at + 2) {
+        return;
+    }
+    const unsigned long tick = ram[tick_at] | ram[tick_at + 1] << 8;
+    if (tick_after && tick_pending >= 0) {
+        if (tick_countdown == 0) {
+            held_frame = frame;
+            held_width = frame_width;
+            held_height = frame_height;
+            held_pitch = frame_pitch;
+            held_ram.assign(ram, ram + span);
+            write_held((unsigned long)tick_pending);
+            tick_pending = -1;
+        } else {
+            tick_countdown--;
+        }
+    }
+    if ((long)tick != tick_last) {
+        if (tick_last >= 0 && (unsigned long)tick_last >= tick_from &&
+            (unsigned long)tick_last <= tick_to) {
+            if (tick_after) {
+                tick_pending = tick_last;
+                tick_countdown = tick_after;
+            } else {
+                write_held((unsigned long)tick_last);
+            }
+        }
+        tick_last = (long)tick;
+    }
+    if (tick_after) {
+        return;
+    }
+    held_frame = frame;
+    held_width = frame_width;
+    held_height = frame_height;
+    held_pitch = frame_pitch;
+    held_ram.assign(ram, ram + span);
+}
+
 static void maybe_shoot(void)
 {
     if (!shot_dir) {
@@ -293,6 +369,17 @@ int main(int argc, char **argv)
         }
     }
 
+    const char *tick_text = getenv("PWTICK");
+    if (tick_text) {
+        tick_at = (long)strtoul(tick_text, NULL, 0);
+        const char *from_text = getenv("PWTICKFROM");
+        const char *to_text = getenv("PWTICKTO");
+        const char *after_text = getenv("PWTICKAFTER");
+        tick_after = after_text ? strtoul(after_text, NULL, 0) : 0;
+        tick_from = from_text ? strtoul(from_text, NULL, 0) : 0;
+        tick_to = to_text ? strtoul(to_text, NULL, 0) : 0xFFFF;
+    }
+
     const char *script_path = getenv("PWSCRIPT");
     if (script_path && !load_script(script_path)) {
         fprintf(stderr, "cannot read %s\n", script_path);
@@ -323,6 +410,7 @@ int main(int argc, char **argv)
         apply_script(at);
         retro_run();
         maybe_shoot();
+        maybe_shoot_tick();
         for (size_t k = 0; k < shot_frames.size(); k++) {
             if (shot_frames[k] == frame_number) {
                 maybe_dump_wram();
