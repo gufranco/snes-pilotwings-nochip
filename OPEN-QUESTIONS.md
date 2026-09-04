@@ -2777,3 +2777,78 @@ Nothing, and it is worth writing down because it is the obvious first idea.
 Across a recording the three busiest commands repeat the previous call's key
 0.1%, 0.0% and 0.7% of the time. The commands that do repeat, `$11` at 99.7% and
 `$0e` at 100%, are a twentieth of the calls between them.
+
+## 34. Whether anything but the processor can do this arithmetic
+
+**No, and the reason is that the ground already owns the only other multiplier.**
+
+The console has one arithmetic unit besides the 65816's own: `$211B` and `$211C`
+are the mode 7 matrix A and B registers, and they double as a multiplier taking
+sixteen signed bits times eight signed, with the twenty four bit product readable
+at `$2134` through `$2136` and no wait at all. The processor's own multiplier at
+`$4202` is eight by eight unsigned and makes the caller wait eight cycles, so the
+mode 7 one is better on both counts.
+
+It cannot be used. Read out of the running cartridge, the channels HDMAEN's `$f6`
+turns on are:
+
+| channel | writes | table |
+|---|---|---|
+| 1 | `$2131`, `$2132` | `$7F:6D00` |
+| 2 | `$2126`, `$2127` | `$7F:6400` |
+| 4 | `$211B`, `$211C` | `$00:CBB4` |
+| 5 | `$211D`, `$211E` | `$00:CBBD` |
+| 6 | `$211F`, `$2120` | `$00:CBC6` |
+| 7 | `$210D`, `$210E` | `$00:CBCF` |
+
+Channel 4 writes both of the multiplier's input registers on every scanline of
+the picture, because that is how the ground is drawn: the matrix changes per
+scanline and HDMA is what changes it. So between writing a multiplier operand and
+reading the product, the hardware may overwrite the operand, and the odds of that
+over a whole frame are not small.
+
+Section 31 records an earlier attempt at this that came back with a third of the
+ground's words wrong and was reverted as an unexplained failure. This is the
+explanation.
+
+There is no window to use it in either. The computation for one frame of the
+game's clock spans about eleven pictures, and vertical blank is a seventh of a
+picture, so confining the multiplies to the gap between pictures would cost far
+more than it saves.
+
+### The rest of the console
+
+| | why not |
+|---|---|
+| the audio processor | a real second processor, but reaching it means four ports and a handshake, and one round trip costs more than the multiply it would replace. It also runs the game's music |
+| DMA | moves bytes about twelve times faster than the processor and computes nothing. The tables are a running sum, not a copy |
+| tables precomputed in the image | the constants take 3,052, 3,151, 1,199 and 841 distinct values across the four, and a table each is 1,280 bytes, so the set is 10.5 megabytes against the 12 the whole cartridge could ever be |
+| mode 7 itself | it consumes a matrix and produces a picture. Nothing reads back out of it |
+
+### Where the time actually is
+
+Measured by stubbing one piece at a time, over game frames 250 to 500:
+
+| | console frames per game frame | what the gap is |
+|---|---|---|
+| as it stands | 10.77 | |
+| the six lookups stubbed out | 8.37 | 2.40, the lookups themselves |
+| the second of two tables left unbuilt, section 33 | | 1.65, what building a table set costs |
+
+So of the multiply's roughly 4.05 console frames, building the tables is 1.65 and
+reading them is 2.40. A table is 256 entries and is read about 264 times, which
+is why section 33's four byte entries lost: they made the reading cheaper by 1.10
+and the building dearer by 1.65.
+
+### Two more that measured worse
+
+**Checking each of the four constants separately** rather than in the two pairs
+the searches hand them over in: 10.77 either way. The two words of a pair come
+out of one search keyed on one argument, so they move together and the finer
+check never fires.
+
+**Reordering the build loop** so the sum's low half advances the moment it has
+been stored, which saves reloading both halves and is eight cycles an entry out
+of sixty four: 10.96 against 10.80. The tables it builds are byte for byte the
+ones the current loop builds, so it is correct and it is slower, and no reading of
+the instruction timings accounts for it. Recorded rather than kept.
