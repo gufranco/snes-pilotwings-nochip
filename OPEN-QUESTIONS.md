@@ -2035,71 +2035,76 @@ supplied: **704 of 704 words exact**, on two frames sampled minutes apart. The
 ground draws, and the runway and the island sit where the retail cartridge puts
 them.
 
-## 25. What it costs, which is the next thing to work on
+## 25. What it costs, measured rather than modelled
 
-**Measured 2026-09-03 by watching how far the demo advances per emulated frame.**
+**Measured 2026-09-03 by building variants with one stage removed and watching a
+frame counter the game itself steps.**
 
-`$02`'s arguments move by one per game frame. In the converted cartridge they
-move once every twelve to fifteen frames, so the flight runs at roughly a
-thirteenth of speed. Nothing is stalled and nothing is dropped: the console
-delivers every frame, and the game's own loop is waiting on the stream.
+### How it is measured
 
-Where it goes, per scanline: seven signed multiplies through `op_00_body`, two
-normalise loops of up to fifteen doublings, and two shift loops of up to fifteen
-places. `op_00_body` is four hardware multiplies with an eight cycle wait each,
-so the multiplies alone are the larger half.
+`RAM[$1a1c]` steps once per frame of the game's own loop. In the retail
+cartridge it moves 300 times in 300 console frames, exactly. That ratio is the
+speed, and it needs no model of what any instruction costs.
 
-Three things would take it back, in the order they are worth doing:
+The converted cartridge moves it 20 times in 300, so the flight runs at **a
+fifteenth of speed**. Nothing stalls and no frame is dropped: the console
+delivers every one, and the game's own loop is what waits.
 
-1. **The distance multiply is an accumulator.** `(step * line) >> 15` with `line`
-   stepping by one is a running 32-bit sum incremented by `step`, exactly equal
-   and with no multiply at all. One of seven.
-2. **`op_00_body` is general where this needs one shape.** It negates both
-   operands, multiplies, negates the product and shifts. A version that keeps the
-   sign in a flag and skips the 32-bit negate would save most of its overhead.
-3. **The eight cycle wait is spent on `nop`s.** Three of the four partial products
-   could set up the next multiply inside that wait instead.
+### Where the time goes
+
+Each row is a build with one stage taken out, so the difference from the full
+build is what that stage costs. The last column is frames of processor time per
+frame of the game.
+
+| build | speed | frames | what it says |
+|---|---|---|---|
+| everything | 0.067 | 15.0 | |
+| `ground_block` returns at once | 0.250 | 4.0 | 4 frames are not `$0a` at all |
+| `ground_line` writes constants | 0.200 | 5.0 | the scanline chain is 10 frames |
+| the four output multiplies removed | 0.090 | 11.1 | they are 3.9 of those 10 |
+| the three state searches removed | 0.077 | 13.0 | they are about 2 |
+| the two `$0077` calls removed | 0.067 | 15.0 | too small to read |
+
+Two of those readings changed what to work on.
+
+**A quarter of the cost is not `$0a`.** Four frames per game frame go on the
+lookup and the port before the ground is computed at all: `$02` and `$10` each
+take a search of the recorded table, and the port serves eighty writes and
+twenty two reads a frame. That was there before this work and is untouched by it.
+
+**The two saturating scale routines cost nothing measurable.** They were the
+obvious suspects, being loops of up to fifteen shifts each, and taking both out
+moved the counter by less than one tick. The multiplies are the cost, not the
+loops.
+
+### What was tried and did not work
+
+The distance multiply is gone, replaced by a running thirty two bit sum stepped
+by one line's worth. That is exact rather than close, because the part's
+multiplier answers bits fifteen through thirty of the product and those are the
+bits the sum already holds. **0.057 to 0.067, seventeen per cent**, with every
+one of 704 words still exact.
+
+A multiply written for this file rather than reused from `$00` was **slower**:
+0.067 to 0.063. The console's multiplier takes two byte registers side by side,
+so one sixteen bit store starts it and eight changes of accumulator width
+disappear, and the eight cycles it needs can be spent setting up the next pair
+instead of on `nop`s. All of that is real, and splitting the operands into bytes
+and putting the thirty two bit product back together cost more than it saved. It
+was reverted: `op_00_body` is shorter, already checked against the part on four
+hundred argument sets, and shared with three other commands.
+
+### What is left, in the order it is worth doing
+
+1. **The four output multiplies, 3.9 frames.** The matrix is fixed for a whole
+   frame and carries two numbers rather than four, and the scale it multiplies is
+   usually small enough that two of the four partial products are nought. A path
+   chosen once per frame rather than per scanline is where to look.
+2. **The two chain multiplies, most of the remaining 6 frames.**
+3. **The four frames outside `$0a`.** The largest single piece of that is a
+   recorded-table search for `$02`, whose answer the game turns into four words
+   it could be handed directly.
 
 None of it changes an answer, so all of it can be checked against
-`raster.retail.test.py`, which is the point of having the arithmetic pinned
-before optimising it.
-
-## 26. The status register has two halves, and only one of them was right
-
-**Found 2026-09-03 by running the demo four times longer than before and watching
-the port's own counters stop.**
-
-### What it looked like
-
-Two minutes into the flight the game stopped issuing commands. The port's
-counters froze at 205 writes, 147 completed commands and 34 reads, and stayed
-there for another thirty seconds of play while the count of status polls climbed
-by ten thousand a second. Nothing crashed and every frame still rendered.
-
-### What it was
-
-`dsp_status` answered `$0080` to a sixteen bit read. The game polls at `$00:a196`
-with a sixteen bit accumulator and branches on the sign, so what that branch reads
-is the *top* half, and the top half was nought. The poll never ended.
-
-A sixteen bit load of `$3fc000` takes two bytes, `$c000` and `$c001`. The
-recording holds 1,482,010 reads of the first and 1,385,726 of the second, and
-every one of them answered `$80`, so the value a wide read gives back is `$8080`.
-
-### Why nothing caught it earlier
-
-The eight bit path was right the whole time, and it is the one every earlier
-check exercised. The window at bank `$7d` was right too, because it is filled a
-byte at a time. Only the stub had the constant, only the sixteen bit path read
-it, and only a run long enough to reach that particular poll took it.
-
-The measurement that produced the constant said "the status answered `$80` on
-every one of 2,867,736 reads", which is true and was read as though a read were a
-word. It is a byte. A figure about bytes carried into a place that wants a word
-is not a wrong figure, it is a figure used at the wrong width.
-
-### After the fix
-
-The demo runs on: `$02`'s arguments keep moving through the flight, the plane
-turns and climbs, and the cartridge's own 704 words stay exact against the part
-on every frame sampled.
+`raster.retail.test.py` and against the running cartridge, which is the point of
+having pinned the arithmetic before optimising it.

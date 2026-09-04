@@ -53,7 +53,7 @@ to be.
 | the demo | flies, and draws its ground. The cartridge's own 704 words match the part on the arguments the running game supplies, on every frame sampled through six thousand |
 | the instrument panel | still missing, and not `$0a`. Nothing has been measured about it yet |
 | whether the image has to grow | yes, to 3.75 MB, which is inside what a low cartridge addresses |
-| speed | the flight runs at about a thirteenth of speed. Nothing stalls; see OPEN-QUESTIONS section 25 for where the time goes |
+| speed | the flight runs at a fifteenth of speed, measured against a frame counter the game itself steps. A quarter of that is the lookup and the port rather than `$0a`; OPEN-QUESTIONS section 25 has the split |
 
 ### How much of the game it covers
 
