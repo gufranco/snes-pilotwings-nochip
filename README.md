@@ -57,7 +57,8 @@ to be.
 | the demo | flies, draws its ground, and tracks the retail cartridge's own flight through game frame 405, which is as far as the comparison has been run. Work RAM differs by 30 to 60 bytes a frame, 22 of them at every frame and twelve of those a patched call the game copies into work RAM |
 | the instrument panel | drawn on every picture. It was there all along on one picture in sixteen: the flight screen is three bands separated by two scanline interrupts, the sequence is armed once per frame of the game's clock, and one frame of that clock is now sixteen pictures. The third interrupt does nothing in the retail cartridge and is the only thing that happens once per picture, so it arms the sequence again. Screen brightness across the demo went from a spread of 31.1 to one of 0.05, at the retail cartridge's own level. OPEN-QUESTIONS section 32 |
 | whether the image has to grow | yes, to 3.75 MB, which is inside what a low cartridge addresses |
-| speed | 9.94 console frames per frame of the game's own clock over a fixed 750 frames of the flight, against 19.6 before and 11.07 this morning. That is 6.0 frames a second where the cartridge gives 60. One call to `$0a` costs 21.7% fewer processor cycles than it did this morning, measured on the model rather than on the console, because the console cannot compare two builds at that resolution. OPEN-QUESTIONS sections 36 to 39 |
+| speed | one call to `$0a` costs 257,416 processor cycles, against 393,035 when it first drew anything. Measured on the model rather than on the console: the console's frame-rate meter is not monotone in work, and adding 25,566 cycles of dead work to the ground made it report a better rate. OPEN-QUESTIONS sections 36 to 39 |
+| the ground drawn from the part's own arithmetic | every one of the ten words `$02` leaves behind is computed or read from a table covering the whole of its key. Driven against the part on 596 frames spanning the demo, all ten are exact. Six of them were wrong on between 3% and 39% of frames before, because they came from tables recorded from playthroughs and the search that read them answered a key it did not hold with the nearest key above it |
 
 ### How much of the game it covers
 
@@ -604,9 +605,9 @@ Analysis modules in Python, each with its tests beside it.
 | [`microcode.py`](microcode.py) | the part's own dispatch tree, walked for all 256 command bytes |
 | [`derived.py`](derived.py) | drives the part to produce the three tables no formula reproduces |
 | [`raster.py`](raster.py) | what `$0a` computes, read out of the part stage by stage. The reference the assembly mirrors |
-| [`parameter.py`](parameter.py) | how the state `$02` leaves behind splits into tables smaller than the whole |
-| [`state02.py`](state02.py) | packs one of those tables the way the cartridge searches it |
-| [`state02build.py`](state02build.py) | drives the part across every `$02` argument set and writes all three |
+| [`parameter.py`](parameter.py) | which of `$02`'s arguments each word of its state answers to |
+| [`state02.py`](state02.py) | packs a keyed table the way a cartridge search would read it |
+| [`state02build.py`](state02build.py) | drives the part for the one value `$02`'s horizon and second scale come from, at every angle |
 | [`routines.py`](routines.py) | runs the assembled 65816 against the part, and fails when they disagree |
 | [`lutbuild.py`](lutbuild.py) | builds the table of recorded answers, and says what it left out |
 | [`doctor.py`](doctor.py) | what is actually on this machine, the whole chain, printed for a bug report |

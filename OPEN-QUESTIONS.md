@@ -3184,3 +3184,101 @@ Every remaining idea against those is worth about one percent, and one of them
 was measured as a gain and turned out to be an index advanced by 128 where eight
 entries are 64 bytes, filling half the table. At that size the risk of a wrong
 measurement is comparable to the gain, which is where this stops.
+
+## 41. The console's own meter cannot rank two builds
+
+Every change in sections 36 to 40 was judged on the processor model, with the
+console used as a second opinion. That second opinion is worthless at this size,
+and it was worth proving rather than suspecting.
+
+The meter counts console frames per frame of the game's clock over a window of
+the demo. Three builds were measured, identical but for a loop of dead work
+added to every scanline:
+
+| build | cycles added to one call | console frames per game frame |
+|---|---|---|
+| baseline | 0 | 14.11 |
+| thirty dead turns a scanline | 25,566 | 13.61 |
+| sixty dead turns a scanline | 51,966 | 15.62 |
+
+Twenty five thousand wasted cycles made the meter report a *better* rate. It is
+not monotone in work, because the rate is quantised to whole console frames and a
+change in speed shifts where the demo sits when the window opens, which changes
+the scenery and so the work. Four separate windows agreed with each other and
+disagreed with the model, which reads as confirmation and is not.
+
+So the model is the instrument, and the console is for correctness only. One
+earlier change was committed on a console reading that this now shows was noise;
+its model figure stood on its own, so the commit stands, but the reasoning in it
+was worth less than it claimed.
+
+## 42. The ground jumped because a search had no miss path
+
+The demo's scenery would jump to a wrong heading and come back. Recording both
+demos frame by frame and comparing them found nothing, because two sweeps of the
+same build differ more in that comparison than a good build differs from a bad
+one: the game's clock resets per flight, so a sweep keyed on it silently
+overwrites earlier segments with later ones.
+
+What found it was reading `ground_state` rather than looking at pictures. It did
+not compute the state `$02` leaves behind. It looked the state up in three tables
+built from recorded playthroughs, and `ground_find` was a lower bound: a key the
+recordings never held was answered with the nearest key above it, with nothing
+reporting that it had happened.
+
+Driven against the part over 596 memory snapshots spanning the whole demo:
+
+| word | wrong before | worst error measured |
+|---|---|---|
+| first mantissa | 39% | one part in a thousand |
+| second mantissa | 21% | |
+| the four matrix words | 11% | angle $732c answered for a wanted $5b0c |
+| step | 3% | $7021 answered for a wanted $5702 |
+| horizon | 3% | 64 scanlines |
+| the two exponents | 3% each | |
+
+The step is how far the ground moves per scanline and the matrix is its heading,
+so those two are the jump. This is the failure the standing rule about bounding a
+domain from a recording exists to prevent, and it had been sitting under the
+ground since the ground first drew.
+
+### What replaced them
+
+Nothing needed a recorded table. Each rule below was measured against the part
+across the whole domain of its key, not fitted to the answers it had already
+given:
+
+| word | where it comes from now |
+|---|---|
+| step | the sine of argument 6 |
+| matrix | the cosine of argument 5, and that sine negated |
+| horizon | a value the part derives from argument 6, times argument 4, shifted down fifteen |
+| second mantissa and exponent | the normalise and reciprocal of that same value |
+| first mantissa and exponent | argument 2 plus argument 3 times the cosine of argument 6, shifted down fifteen, then normalised |
+
+The sine and cosine were already in the image, driven from the part, covering
+every angle a word can hold.
+
+The value behind the horizon is the cosine for most of the turn and something
+else near and past a quarter turn, where the part holds it at a floor. Three
+attempts to name that floor each matched a few hundred angles and then drifted,
+which is the fitting trap the `$0a` work already paid for once. So it is not
+named: `state02build.py` asks the part for all 65,536 angles, which is 128 KiB
+and cannot miss. It is read through the horizon with an argument of $8000, which
+makes the shift undo the multiply and hands the value straight back.
+
+The same trick settled the last detail. The cosine enters the first scale one
+less than the table holds it wherever it is positive, which is the part's own
+multiplier rather than arithmetic, and asking with an argument of $8000 turned
+that multiply into a negation and showed it directly.
+
+All ten words are now exact against the part on all 596 frames. The three tables,
+the search, and the nine direct page words it needed are gone, which frees 60 KiB
+and three banks, and one call costs 257,416 cycles against 262,095.
+
+### What is still not known
+
+Where argument 2 plus the product overflows a signed word, the part resolves it
+in a way that has not been read out of its program. Sixteen of 1,404 probed
+argument sets sit there and none of the demo's own frames do, so it is recorded
+rather than guessed at.
