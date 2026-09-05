@@ -2852,3 +2852,40 @@ been stored, which saves reloading both halves and is eight cycles an entry out
 of sixty four: 10.96 against 10.80. The tables it builds are byte for byte the
 ones the current loop builds, so it is correct and it is slower, and no reading of
 the instruction timings accounts for it. Recorded rather than kept.
+
+## 35. The search stopped being worth optimising, and the number that says so
+
+**About 130 halvings per frame of the game's clock**, counted on a counter inside
+`lut_compare` over game frames 300 to 310. Section 31 recorded 435, and section
+33's change to `$13` is most of the difference.
+
+That reframes what is left. At 130 halvings the whole search is under a console
+frame of the 10.77, so removing it entirely would buy less than a tenth, and the
+multiply at roughly 4.05 is four times the size of it.
+
+### The index that was built and thrown away
+
+`$06` is the largest command in the table, 75,278 rows and seventeen halvings,
+and its first key word takes 836 values inside a span of 916. The rows are sorted
+on that word, so each value's rows are one unbroken run, and 3,668 bytes of index
+naming where each run starts replaces every compare before it: seventeen halvings
+become 12.7 on average across the rows. `$02` is the same shape and costs another
+3,680 bytes, and together they were measured against the recording as taking the
+weighted halvings across every command to 62%.
+
+Built, it made no difference at all: 10.80 console frames per game frame with and
+without, on the fine grid. The answers stayed right, matching the retail
+cartridge's flight model to two bytes on all 271 game frames compared, so the
+narrowing was correct. It just was not worth anything.
+
+The counter says why more precisely, and says something else that has not been
+explained: with the index the count went **up**, 130 to 170. A narrower range
+cannot take more halvings, and the answers were identical, so the discrepancy is
+in the counting rather than in the search, and it was not chased because the
+quantity being measured had already turned out to be too small to matter.
+
+The lesson is the same one section 33 records about the byte index: a cost model
+built from how often the recording asks each command is not a measurement of
+where the time goes. Both times the model said a change was worth about a fifth
+of the search and both times the console disagreed. What settles it is a counter
+in the routine and a clock on the frame.
