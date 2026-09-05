@@ -3014,3 +3014,73 @@ back worse, which is what an unmeasurable difference looks like.
 | a larger cache of built tables | 53.6% of frames reuse the previous frame's constant and 53.5% reuse one of the last thirty two, so there is nothing beyond the check already made |
 | storing the table through an indexed address rather than a direct page pointer | 11.26 against 11.07 |
 | counting the normalise doublings in a register | 11.30 against 11.07, with a byte-identical flight model and the same doubling count to within five |
+
+## 38. An instrument fine enough to optimise against, and 15.7% off `$0a`
+
+**252,778 processor cycles for one call to `ground_block`, from 299,896.** The
+console reads that as 10.59 console frames per frame of the game's clock over
+game frames 250 to 1000, from 11.07.
+
+### Why the console could not be used
+
+Section 37 recorded five changes that were strictly cheaper in instructions and
+measured slower, and left it unexplained. The explanation is that no comparison
+between two builds on the console means anything at this resolution. A change
+alters how many console frames a frame of the game's clock takes, which alters
+where the demo sits when the measuring window opens, which alters the scenery
+and so the work. Measured across four windows, one such change reads 1.37 and
+0.96 console frames **faster** in two of them and 0.23 and 0.16 slower in the
+other two. The sign is a property of the window.
+
+Widening the window to three thousand game frames does not fix it either: two
+changes that each measure faster alone measure slower together.
+
+### What replaced it
+
+[`tools/cycles.py`](tools/cycles.py) runs one call of a named routine on the
+processor model this project already checks its arithmetic with, over a snapshot
+of the console's memory, and reports the cycles and instructions it took. Same
+memory, same entry, same registers, no demo, no window.
+
+Two things the snapshot has to have done to it, and both were found by getting
+them wrong first. The fields saying which constants the multiply tables were
+last built for must be made to match nothing, or the call skips the build and
+measures half the routine. And the tables themselves must be cleared, or a build
+whose entries are laid out differently reads the snapshot's as though they were
+its own: that produced a three byte difference in the ground that looked like a
+fault in the arithmetic and was a fault in the measurement.
+
+### What it found
+
+Every one of these was rejected on the console's evidence first.
+
+| | cycles for one call | |
+|---|---|---|
+| before | 299,896 | |
+| eight byte table entries | 273,610 | an entry's address is its number shifted three places, where five bytes made it a shift, a shift, a store, an addition and a load, twice per multiply |
+| the doubling count in a register | included above | the direct page is the console's own memory, so an increment there is a read, a change and a write of the slow half |
+| the table build storing to a named address | included above | rather than through a pointer in the direct page, which fetched three bytes from that same slow memory before each store |
+| the product shifted in the accumulator | 267,274 | a shift in the direct page is a read, a change and a write |
+| the high half never reaching memory | 260,170 | it stays in the accumulator through the sign correction, which now tests the sign with `bit` |
+| one index for both matrix tables | 252,778 | four of the six multiplies are two scales against two constants, and the same entry number reaches into either table |
+
+The ground every one of them computes is byte for byte the ground the original
+computes, over ten frames with the tables blanked first.
+
+### One fault it found that the demo cannot
+
+The sign correction subtracts the constant, which is entry one's value. At five
+bytes an entry that is at offset six; at eight bytes entry one begins at offset
+eight, so the value is at offset nine and offset six is padding nothing writes.
+The demo never produces a negative varying word, so nothing in the flight shows
+it. It is a fault by construction rather than one that was observed, and the
+only reason it was found is that the model can be run against blank memory where
+the console's leftovers cannot cover for it.
+
+### What it does not measure
+
+Processor cycles, not console cycles. It does not know that the console's memory
+answers more slowly than its cartridge, so a change trading a memory access for
+an instruction reads better here than it runs. Every change above moves in the
+same direction on both instruments, which is the check that matters; a change
+where they disagree needs the console's verdict on a long window and a reason.
