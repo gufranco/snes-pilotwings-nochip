@@ -215,13 +215,20 @@
 ; because this assembler evaluates left to right: `!MULTAB+!MULSPAN*0+1` is
 ; ((!MULTAB+!MULSPAN)*0)+1, which is 1. Every read went to address 1 and every
 ; table stayed as the console left it, with nothing in the source looking wrong.
-!MULTAB    = $7EE000            ; the four tables, 1,280 bytes each
+; Eight bytes an entry rather than five, and three of them never read. An
+; entry's address is then its number shifted three places, where five bytes made
+; it a shift, a shift, a store, an addition and a load. That is done twice per
+; multiply and the multiply runs 1,056 times a frame, against 256 entries built
+; at most once, so the three spare bytes an entry buy more than they cost: the
+; build writes the same four bytes either way, and the nought each entry opens
+; with is written once ever.
+!MULTAB    = $7EE000            ; the four tables, 2,048 bytes each
 !MULTAB0   = $7EE000            ; the cosine's
-!MULTAB1   = $7EE500            ; the sine's
-!MULTAB2   = $7EEA00            ; the first scale's mantissa
-!MULTAB3   = $7EEF00            ; and the second's
-!MULSPAN   = 1280
-!MULSTRIDE = 5
+!MULTAB1   = $7EE800            ; the sine's
+!MULTAB2   = $7EF000            ; the first scale's mantissa
+!MULTAB3   = $7EF800            ; and the second's
+!MULSPAN   = 2048
+!MULSTRIDE = 8
 !MULTABS   = 4
 
 ; ---------------------------------------------------------------------------
@@ -250,12 +257,10 @@
 macro mulk_product(table)
     sta !TMP+0                  ; kept for its sign, at the end
 
-    and #$00FF                  ; the low byte, times five, is where its entry is
-    sta !TMP+2
+    and #$00FF                  ; the low byte, times eight, is where its entry is
     asl a
     asl a
-    clc
-    adc !TMP+2
+    asl a
     tax
     lda.l <table>+1,x           ; past the nought, so this is k times that byte
     sta !TMP+4
@@ -265,11 +270,9 @@ macro mulk_product(table)
     lda !TMP+0                  ; and the high byte the same way
     xba
     and #$00FF
-    sta !TMP+2
     asl a
     asl a
-    clc
-    adc !TMP+2
+    asl a
     tax
     lda.l <table>+0,x           ; from the nought, so this is that entry times 256
     clc
@@ -353,8 +356,15 @@ endmacro
 ; In:  A the value.
 ; Out: A and !G_NORM the value normalised, !G_COUNT the count of doublings.
 ; ---------------------------------------------------------------------------
+; The count is kept in X while the loop turns and written out at the end. A
+; direct page increment is a read, a change and a write, and the direct page is
+; the console's own memory, which is the slow half of the machine. The register
+; costs nothing. This loop turns about 2,120 times per frame of the game's clock.
+;
+; X is free here: the multiplies set it themselves and ground_scale counts its
+; own shift in Y.
 ground_normalise:
-    stz !G_COUNT
+    ldx #$0000
     sta !G_NORM
     cmp #$0000
     beq .settled
@@ -370,14 +380,16 @@ ground_normalise:
     bmi .keep                   ; was negative and still is
 
 .stop:
+    stx !G_COUNT
     lda !G_NORM                 ; the doubling would have overflowed, so the
     rts                         ; value before it is the answer
 
 .keep:
-    inc !G_COUNT
+    inx
     bra .again
 
 .settled:
+    stx !G_COUNT
     rts
 
 ; ---------------------------------------------------------------------------
@@ -904,6 +916,69 @@ ground_state:
     rts
 
 ; ---------------------------------------------------------------------------
+; One table: the constant times nought, then times one, and so on to 255.
+;
+; Additions rather than multiplies, which is the whole point: 256 of them build
+; what 256 multiplies would, and the six uses on each of 176 scanlines then cost
+; no multiply at all.
+;
+; The sum is stored before it moves on, so entry nought is nought.
+;
+; ===========================================================================
+; WHY THIS IS A MACRO RATHER THAN A ROUTINE
+; ===========================================================================
+;
+; It used to take the table as a pointer in the direct page and store through
+; it. Storing through a pointer means reading the pointer first, and the direct
+; page is the console's own memory, so each of the two stores an entry needs
+; fetched three bytes from the slow half of the machine before writing two.
+;
+; Naming the table when this is assembled makes the store a plain indexed one.
+; The price is the loop written out once per table, which the assembler does.
+;
+; The sum's low half also moves on the moment it has been stored rather than
+; after the high half has been, which saves reloading both. The carry the
+; addition leaves is what the high half needs, and nothing between the two
+; touches it: a load does not, and neither does a store.
+;
+; In:  !TMP+0 the constant.
+; Out: the named table filled. Uses X and !TMP+6 to !TMP+11.
+; ---------------------------------------------------------------------------
+macro build_table(table)
+    lda !TMP+0
+    bpl ?positive
+    lda #$FFFF                  ; the constant's sign, for the high half of the
+    bra ?signed                 ; running sum to carry
+?positive:
+    lda #$0000
+?signed:
+    sta !TMP+6
+
+    stz !TMP+8
+    stz !TMP+10
+
+    ldx #$0000
+?entry:
+    lda !TMP+8
+    sta.l <table>+1,x           ; past the nought each entry opens with
+    clc
+    adc !TMP+0                  ; and on to the next entry's, keeping the carry
+    sta !TMP+8
+
+    lda !TMP+10
+    sta.l <table>+3,x
+    adc !TMP+6                  ; the carry above is still the one wanted here
+    sta !TMP+10
+
+    txa                         ; eight bytes an entry, added once rather than
+    clc                         ; counted up eight times
+    adc #$0008
+    tax
+    cpx.w #!MULSPAN
+    bcc ?entry
+endmacro
+
+; ---------------------------------------------------------------------------
 ; The four tables the six multiplies read, rebuilt when their constant moves.
 ;
 ; A table is 256 entries of five bytes: a nought, then the constant times the
@@ -942,6 +1017,9 @@ ground_tables:
     inx
     inx
     inx
+    inx
+    inx
+    inx
     cpx.w #(!MULSPAN*!MULTABS)
     bcc -
     rep #$20
@@ -968,20 +1046,12 @@ ground_tables:
     lda !G_MAT+0
     sta !G_LAST+0
     sta !TMP+0
-    lda.w #(!MULTAB0&$FFFF)
-    sta !TMP+2
-    lda.w #(!MULTAB0>>16)
-    sta !TMP+4
-    jsr ground_build
+    %build_table(!MULTAB0)
 
     lda !G_MAT+2
     sta !G_LAST+2
     sta !TMP+0
-    lda.w #(!MULTAB1&$FFFF)
-    sta !TMP+2
-    lda.w #(!MULTAB1>>16)
-    sta !TMP+4
-    jsr ground_build
+    %build_table(!MULTAB1)
 
 .scale:
     lda !G_MAN1
@@ -995,72 +1065,16 @@ ground_tables:
     lda !G_MAN1
     sta !G_LAST+4
     sta !TMP+0
-    lda.w #(!MULTAB2&$FFFF)
-    sta !TMP+2
-    lda.w #(!MULTAB2>>16)
-    sta !TMP+4
-    jsr ground_build
+    %build_table(!MULTAB2)
 
     lda !G_MAN2
     sta !G_LAST+6
     sta !TMP+0
-    lda.w #(!MULTAB3&$FFFF)
-    sta !TMP+2
-    lda.w #(!MULTAB3>>16)
-    sta !TMP+4
-    jsr ground_build
+    %build_table(!MULTAB3)
 
 .done:
     rts
 
-; ---------------------------------------------------------------------------
-; One table: the constant times nought, then times one, and so on to 255.
-;
-; Additions rather than multiplies, which is the whole point: 256 of them build
-; what 256 multiplies would, and the six uses on each of 176 scanlines then cost
-; no multiply at all.
-;
-; The sum is stored before it moves on, so entry nought is nought.
-;
-; In:  !TMP+0 the constant, !TMP+2 the table as a long address.
-; Out: the table filled. Uses Y and !TMP+6 to !TMP+11.
-; ---------------------------------------------------------------------------
-ground_build:
-    lda !TMP+0
-    bpl +
-    lda #$FFFF                  ; the constant's sign, for the high half of the
-    bra ++                      ; running sum to carry
-+
-    lda #$0000
-++
-    sta !TMP+6
-
-    stz !TMP+8
-    stz !TMP+10
-
-    ldy #$0001                  ; entry nought's four value bytes, past its nought
--
-    lda !TMP+8
-    sta [!TMP+2],y
-    iny
-    iny
-    lda !TMP+10
-    sta [!TMP+2],y
-    iny
-    iny
-    iny                         ; and on to the next entry's
-
-    lda !TMP+8
-    clc
-    adc !TMP+0
-    sta !TMP+8
-    lda !TMP+10
-    adc !TMP+6
-    sta !TMP+10
-
-    cpy.w #(!MULSPAN+1)
-    bcc -
-    rts
 
 ; ---------------------------------------------------------------------------
 ; The whole stream, in place of the loop the game read it with.

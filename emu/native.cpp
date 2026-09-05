@@ -131,6 +131,7 @@ static long rate_last = -1;
 static unsigned long rate_first = 0;
 static unsigned long rate_first_console = 0;
 static unsigned long rate_reported = 0;
+static unsigned long rate_first_idle = 0;
 
 static void maybe_note_rate(void)
 {
@@ -150,13 +151,18 @@ static void maybe_note_rate(void)
     if (tick >= rate_from && rate_first_console == 0) {
         rate_first = tick;
         rate_first_console = frame_number;
+        rate_first_idle = (unsigned long)(ram[0x19A00] | ram[0x19A01] << 8 | ram[0x19A02] << 16 |
+                                          (unsigned long)ram[0x19A03] << 24);
         return;
     }
     if (tick >= rate_to && rate_first_console != 0) {
         rate_reported = 1;
-        printf("RATE from=%lu at=%lu to=%lu at=%lu frames=%.4f\n", rate_first, rate_first_console,
-               tick, frame_number,
-               (double)(frame_number - rate_first_console) / (double)(tick - rate_first));
+        printf("RATE from=%lu at=%lu to=%lu at=%lu frames=%.4f idle=%lu\n", rate_first,
+               rate_first_console, tick, frame_number,
+               (double)(frame_number - rate_first_console) / (double)(tick - rate_first),
+               (unsigned long)(ram[0x19A00] | ram[0x19A01] << 8 | ram[0x19A02] << 16 |
+                               (unsigned long)ram[0x19A03] << 24) -
+                   rate_first_idle);
     }
 }
 
