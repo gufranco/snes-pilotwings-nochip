@@ -77,6 +77,34 @@ class MemoryTest(unittest.TestCase):
         self.assertEqual(memory.read8(0x008000), 0xAB)
 
 
+class MultiplierTest(unittest.TestCase):
+    def test_writing_both_operands_gives_their_product(self) -> None:
+        memory = cycles.Memory(_image(), _wram())
+
+        memory.write8(cycles.MULTIPLICAND, 7)
+        memory.write8(cycles.MULTIPLIER, 6)
+
+        self.assertEqual(memory.read8(cycles.PRODUCT), 42)
+
+    def test_the_product_reads_back_as_two_bytes(self) -> None:
+        memory = cycles.Memory(_image(), _wram())
+
+        memory.write8(cycles.MULTIPLICAND, 200)
+        memory.write8(cycles.MULTIPLIER, 200)
+
+        got = memory.read8(cycles.PRODUCT) | memory.read8(cycles.PRODUCT + 1) << 8
+        self.assertEqual(got, 40000)
+
+    def test_a_second_multiplier_reuses_the_first_operand(self) -> None:
+        memory = cycles.Memory(_image(), _wram())
+
+        memory.write8(cycles.MULTIPLICAND, 3)
+        memory.write8(cycles.MULTIPLIER, 4)
+        memory.write8(cycles.MULTIPLIER, 5)
+
+        self.assertEqual(memory.read8(cycles.PRODUCT), 15)
+
+
 class SymbolTest(unittest.TestCase):
     def test_it_reads_a_plain_line(self) -> None:
         self.assertEqual(cycles.symbol("ground_block", "ground_block at   908123\n"), 0x908123)

@@ -3149,3 +3149,38 @@ Two limits on the instrument are worth repeating. It counts processor cycles and
 not console cycles, so it does not know the console's memory answers more slowly
 than its cartridge. And it measures one call from one state. Every change above
 moves the same way on both instruments, which is the check that matters.
+
+## 40. Two lines closed by measurement rather than by argument
+
+The multiply tables cost 76,337 cycles to build and 83,051 to read, per call to
+`ground_block` with every table rebuilt. That is 151 cycles for each of the
+1,056 multiplies a frame, counting the build.
+
+**Would the console's own multiplier be cheaper?** No. `op_00_body`, this
+project's exact signed sixteen by sixteen, measures **303 cycles** on the model
+with the multiplier at `$4202` emulated. Twice the table's all-in cost, so the
+tables stay, and the eight kilobytes of the console's memory they occupy are
+paid for.
+
+**Can the build's running sum live in registers?** No. Holding the low half in
+the accumulator and the high half in the index register removes two direct page
+reads and two writes an entry and costs a push and a pull, and a pull is five
+cycles where the read it replaced was four: 304,602 against 303,276.
+
+### What the shape of the remaining cost is
+
+| | cycles of the 303,276 |
+|---|---|
+| the six multiplies a scanline | 83,051 |
+| building the four tables | 76,337 |
+| `ground_line`'s own glue | 61,709 |
+| the two scales, less the normalise and shift inside them | 17,232 |
+| the loop, the state searches and the prologue | 20,303 |
+| normalising, three times a scanline | 19,548 |
+| the variable shift | 16,600 |
+| the reciprocal | 8,496 |
+
+Every remaining idea against those is worth about one percent, and one of them
+was measured as a gain and turned out to be an index advanced by 128 where eight
+entries are 64 bytes, filling half the table. At that size the risk of a wrong
+measurement is comparable to the gain, which is where this stops.

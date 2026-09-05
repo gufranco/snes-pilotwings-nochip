@@ -62,6 +62,16 @@ TABLES = 0xE000
 
 POWER_ON = 0x55
 
+MULTIPLICAND = 0x004202
+MULTIPLIER = 0x004203
+PRODUCT = 0x004216
+"""The console's own multiplier, eight bits by eight into sixteen.
+
+Modelled because the arithmetic this project measures reaches for it, and a
+routine that used it would otherwise read nought and answer nothing. The eight
+cycle wait the hardware imposes is the caller's business, not this one's.
+"""
+
 
 class Memory:
     """The cartridge as low addressing sees it, over a snapshot of the console's.
@@ -72,11 +82,13 @@ class Memory:
     live. Everything at $8000 and above is the cartridge.
     """
 
-    __slots__ = ("image", "wram")
+    __slots__ = ("first", "image", "product", "wram")
 
     def __init__(self, image: bytes, wram: bytearray) -> None:
         self.image = image
         self.wram = wram
+        self.first = 0
+        self.product = 0
 
     def _memory_at(self, address: int) -> int | None:
         bank, inside = address >> 16, address & 0xFFFF
@@ -88,6 +100,10 @@ class Memory:
 
     def read8(self, address: int) -> int:
         at = address & 0xFFFFFF
+        if at == PRODUCT:
+            return self.product & 0xFF
+        if at == PRODUCT + 1:
+            return self.product >> 8 & 0xFF
         where = self._memory_at(at)
         if where is not None:
             return self.wram[where]
@@ -99,7 +115,12 @@ class Memory:
         return 0
 
     def write8(self, address: int, value: int) -> None:
-        where = self._memory_at(address & 0xFFFFFF)
+        at = address & 0xFFFFFF
+        if at == MULTIPLICAND:
+            self.first = value & 0xFF
+        elif at == MULTIPLIER:
+            self.product = self.first * (value & 0xFF)
+        where = self._memory_at(at)
         if where is not None:
             self.wram[where] = value & 0xFF
 
