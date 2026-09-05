@@ -280,39 +280,40 @@ macro mulk_product(table)
     sta !TMP+4
     lda.l <table>+2,x
     adc !TMP+6
-    sta !TMP+6
 
-    lda !TMP+0
-    bpl ?whole
-    lda !TMP+6                  ; a negative word read as unsigned is too big by
-    sec                         ; 65536, so the constant comes off the high half,
-    sbc.l <table>+6             ; and entry one is the constant itself
-    sta !TMP+6
-?whole:
+    bit !TMP+0                  ; a negative word read as unsigned is too big by
+    bpl ?whole                  ; 65536, so the constant comes off the high half,
+    sec                         ; and entry one is the constant itself. Tested
+    sbc.l <table>+9             ; with bit, which reads the sign without
+?whole:                         ; disturbing the half being corrected
 endmacro
 
 macro mulk(table)
     %mulk_product(<table>)
-    asl !TMP+4                  ; the whole product left one, high word kept,
-    rol !TMP+6                  ; which is the shift right by fifteen
-    lda !TMP+6
-endmacro
+    tay                         ; the whole product left one, high word kept,
+    lda !TMP+4                  ; which is the shift right by fifteen. The high
+    asl a                       ; half never reaches memory at all, and the low
+    tya                         ; half is shifted in the accumulator: the direct
+    rol a                       ; page is the console's own memory, so a shift
+endmacro                        ; there is a read, a change and a write
 
 macro mulk_negated(table)
     %mulk_product(<table>)
-    lda !TMP+4                  ; this site wants the constant negated, and the
-    eor #$FFFF                  ; whole product negated is the same answer, where
-    clc                         ; negating after the shift would round the wrong
-    adc #$0001                  ; way on every product the shift does not divide
+    eor #$FFFF                  ; this site wants the constant negated, and the
+    sta !TMP+6                  ; whole product negated is the same answer, where
+    lda !TMP+4                  ; negating after the shift would round the wrong
+    eor #$FFFF                  ; way on every product the shift does not divide
+    clc
+    adc #$0001
     sta !TMP+4
     lda !TMP+6
-    eor #$FFFF
     adc #$0000
-    sta !TMP+6
 
-    asl !TMP+4
-    rol !TMP+6
-    lda !TMP+6
+    tay
+    lda !TMP+4
+    asl a
+    tya
+    rol a
 endmacro
 
 ; ---------------------------------------------------------------------------
