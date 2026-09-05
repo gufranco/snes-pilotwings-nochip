@@ -99,6 +99,51 @@ org $F38000
 dsp1_reciprocal_of:
 incbin "../build/reciprocal-0.bin"
 
+; The same behaviour, asked a different question, which is what removed the
+; dearest loop in the ground.
+;
+; The table above is keyed on the magnitude the normalise loop *left*, so reading
+; it meant running that loop first: doubling a word until its sign would change,
+; twelve cycles a doubling, about ten doublings a scanline. It was 11% of one
+; call and more than any single multiply.
+;
+; The magnitude a value normalises to is a function of the value, so the mantissa
+; is too. These three are keyed on the value itself, and the loop is gone.
+;
+; Keyed on the *folded* value: a negative word is complemented first, because a
+; word and its complement have the same run of leading sign bits and so the same
+; doubling count. That halves the length. The two signs still need separate
+; mantissas, because a negative value folds to one less than its own magnitude
+; and so lands one step further up the table, and its answer comes back negated.
+;
+; The exponent is the doubling count less six and depends on the folded form
+; alone, so one table serves both signs. Entry nought of the upward table holds
+; the part's own answer for a distance of exactly nought, which is a scanline on
+; the horizon, so that case needs no branch either.
+;
+; derived.py writes all three from the table above with no part driven, since
+; turning a table inside out is arithmetic.
+org $F58000
+dsp1_recip_up:
+incbin "../build/recip-up-0.bin"
+org $F68000
+dsp1_recip_up_high:
+incbin "../build/recip-up-1.bin"
+
+org $F78000
+dsp1_recip_down:
+incbin "../build/recip-down-0.bin"
+org $F88000
+dsp1_recip_down_high:
+incbin "../build/recip-down-1.bin"
+
+org $F98000
+dsp1_recip_exponent:
+incbin "../build/recip-exponent-0.bin"
+org $FA8000
+dsp1_recip_exponent_high:
+incbin "../build/recip-exponent-1.bin"
+
 ; What $04 multiplies a magnitude by, per angle, for the first half it answers.
 ; A whole turn is 65,536, so the index is the angle with nothing done to it.
 org $918000
@@ -123,5 +168,8 @@ org $988000
 incbin "../build/cosine-3.bin"
 
 print "reciprocal of starts at ", hex(dsp1_reciprocal_of)
+print "recip up starts at      ", hex(dsp1_recip_up)
+print "recip down starts at    ", hex(dsp1_recip_down)
+print "recip exponent starts at", hex(dsp1_recip_exponent)
 print "sine of starts at       ", hex(dsp1_sine_of)
 print "cosine of starts at     ", hex(dsp1_cosine_of)

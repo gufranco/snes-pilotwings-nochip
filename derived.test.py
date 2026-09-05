@@ -2,6 +2,7 @@ import struct
 import unittest
 from collections.abc import Callable, Sequence
 from pathlib import Path
+from typing import override
 
 import derived
 import hardware
@@ -354,6 +355,146 @@ class MainTest(unittest.TestCase):
         derived.main((), say=said.append)
 
         self.assertTrue(said)
+
+
+def _as_the_cartridge_did(value: int, mantissas: Sequence[int]) -> tuple[int, int]:
+    """The mantissa and exponent the doubling loop and the table read used to give.
+
+    A transcription of the two routines the tables replace, instruction for
+    instruction, so the tables are checked against the behaviour rather than
+    against the reasoning that produced them.
+    """
+    count = 0
+    accumulator = value
+    if accumulator != 0:
+        while True:
+            doubled = accumulator << 1 & 0xFFFF
+            if accumulator >> 15 == doubled >> 15:
+                count += 1
+                accumulator = doubled
+            else:
+                break
+    exponent = count - 6 & 0xFFFF
+
+    if accumulator == 0:
+        return 0x7FFF, 0x002F
+
+    negative = accumulator >= 0x8000
+    if negative:
+        magnitude = 0x7FFF if accumulator == 0x8000 else -accumulator & 0xFFFF
+    else:
+        magnitude = accumulator
+    mantissa = mantissas[magnitude - 0x4000] & 0xFFFF
+    if negative:
+        mantissa = -mantissa & 0xFFFF
+    return mantissa, exponent
+
+
+def _folded(value: int) -> int:
+    return value if value < 0x8000 else value ^ 0xFFFF
+
+
+class DoublingsTest(unittest.TestCase):
+    def test_a_value_already_normalised_is_not_doubled(self) -> None:
+        self.assertEqual(derived.doublings(0x4000), 0)
+
+    def test_one_short_of_normalised_is_doubled_once(self) -> None:
+        self.assertEqual(derived.doublings(0x3FFF), 1)
+
+    def test_the_smallest_value_is_doubled_fourteen_times(self) -> None:
+        self.assertEqual(derived.doublings(0x0001), 14)
+
+    def test_the_largest_folded_value_is_not_doubled(self) -> None:
+        self.assertEqual(derived.doublings(0x7FFF), 0)
+
+    def test_nought_folded_is_doubled_fifteen_times(self) -> None:
+        self.assertEqual(derived.doublings(0x0000), 15)
+
+    def test_it_agrees_with_the_loop_on_every_positive_value(self) -> None:
+        wrong = [v for v in range(1, 0x8000) if derived.doublings(v) != _count_of(v)]
+
+        self.assertEqual(wrong, [])
+
+    def test_it_agrees_with_the_loop_on_every_negative_value(self) -> None:
+        wrong = [v for v in range(0x8000, 0x10000) if derived.doublings(_folded(v)) != _count_of(v)]
+
+        self.assertEqual(wrong, [])
+
+
+def _count_of(value: int) -> int:
+    count = 0
+    accumulator = value
+    while True:
+        doubled = accumulator << 1 & 0xFFFF
+        if accumulator >> 15 == doubled >> 15:
+            count += 1
+            accumulator = doubled
+        else:
+            return count
+
+
+class InvertedTest(unittest.TestCase):
+    @override
+    def setUp(self) -> None:
+        self.mantissas = tuple(0x4000 + (k * 7 & 0x3FFF) for k in range(0x4000))
+
+    def test_each_table_holds_one_entry_per_folded_value(self) -> None:
+        mantissa, exponent = derived.inverted(self.mantissas, negative=False)
+
+        self.assertEqual((len(mantissa), len(exponent)), (0x8000, 0x8000))
+
+    def test_the_positive_table_answers_what_the_cartridge_did(self) -> None:
+        mantissa, exponent = derived.inverted(self.mantissas, negative=False)
+
+        wrong = [
+            v
+            for v in range(1, 0x8000)
+            if (mantissa[v], exponent[v]) != _as_the_cartridge_did(v, self.mantissas)
+        ]
+        self.assertEqual(wrong, [])
+
+    def test_the_negative_table_answers_what_the_cartridge_did(self) -> None:
+        mantissa, exponent = derived.inverted(self.mantissas, negative=True)
+
+        wrong = [
+            v
+            for v in range(0x8000, 0x10000)
+            if (mantissa[_folded(v)], exponent[_folded(v)])
+            != _as_the_cartridge_did(v, self.mantissas)
+        ]
+        self.assertEqual(wrong, [])
+
+    def test_the_two_tables_agree_on_every_exponent(self) -> None:
+        _, one = derived.inverted(self.mantissas, negative=False)
+        _, two = derived.inverted(self.mantissas, negative=True)
+
+        self.assertEqual(one[1:], two[1:])
+
+    def test_the_value_on_the_horizon_answers_the_part_s_own_constants(self) -> None:
+        mantissa, exponent = derived.inverted(self.mantissas, negative=False)
+
+        self.assertEqual((mantissa[0], exponent[0]), (0x7FFF, 0x002F))
+
+    def test_a_mantissa_short_of_a_whole_table_is_refused(self) -> None:
+        with self.assertRaises(ValueError):
+            derived.inverted((0x4000,) * 16, negative=False)
+
+
+class ReindexTest(unittest.TestCase):
+    def test_it_reads_the_pieces_it_wrote_earlier(self) -> None:
+        into = ROOT / "build" / "derived-test"
+        into.mkdir(parents=True, exist_ok=True)
+        values = tuple(0x4000 + k % 0x3FFF for k in range(0x4000))
+        derived.write(into / "reciprocal.bin", values)
+
+        self.assertEqual(derived.pieces(into / "reciprocal.bin"), values)
+
+    def test_a_missing_piece_is_reported_rather_than_read_as_short(self) -> None:
+        into = ROOT / "build" / "derived-test"
+        into.mkdir(parents=True, exist_ok=True)
+
+        with self.assertRaises(FileNotFoundError):
+            derived.pieces(into / "nothing.bin")
 
 
 class FileTest(unittest.TestCase):

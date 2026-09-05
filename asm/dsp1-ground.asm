@@ -562,6 +562,84 @@ macro reciprocal()
 endmacro
 
 ; ---------------------------------------------------------------------------
+; $003a and $00d3 together, as three table reads and no loop.
+;
+; The two macros above are still here because ground_scale uses them, and there
+; the value arriving has already been normalised by the multiply that produced
+; it, so the loop turns nought or one time and costs almost nothing. The one
+; place it was expensive is the scanline's own distance, which arrives raw and
+; needs about ten doublings, and that is what this replaces.
+;
+; The tables are keyed on the folded value: a negative word complemented, so that
+; a word and its complement share an entry for the exponent. asm/dsp1-derived.asm
+; carries why, and derived.py builds them.
+;
+; A distance of exactly nought is entry nought of the upward table, so it needs no
+; branch. Every other value takes one of four arms: sign, then which half of the
+; table the index landed in, because a bank reaches 32,768 bytes and an entry is
+; two.
+;
+; In:  A the value, the distance plus the horizon.
+; Out: !G_RA the mantissa, !G_RB the exponent. Uses X and Y.
+; ---------------------------------------------------------------------------
+; The sign is branched on before anything else touches the accumulator. An
+; earlier version loaded a register first to remember the sign, and a load sets
+; the negative flag from what was loaded, so the test that followed read the
+; register rather than the value and every negative distance took the positive
+; arm. It cost 10,402 wrong answer bytes and one measurement to find.
+macro invert()
+    bmi ?down
+
+    asl a                       ; two bytes an entry
+    tax
+    beq ?horizon                ; nought and the value one below it fold to the
+                                ; same entry and want different exponents, so
+                                ; the one of them that is positive is answered
+                                ; here and the table holds the other
+    cpx.w #$8000                ; which half of the table the index landed in
+    bcs ?up_high
+    lda.l dsp1_recip_up,x
+    sta !G_RA
+    lda.l dsp1_recip_exponent,x
+    bra ?done
+
+?up_high:
+    lda.l dsp1_recip_up_high-$8000,x
+    sta !G_RA
+    lda.l dsp1_recip_exponent_high-$8000,x
+    bra ?done
+
+?down:
+    eor #$FFFF                  ; the complement, not the negation: it is the
+                                ; run of leading sign bits that has to survive,
+                                ; and complementing keeps it while negating does
+                                ; not
+    asl a
+    tax
+    cpx.w #$8000
+    bcs ?down_high
+    lda.l dsp1_recip_down,x
+    sta !G_RA
+    lda.l dsp1_recip_exponent,x
+    bra ?done
+
+?down_high:
+    lda.l dsp1_recip_down_high-$8000,x
+    sta !G_RA
+    lda.l dsp1_recip_exponent_high-$8000,x
+    bra ?done
+
+?horizon:
+    lda.w #$7FFF                ; $0f2 and $0f3, the part's own answer for a
+    sta !G_RA                   ; distance of nought: a scanline exactly on the
+    lda.w #$002F                ; horizon, with an exponent large enough that
+                                ; the shift after it saturates
+
+?done:
+    sta !G_RB
+endmacro
+
+; ---------------------------------------------------------------------------
 ; $0077: turn a mantissa and an exponent into a scale.
 ;
 ; It normalises again, works out how far to shift, and shifts by multiplying by
@@ -713,7 +791,13 @@ ground_scale:
 ; In:  !G_LINE, and the state ground_state loaded.
 ; Out: !G_OUT+0 through !G_OUT+6, the four words the part answers.
 ; ---------------------------------------------------------------------------
+; The seven labels below name the stages rather than being jumped to. The
+; assembler prints them, and tools/profile.py buckets a call's cycles by the
+; nearest label above each address, so the stages report their own cost instead
+; of a reader having to guess which of them the hot addresses belong to. They
+; assemble to nothing.
 ground_line:
+line_distance:
     lda !G_ACC+0                ; the distance, out of the running product:
     asl a                       ; bit fifteen of the low half into the carry,
     lda !G_ACC+2                ; then the high half doubled around it, which is
@@ -722,9 +806,10 @@ ground_line:
     clc
     adc !G_HORIZON
 
-    %normalise()
-    %reciprocal()
+line_reciprocal:
+    %invert()
 
+line_mantissa:
     lda !G_RA
     %mulk(!MULTAB2)
     sta !G_MA
@@ -740,6 +825,7 @@ ground_line:
     ; The second scale multiplies the first chain's mantissa, not the
     ; reciprocal. That is the cascade, and it is the whole reason six attempts
     ; to recover this from the answers failed.
+line_cascade:
     lda !G_MA
     %mulk(!MULTAB3)
     tay                         ; keep it while the exponent is worked out
@@ -753,11 +839,13 @@ ground_line:
 
     ; The four words. The first scale takes the two matrix words the part reads
     ; from $7f and $6f, and the second takes the two from $7e and $6e.
+line_words_first:
     lda !G_S1
     %mulk_products(!MULTAB0, !MULTAB1, !G_OUT+0)
     %mulk_shift_negated(!TMP+8, !TMP+10)
     sta !G_OUT+4
 
+line_words_second:
     lda !G_S2
     %mulk_products(!MULTAB1, !MULTAB0, !G_OUT+2)
     %mulk_shift(!TMP+8, !TMP+10)
@@ -933,6 +1021,39 @@ ground_below:
 ; In:  !G_KEY, !G_BASE, !G_STRIDE, !G_KEYS, !G_ROWS.
 ; Out: !G_ROW a long pointer to the row chosen.
 ; ---------------------------------------------------------------------------
+; ---------------------------------------------------------------------------
+; A long pointer to one entry of a trig table, out of an angle in the accumulator.
+;
+; Each table is 65,536 entries of two bytes, which is 131,072 bytes, and a low
+; addressed bank reaches 32,768. So each table is four consecutive banks, the
+; angle's top two bits pick which, and the rest picks the entry inside it.
+;
+; The pointer lands in !G_ROW and the entry is read with `lda [!G_ROW],y` with Y
+; at nought. Uses !TMP+0.
+; ---------------------------------------------------------------------------
+macro trig_pointer(table)
+    sta !TMP+0
+
+    and.w #$3FFF                ; where inside its own bank the angle sits
+    asl a                       ; two bytes an entry
+    clc
+    adc.w #$8000                ; and a low addressed bank starts there
+    sta !G_ROW+0
+
+    lda !TMP+0
+    xba                         ; the angle's high byte into the low half
+    and.w #$00FF
+    lsr a
+    lsr a
+    lsr a
+    lsr a
+    lsr a
+    lsr a                       ; which of the four banks this angle falls in
+    clc
+    adc.w #(<table>>>16)
+    sta !G_ROW+2
+endmacro
+
 ground_find:
     stz !G_LOW
     lda !G_ROWS
@@ -1002,7 +1123,31 @@ ground_find:
 ; searches either way, and it leaves the port untouched.
 ; ---------------------------------------------------------------------------
 ground_state:
-    ; The line table, keyed on argument 6.
+    ; The step, out of the part's own sine rather than out of a recorded table.
+    ;
+    ; Measured against the part across 676 keys spread over the whole word, and
+    ; against all 1,193 rows the recorded table holds: the step is the sine of
+    ; argument 6, with no exception anywhere. The sine table carries every angle
+    ; a word can hold, so this cannot miss.
+    ;
+    ; It is the step that made the ground jump. The recorded table missed on 3%
+    ; of the demo's frames, and a miss hands back the nearest key above the one
+    ; asked for: at the worst frame measured that was $2b7e for a wanted $1e74,
+    ; which is a step of $7021 where the part says $5702. The step is how far the
+    ; ground moves per scanline, so a quarter of it is the whole picture landing
+    ; somewhere else.
+    lda.l !CARRY_02+12
+    %trig_pointer(dsp1_sine_of)
+    ldy #$0000
+    lda [!G_ROW],y
+    sta !G_STEP
+
+    ; The line table, keyed on argument 6. Still a recorded table, and still
+    ; able to miss, for the horizon and the second exponent. The horizon is the
+    ; cosine of the same angle scaled by argument 4 across the whole range the
+    ; recordings cover, but the part clamps it somewhere above that range and
+    ; the clamp has not been read out of the part yet, so it stays a lookup
+    ; rather than becoming a formula that is right until it is not.
     lda.l !CARRY_02+12
     sta !G_KEY+0
     lda.w #!STATE02_LINE_ROWS
@@ -1017,11 +1162,8 @@ ground_state:
     sta !G_BASE+2
     jsr ground_find
 
-    ldy #$0002                  ; past the one key word
-    lda [!G_ROW],y
-    sta !G_STEP
-    ldy #$0004
-    lda [!G_ROW],y
+    ldy #$0004                  ; past the key word and the step, which is
+    lda [!G_ROW],y              ; taken from the sine above instead
     sta !G_HORIZON
     ldy #$0006
     lda [!G_ROW],y
@@ -1055,29 +1197,36 @@ ground_state:
     lda [!G_ROW],y
     sta !G_MAN2
 
-    ; The matrix table, keyed on argument 5.
+    ; The matrix, out of the part's own sine and cosine rather than out of a
+    ; table of what a recording happened to ask for.
+    ;
+    ; Measured across all 3,302 rows the recorded table holds: the first word is
+    ; the cosine of argument 5 and the second is its sine negated, with no
+    ; exception. Those two tables carry every angle a word can hold, so this
+    ; cannot miss. The recorded table missed on 11% of the demo's own frames,
+    ; and a miss there is not a small error: the search hands back the nearest
+    ; angle above the one asked for, which at the worst frame measured was
+    ; $732c in place of $5b0c. That is the ground drawn at a heading nobody
+    ; asked for, for as long as the miss lasts, and it is what made the scenery
+    ; jump and come back.
+    ;
+    ; Each trig table is 65,536 entries of two bytes, which is four low
+    ; addressed banks, so the angle's top two bits pick the bank and the rest
+    ; picks the entry inside it.
     lda.l !CARRY_02+10
-    sta !G_KEY+0
-    lda.w #!STATE02_MATRIX_ROWS
-    sta !G_ROWS
-    lda.w #!STATE02_MATRIX_STRIDE
-    sta !G_STRIDE
-    lda.w #!STATE02_MATRIX_KEYS
-    sta !G_KEYS
-    lda.w #(state02_matrix&$FFFF)
-    sta !G_BASE
-    lda.w #(state02_matrix>>16)
-    sta !G_BASE+2
-    jsr ground_find
-
-    ldy #$0002
+    %trig_pointer(dsp1_cosine_of)
+    ldy #$0000
     lda [!G_ROW],y              ; the cosine, which the part holds at $7f
     sta !G_MAT+0
     sta !G_MAT+6                ; and again at $6e
-    ldy #$0004
-    lda [!G_ROW],y              ; the sine, at $7e
+
+    lda.l !CARRY_02+10
+    %trig_pointer(dsp1_sine_of)
+    lda [!G_ROW],y
+    eor #$FFFF                  ; the part holds the sine negated at $7e
+    inc a
     sta !G_MAT+2
-    eor #$FFFF                  ; and negated at $6f
+    eor #$FFFF                  ; and plain at $6f
     inc a
     sta !G_MAT+4
 

@@ -212,18 +212,52 @@ static void maybe_shoot_tick(void)
     held_ram.assign(ram, ram + span);
 }
 
-static void maybe_shoot(void)
+static void write_memory_at_console_frame(void)
 {
-    if (!shot_dir) {
+    if (!wram_dir || !get_memory) {
         return;
     }
-    for (size_t at = 0; at < shot_frames.size(); at++) {
-        if (shot_frames[at] == frame_number) {
-            char path[512];
-            snprintf(path, sizeof(path), "%s/frame-%06lu.ppm", shot_dir, frame_number);
-            write_shot(path);
+    char path[512];
+    const unsigned char *ram = (const unsigned char *)get_memory(RETRO_MEMORY_SYSTEM_RAM);
+    const size_t span = get_memory_size(RETRO_MEMORY_SYSTEM_RAM);
+    if (ram && span) {
+        snprintf(path, sizeof(path), "%s/wram-%06lu.bin", wram_dir, frame_number);
+        FILE *out = fopen(path, "wb");
+        if (out) {
+            fwrite(ram, 1, span, out);
+            fclose(out);
         }
     }
+    void *vram = get_memory(RETRO_MEMORY_VIDEO_RAM);
+    const size_t vspan = get_memory_size(RETRO_MEMORY_VIDEO_RAM);
+    if (vram && vspan) {
+        snprintf(path, sizeof(path), "%s/vram-%06lu.bin", wram_dir, frame_number);
+        FILE *out = fopen(path, "wb");
+        if (out) {
+            fwrite(vram, 1, vspan, out);
+            fclose(out);
+        }
+    }
+}
+
+static void maybe_shoot(void)
+{
+    int listed = 0;
+    for (size_t at = 0; at < shot_frames.size(); at++) {
+        if (shot_frames[at] == frame_number) {
+            listed = 1;
+            break;
+        }
+    }
+    if (!listed) {
+        return;
+    }
+    if (shot_dir) {
+        char path[512];
+        snprintf(path, sizeof(path), "%s/frame-%06lu.ppm", shot_dir, frame_number);
+        write_shot(path);
+    }
+    write_memory_at_console_frame();
 }
 
 struct Press {

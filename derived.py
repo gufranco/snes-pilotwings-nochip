@@ -222,17 +222,137 @@ def write(where: Path | str, values: Sequence[int]) -> int:
     return len(raw)
 
 
-def main(argv: tuple[str, ...] | list[str] = (), say: Any = print) -> int:
-    if not argv:
-        say("usage: derived.py <mask> [<directory>], one of dsp1 or dsp1b")
-        return 2
-    into = Path(argv[1]) if len(argv) > 1 else Path("build")
-    into.mkdir(exist_ok=True)
-    part = hardware.load("snesdsp").Chip(argv[0])
+def pieces(where: Path | str) -> tuple[int, ...]:
+    """A table `write` put on disk, read back whole out of its numbered pieces.
 
-    say(f"driving the {argv[0]} for {NORMAL_HIGH - NORMAL_LOW:,} reciprocals")
+    So the re-index below can run without driving the part again. The reciprocal
+    is the part's own behaviour and takes a while to collect; turning it inside
+    out is arithmetic, and arithmetic should not need the hardware.
+    """
+    stem = Path(where)
+    raw = b""
+    piece = 0
+    while True:
+        one = stem.with_name(f"{stem.stem}-{piece}{stem.suffix}")
+        if not one.exists():
+            break
+        raw += one.read_bytes()
+        piece += 1
+    if not raw:
+        raise FileNotFoundError(f"no pieces of {stem} on disk")
+    return tuple(struct.unpack(f"<{len(raw) // 2}H", raw))
+
+
+FOLDED = 0x8000
+"""How many values the folded form of a word takes, and so how long a re-index is.
+
+A value and its bitwise complement fold to the same number, so a table keyed on
+the folded form is half the length of one keyed on the word. The two halves need
+different mantissas, which is why there are two tables rather than one.
+"""
+
+HORIZON_MANTISSA = 0x7FFF
+HORIZON_EXPONENT = 0x002F
+"""What `$00d3` answers for a distance of exactly nought, out of `$0f2` and `$0f3`.
+
+A scanline exactly on the horizon. The exponent is large enough that the shift
+after it saturates, which is the part's way of answering that there is no ground
+on that line.
+"""
+
+BIAS = 6
+"""What `$00d3` takes off the doubling count to make its exponent."""
+
+
+def doublings(folded: int) -> int:
+    """How many times `$003a` doubles a value whose folded form is that.
+
+    The loop doubles while the top two bits agree, so what it leaves has bit 14
+    set and bit 15 clear. The count is therefore the number of leading bits that
+    match the sign, less one, and folding a negative value with a bitwise
+    complement leaves that count unchanged. Nought folded is every bit a sign
+    bit, which is fifteen doublings.
+    """
+    if folded == 0:
+        return 15
+    count = 0
+    while folded < NORMAL_LOW:
+        folded <<= 1
+        count += 1
+    return count
+
+
+def inverted(mantissas: Sequence[int], negative: bool) -> tuple[tuple[int, ...], tuple[int, ...]]:
+    """The part's reciprocal keyed on the value asked about rather than on the shift.
+
+    `mantissas` is what `reciprocal` collected: one entry per normalised magnitude,
+    which means the cartridge had to normalise first and then look up. The
+    normalising was a loop, and the loop was the dearest thing in the ground.
+
+    Keying on the value instead removes it. The magnitude a value normalises to
+    is a function of the value, so the mantissa is too, and so is the exponent.
+
+    The two signs need separate tables. A negative value folds to one less than
+    its own magnitude, so it normalises to a magnitude one step up the table, and
+    the answer comes back negated. The exponent is the same for both, because the
+    doubling count is a property of the folded form alone.
+    """
+    if len(mantissas) != NORMAL_HIGH - NORMAL_LOW:
+        raise ValueError(
+            f"a reciprocal table is {NORMAL_HIGH - NORMAL_LOW:,} entries, not {len(mantissas):,}"
+        )
+    mantissa: list[int] = []
+    exponent: list[int] = []
+    for folded in range(FOLDED):
+        count = doublings(folded)
+        if folded == 0 and not negative:
+            mantissa.append(HORIZON_MANTISSA)
+            exponent.append(HORIZON_EXPONENT)
+            continue
+        exponent.append(count - BIAS & 0xFFFF)
+        magnitude = (folded + 1 if negative else folded) << count & 0xFFFF
+        if magnitude >= NORMAL_HIGH or magnitude == 0:
+            magnitude = NORMAL_HIGH - 1
+        answer = mantissas[magnitude - NORMAL_LOW] & 0xFFFF
+        mantissa.append(-answer & 0xFFFF if negative else answer)
+    return tuple(mantissa), tuple(exponent)
+
+
+def reindex(into: Path, values: Sequence[int], say: Any) -> None:
+    """The three tables the ground reads, turned inside out from the reciprocal.
+
+    No part is driven here. The reciprocal above is the part's own behaviour;
+    these are that same behaviour asked a different question, so they are
+    arithmetic over what it already said.
+    """
+    for negative, stem in ((False, "recip-up"), (True, "recip-down")):
+        mantissa, exponent = inverted(values, negative=negative)
+        say(f"  wrote {write(into / f'{stem}.bin', mantissa):,} bytes")
+        if not negative:
+            continue
+        say(f"  wrote {write(into / 'recip-exponent.bin', exponent):,} bytes")
+
+
+def main(argv: tuple[str, ...] | list[str] = (), say: Any = print) -> int:
+    rest = [one for one in argv if one != "--reindex"]
+    again = len(rest) != len(list(argv))
+    if not rest:
+        say("usage: derived.py <mask> [<directory>] [--reindex], one of dsp1 or dsp1b")
+        return 2
+    into = Path(rest[1]) if len(rest) > 1 else Path("build")
+    into.mkdir(exist_ok=True)
+
+    if again:
+        say(f"turning the reciprocal already in {into} inside out")
+        reindex(into, pieces(into / "reciprocal.bin"), say)
+        return 0
+
+    part = hardware.load("snesdsp").Chip(rest[0])
+
+    say(f"driving the {rest[0]} for {NORMAL_HIGH - NORMAL_LOW:,} reciprocals")
     values = reciprocal(part, NORMAL_LOW, NORMAL_HIGH, watch=lambda at: say(f"  {at:,}"))
     say(f"  wrote {write(into / 'reciprocal.bin', values):,} bytes")
+    reindex(into, values, say)
 
     say(f"driving it for {WHOLE:,} angles, six magnitudes each")
     sine, cosine = trig(part, watch=lambda at: say(f"  {at:,}"))
