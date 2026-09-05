@@ -376,22 +376,30 @@ macro mulk_shift(low, high)
     rol a
 endmacro
 
+; Negating the product and then shifting is the same as taking one off it,
+; shifting, and flipping every bit of what comes out. Negating is flipping every
+; bit and adding one, so the product negated is one less than it flipped, and
+; flipping commutes with a shift that carries the sign down. Taking one off is
+; cheaper than flipping thirty two bits and adding one to them.
+;
+; The shift itself has to come after, not before: the part negates the whole
+; product, and negating a shifted answer would round the wrong way on every
+; product the shift does not divide.
 macro mulk_shift_negated(low, high)
-    lda <high>
-    eor #$FFFF
-    sta <high>
     lda <low>
-    eor #$FFFF
-    clc
-    adc #$0001
+    dec a
     sta <low>
+    cmp #$FFFF                  ; it wrapped, so the borrow goes to the high half
+    bne ?whole
+    dec <high>
+?whole:
     lda <high>
-    adc #$0000
     tay
     lda <low>
     asl a
     tya
     rol a
+    eor #$FFFF
 endmacro
 
                        ; there is a read, a change and a write
@@ -444,37 +452,36 @@ endmacro
 ;
 ; X is free here: the multiplies set it themselves and ground_scale counts its
 ; own shift in Y.
-ground_normalise:
+macro normalise()
     ldx #$0000
     cmp #$0000
-    beq .settled
+    beq ?settled
 
-.again:
+?again:
     asl a                       ; carry the old sign, negative the new one
-    bcs .wasneg
-    bpl .keep                   ; was positive and still is
-    bra .stop
+    bcs ?wasneg
+    bpl ?keep                   ; was positive and still is
+    bra ?stop
 
-.wasneg:
-    bmi .keep                   ; was negative and still is
+?wasneg:
+    bmi ?keep                   ; was negative and still is
 
-.stop:
+?stop:
     ror a                       ; the doubling overflowed, so it is undone. The
                                 ; bit it pushed out is still in the carry, which
                                 ; is where a rotate right puts bit fifteen back
                                 ; from, so this is the value exactly as it was
+?settled:
     stx !G_COUNT
     sta !G_NORM
-    rts
+    bra ?done
 
-.keep:
+?keep:
     inx
-    bra .again
+    bra ?again
 
-.settled:
-    stx !G_COUNT
-    sta !G_NORM
-    rts
+?done:
+endmacro
 
 ; ---------------------------------------------------------------------------
 ; $00d3: the reciprocal, as one table read.
@@ -506,51 +513,53 @@ ground_normalise:
 ; In:  !G_NORM and !G_COUNT, as ground_normalise left them.
 ; Out: !G_RA the mantissa, !G_RB the exponent.
 ; ---------------------------------------------------------------------------
-ground_reciprocal:
+macro reciprocal()
     lda !G_COUNT
     sec
     sbc #$0006
     sta !G_RB
 
     lda !G_NORM
-    bne .real
+    bne ?real
 
     lda #$7FFF                  ; $0f2 and $0f3, the answer for nought
     sta !G_RA
     lda #$002F
     sta !G_RB
-    rts
+    bra ?done
 
-.real:
-    stz !G_NEG
-    lda !G_NORM
-    bpl .magnitude
+?real:
+    ldy #$0000                  ; whether the sign has to go back afterwards, in
+    lda !G_NORM                 ; a register rather than in the direct page,
+    bpl ?magnitude              ; which is the console's own memory
 
-    inc !G_NEG
+    iny
     cmp #$8000
-    bne .flip
+    bne ?flip
     lda #$7FFF                  ; the one value that cannot be negated
-    bra .magnitude
+    bra ?magnitude
 
-.flip:
+?flip:
     eor #$FFFF
     inc a
 
-.magnitude:
+?magnitude:
     sec
     sbc #$4000                  ; the table starts where the normalise loop's
     asl a                       ; range does, and each entry is two bytes
     tax
     lda.l dsp1_reciprocal_of,x
 
-    ldy !G_NEG
-    beq .done
+    cpy #$0000
+    beq ?tail
     eor #$FFFF                  ; the part negates its own answer for a
     inc a                       ; negative input
 
-.done:
+?tail:
     sta !G_RA
-    rts
+    bra ?done
+?done:
+endmacro
 
 ; ---------------------------------------------------------------------------
 ; $0077: turn a mantissa and an exponent into a scale.
@@ -663,7 +672,7 @@ ground_shift_0:
 
 ; ---------------------------------------------------------------------------
 ground_scale:
-    jsr ground_normalise
+    %normalise()
 
     lda !G_EXP
     sec
@@ -713,8 +722,8 @@ ground_line:
     clc
     adc !G_HORIZON
 
-    jsr ground_normalise
-    jsr ground_reciprocal
+    %normalise()
+    %reciprocal()
 
     lda !G_RA
     %mulk(!MULTAB2)
