@@ -1123,200 +1123,186 @@ macro build_table(table)
 ?signed:
     sta !TMP+6
 
-    stz !TMP+8
-    stz !TMP+10
-
-    ; Sixteen entries a turn. Advancing the index and testing the loop were a
-    ; third of what an entry cost when they were paid once an entry, and where
-    ; each of the sixteen sits is known when this is assembled, so they are paid
-    ; once per sixteen instead. Past sixteen the return falls away: thirty two
-    ; and sixty four are worth another 0.2% between them and cost twice and four
-    ; times the code.
+    ; The sum's high half lives in the index register. The direct page is the
+    ; console's own memory and it answers more slowly than the cartridge, so an
+    ; entry that read and wrote both halves there paid four times for it; this
+    ; one pays twice.
+    ;
+    ; Sixteen entries a turn, because advancing the index and testing the loop
+    ; were a third of what an entry cost when they were paid once an entry.
     ;
     ; The carry the low half's addition leaves is what the high half's needs, and
-    ; nothing between them touches it.
+    ; neither a store nor a transfer between registers touches it.
+    lda #$0000
+    tay
     ldx #$0000
 ?turn:
-    lda !TMP+8
     sta.l <table>+1,x
     clc
     adc !TMP+0
     sta !TMP+8
-
-    lda !TMP+10
+    tya
     sta.l <table>+3,x
     adc !TMP+6
-    sta !TMP+10
-
+    tay
     lda !TMP+8
+
     sta.l <table>+9,x
     clc
     adc !TMP+0
     sta !TMP+8
-
-    lda !TMP+10
+    tya
     sta.l <table>+11,x
     adc !TMP+6
-    sta !TMP+10
-
+    tay
     lda !TMP+8
+
     sta.l <table>+17,x
     clc
     adc !TMP+0
     sta !TMP+8
-
-    lda !TMP+10
+    tya
     sta.l <table>+19,x
     adc !TMP+6
-    sta !TMP+10
-
+    tay
     lda !TMP+8
+
     sta.l <table>+25,x
     clc
     adc !TMP+0
     sta !TMP+8
-
-    lda !TMP+10
+    tya
     sta.l <table>+27,x
     adc !TMP+6
-    sta !TMP+10
-
+    tay
     lda !TMP+8
+
     sta.l <table>+33,x
     clc
     adc !TMP+0
     sta !TMP+8
-
-    lda !TMP+10
+    tya
     sta.l <table>+35,x
     adc !TMP+6
-    sta !TMP+10
-
+    tay
     lda !TMP+8
+
     sta.l <table>+41,x
     clc
     adc !TMP+0
     sta !TMP+8
-
-    lda !TMP+10
+    tya
     sta.l <table>+43,x
     adc !TMP+6
-    sta !TMP+10
-
+    tay
     lda !TMP+8
+
     sta.l <table>+49,x
     clc
     adc !TMP+0
     sta !TMP+8
-
-    lda !TMP+10
+    tya
     sta.l <table>+51,x
     adc !TMP+6
-    sta !TMP+10
-
+    tay
     lda !TMP+8
+
     sta.l <table>+57,x
     clc
     adc !TMP+0
     sta !TMP+8
-
-    lda !TMP+10
+    tya
     sta.l <table>+59,x
     adc !TMP+6
-    sta !TMP+10
-
+    tay
     lda !TMP+8
+
     sta.l <table>+65,x
     clc
     adc !TMP+0
     sta !TMP+8
-
-    lda !TMP+10
+    tya
     sta.l <table>+67,x
     adc !TMP+6
-    sta !TMP+10
-
+    tay
     lda !TMP+8
+
     sta.l <table>+73,x
     clc
     adc !TMP+0
     sta !TMP+8
-
-    lda !TMP+10
+    tya
     sta.l <table>+75,x
     adc !TMP+6
-    sta !TMP+10
-
+    tay
     lda !TMP+8
+
     sta.l <table>+81,x
     clc
     adc !TMP+0
     sta !TMP+8
-
-    lda !TMP+10
+    tya
     sta.l <table>+83,x
     adc !TMP+6
-    sta !TMP+10
-
+    tay
     lda !TMP+8
+
     sta.l <table>+89,x
     clc
     adc !TMP+0
     sta !TMP+8
-
-    lda !TMP+10
+    tya
     sta.l <table>+91,x
     adc !TMP+6
-    sta !TMP+10
-
+    tay
     lda !TMP+8
+
     sta.l <table>+97,x
     clc
     adc !TMP+0
     sta !TMP+8
-
-    lda !TMP+10
+    tya
     sta.l <table>+99,x
     adc !TMP+6
-    sta !TMP+10
-
+    tay
     lda !TMP+8
+
     sta.l <table>+105,x
     clc
     adc !TMP+0
     sta !TMP+8
-
-    lda !TMP+10
+    tya
     sta.l <table>+107,x
     adc !TMP+6
-    sta !TMP+10
-
+    tay
     lda !TMP+8
+
     sta.l <table>+113,x
     clc
     adc !TMP+0
     sta !TMP+8
-
-    lda !TMP+10
+    tya
     sta.l <table>+115,x
     adc !TMP+6
-    sta !TMP+10
-
+    tay
     lda !TMP+8
+
     sta.l <table>+121,x
     clc
     adc !TMP+0
     sta !TMP+8
-
-    lda !TMP+10
+    tya
     sta.l <table>+123,x
     adc !TMP+6
-    sta !TMP+10
+    tay
+    lda !TMP+8
 
-    txa                         ; a hundred and twenty eight bytes a turn, which
-    clc                         ; is sixteen entries of eight
+    sta !TMP+8                  ; a hundred and twenty eight bytes a turn, which
+    txa                         ; is sixteen entries of eight
+    clc
     adc #$0080
     tax
+    lda !TMP+8
     cpx.w #!MULSPAN
     bcs ?filled
     jmp ?turn
