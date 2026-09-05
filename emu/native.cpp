@@ -124,6 +124,42 @@ static void write_held(unsigned long tick)
     }
 }
 
+static long rate_at = -1;
+static unsigned long rate_from = 0;
+static unsigned long rate_to = 0;
+static long rate_last = -1;
+static unsigned long rate_first = 0;
+static unsigned long rate_first_console = 0;
+static unsigned long rate_reported = 0;
+
+static void maybe_note_rate(void)
+{
+    if (rate_at < 0 || !get_memory || rate_reported) {
+        return;
+    }
+    const unsigned char *ram = (const unsigned char *)get_memory(RETRO_MEMORY_SYSTEM_RAM);
+    const size_t span = get_memory_size(RETRO_MEMORY_SYSTEM_RAM);
+    if (!ram || span < (size_t)rate_at + 2) {
+        return;
+    }
+    const unsigned long tick = ram[rate_at] | ram[rate_at + 1] << 8;
+    if ((long)tick == rate_last) {
+        return;
+    }
+    rate_last = (long)tick;
+    if (tick >= rate_from && rate_first_console == 0) {
+        rate_first = tick;
+        rate_first_console = frame_number;
+        return;
+    }
+    if (tick >= rate_to && rate_first_console != 0) {
+        rate_reported = 1;
+        printf("RATE from=%lu at=%lu to=%lu at=%lu frames=%.4f\n", rate_first, rate_first_console,
+               tick, frame_number,
+               (double)(frame_number - rate_first_console) / (double)(tick - rate_first));
+    }
+}
+
 static void maybe_shoot_tick(void)
 {
     if (tick_at < 0 || !get_memory) {
@@ -394,6 +430,15 @@ int main(int argc, char **argv)
         }
     }
 
+    const char *rate_text = getenv("PWRATE");
+    if (rate_text) {
+        rate_at = (long)strtoul(rate_text, NULL, 0);
+        const char *from_text = getenv("PWRATEFROM");
+        const char *to_text = getenv("PWRATETO");
+        rate_from = from_text ? strtoul(from_text, NULL, 0) : 250;
+        rate_to = to_text ? strtoul(to_text, NULL, 0) : 500;
+    }
+
     const char *tick_text = getenv("PWTICK");
     if (tick_text) {
         tick_at = (long)strtoul(tick_text, NULL, 0);
@@ -434,6 +479,7 @@ int main(int argc, char **argv)
         frame_number = at;
         apply_script(at);
         retro_run();
+        maybe_note_rate();
         maybe_shoot();
         maybe_shoot_tick();
         for (size_t k = 0; k < shot_frames.size(); k++) {

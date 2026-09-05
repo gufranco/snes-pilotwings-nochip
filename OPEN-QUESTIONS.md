@@ -2889,3 +2889,61 @@ built from how often the recording asks each command is not a measurement of
 where the time goes. Both times the model said a change was worth about a fifth
 of the search and both times the console disagreed. What settles it is a counter
 in the routine and a clock on the frame.
+
+## 36. An exact clock, and what it says 15 frames a second would take
+
+**11.07 console frames per frame of the game's clock**, over game frames 250 to
+1000, against the retail cartridge's 1.00 measured the same way. That is 5.4
+frames a second where the cartridge gives 60.
+
+### The instrument came first, because the old one was lying
+
+Every speed figure before this was taken by dumping work RAM on a grid of console
+frames and interpolating the counter between samples. The grid was 20 or 100
+console frames wide and the differences being argued over were smaller than that.
+`emu/native.cpp` now watches the counter on every console frame and reports the
+exact frame each end of the window was first reached on.
+
+Calibrated by adding 24 instructions that do nothing to a routine that runs three
+times a frame: 10.748 against 10.780, which is the noise floor. Differences above
+about 0.05 are real.
+
+### Where the time is
+
+Each row is the whole flight re-measured with one piece stubbed out.
+
+| | console frames per game frame |
+|---|---|
+| the retail cartridge | 1.00 |
+| as it stands | 11.07 |
+| with ground_line never called | 6.10 |
+| with the multiply tables never built | 9.42 |
+
+So `ground_line` is 4.97 of the 11.07, and building the tables is 1.65. Both
+numbers carry a caveat worth stating: `ground_normalise` and `ground_scale` both
+loop a number of times that depends on the value they are given, so a stub that
+leaves those values garbage changes how long they run as well as removing work.
+
+Everything else is small enough to have been counted rather than estimated, per
+game frame: 132 calls into the port stubs, 29 into the mirrored hooks, 16 into
+the lookup, and about 130 halvings inside it.
+
+### What 15 frames a second would need
+
+Four console frames per game frame. Removing every scanline of `$0a`'s
+arithmetic and every table build together accounts for 6.62 of the 11.07, which
+leaves 4.45, or 13.5 frames a second. So the target is above what a perfect `$0a`
+reaches, and getting there would mean also removing the roughly 3.4 console
+frames that sit between that and the retail cartridge's 1.00, none of which is
+the port, the hooks or the search.
+
+### One measurement that is still not understood
+
+Counting `ground_normalise`'s doublings in a register rather than in a direct
+page word takes eight cycles off each of about 2,120 doublings a frame. The
+flight model it produces is byte for byte the one the current code produces, and
+the doubling count is the same to within five. It measures 11.30 against 11.07.
+
+That is the fourth change this session that was strictly cheaper in instructions
+and measured slower, and the first one measured on an instrument known to be
+exact to 0.05. It is recorded rather than explained.
