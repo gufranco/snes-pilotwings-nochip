@@ -54,7 +54,6 @@
 
 lorom
 
-incsrc "../build/state02-map.asm"
 
 org $908000
 !PORTRAM = $7FDC00              ; measured free: the game never wrote $7FDB76
@@ -74,16 +73,12 @@ incsrc "dsp1-thunks.asm"
 incsrc "dsp1-raster.asm"
 incsrc "dsp1-window.asm"
 incsrc "dsp1-derived.asm"
-incsrc "../build/state02-data.asm"
 incsrc "../build/lut-map.asm"
 incsrc "../build/lut-axes.asm"
 
 print "code          ", dec(code_end-$108000), " bytes"
 print "dsp1_answer at ", hex(dsp1_answer)
 print "dsp1_lut at    ", hex(dsp1_lut)
-print "state02_line at   ", hex(state02_line)
-print "state02_scale at  ", hex(state02_scale)
-print "state02_matrix at ", hex(state02_matrix)
 print "ground_block at   ", hex(ground_block)
 print "op_00 at       ", hex(op_00)
 print "SYM op_00_body ", hex(op_00_body)

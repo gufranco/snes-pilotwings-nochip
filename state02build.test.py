@@ -1,6 +1,7 @@
 import struct
 import tempfile
 import unittest
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, ClassVar, override
 
@@ -342,6 +343,78 @@ class Main(unittest.TestCase):
                 self.assertTrue((into / f"state02-{name}.bin").exists())
             self.assertTrue((into / "state02-map.asm").exists())
             self.assertTrue((into / "state02-data.asm").exists())
+
+
+class _Horizon:
+    """A part that answers `$02` by putting a rule's value in the horizon cell."""
+
+    def __init__(self, rule: Callable[[int, int], int]) -> None:
+        self.rule = rule
+        self.taken: list[int] = []
+        self.pending: list[int] = []
+        self.core = self
+        self.stores = self
+        self.scratch = [0] * 0x100
+
+    def write(self, value: int) -> None:
+        self.taken.append(value)
+
+    def step(self, count: int) -> None:
+        if self.pending or len(self.taken) < 15:
+            return
+        _, *rest = self.taken
+        words = tuple(rest[k] | rest[k + 1] << 8 for k in range(0, len(rest) - 1, 2))
+        self.scratch[parameter.CELLS["horizon"]] = self.rule(words[4], words[6]) & 0xFFFF
+        self.taken = []
+        self.pending = [0, 0, 0, 0, 0, 0, 0, 0]
+
+    @property
+    def asking(self) -> bool:
+        return bool(self.pending)
+
+    def read(self) -> int:
+        return self.pending.pop(0)
+
+
+class ClampedTest(unittest.TestCase):
+    def test_it_holds_one_entry_for_every_angle(self) -> None:
+        found = state02build.clamped(_Horizon(lambda arg4, arg6: 0), count=64)
+
+        self.assertEqual(len(found), 64)
+
+    def test_it_negates_what_the_part_answers(self) -> None:
+        found = state02build.clamped(_Horizon(lambda arg4, arg6: -0x1234), count=4)
+
+        self.assertEqual(found[0], 0x1234)
+
+    def test_it_asks_with_the_scale_that_makes_the_answer_the_value_itself(self) -> None:
+        seen: list[int] = []
+
+        def rule(arg4: int, arg6: int) -> int:
+            seen.append(arg4)
+            return 0
+
+        state02build.clamped(_Horizon(rule), count=2)
+
+        self.assertEqual(set(seen), {state02build.WHOLE_SCALE})
+
+    def test_each_angle_is_asked_for_in_turn(self) -> None:
+        seen: list[int] = []
+
+        def rule(arg4: int, arg6: int) -> int:
+            seen.append(arg6)
+            return 0
+
+        state02build.clamped(_Horizon(rule), count=5)
+
+        self.assertEqual(seen, [0, 1, 2, 3, 4])
+
+    def test_it_reports_where_it_has_reached(self) -> None:
+        seen: list[int] = []
+
+        state02build.clamped(_Horizon(lambda arg4, arg6: 0), count=2, watch=seen.append)
+
+        self.assertEqual(seen, [0])
 
 
 class File(unittest.TestCase):

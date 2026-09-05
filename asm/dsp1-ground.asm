@@ -116,19 +116,12 @@
 !G_AT      = $92                ; how far into the two buffers the loop has got
 !G_TURNS   = $94                ; how many scanlines are left
 
-; The search's own variables. A row index fits in sixteen bits because the
-; largest of the three tables has 3,302 rows, and a row offset fits too because
-; the largest table is 30,330 bytes and every one of them starts at $8000.
-!G_KEY     = $96                ; the key wanted, up to two words
-!G_BASE    = $9A                ; where the table starts, as a long address
-!G_STRIDE  = $9E                ; how many bytes one row takes
-!G_KEYS    = $A0                ; how many words of that row are the key
-!G_ROWS    = $A2                ; how many rows the table holds
-!G_LOW     = $A4                ; the search's low bound
-!G_HIGH    = $A6                ; and its high bound
-!G_MID     = $A8                ; the row being compared
-!G_ROW     = $AA                ; where that row is, as a long address
-!G_WORK    = $AE                ; the row offset multiply, two words
+; The two the table reads need. There was a bisecting search here as well, over
+; three tables recorded from playthroughs, and it is gone: every one of the ten
+; words $02 leaves behind is now computed or read from a table covering the whole
+; of its key, so there is nothing left to search and nothing left to miss.
+!G_HELD    = $96                ; one value kept across a multiply
+!G_ROW     = $AA                ; where a table entry is, as a long address
 
 ; The distance, kept as a running thirty two bit product rather than multiplied
 ; out on every scanline. See ground_seed for why that is exact rather than close.
@@ -933,94 +926,55 @@ ground_next:
     rts
 
 ; ---------------------------------------------------------------------------
-; Where a row lives: the table's start plus the row index times the stride.
+; A signed sixteen by sixteen multiply, shifted down fifteen places.
 ;
-; Shift and add, because the strides are 6, 8 and 10 bytes and none of them is
-; a power of two. Four passes at worst, and it runs three times per bisect step
-; rather than per scanline.
+; Both operands go in as magnitudes and the sign goes back on the whole thirty
+; two bit product, because shifting a negated product and negating a shifted one
+; are not the same number.
 ;
-; In:  !G_MID the row index, !G_BASE, !G_STRIDE.
-; Out: !G_ROW a long pointer to that row.
+; In:  A the first operand, the second already in !TMP+2.
+; Out: A the product shifted. Uses !TMP+0 through !TMP+13.
 ; ---------------------------------------------------------------------------
-ground_rowat:
-    lda !G_MID
-    sta !G_WORK+0               ; doubled on every pass
-    lda !G_STRIDE
-    sta !G_WORK+2               ; halved on every pass
-    stz !G_ROW
+macro multiply_shifted()
+    stz !TMP+10                 ; how many of the two were negative
+    bpl ?first
+    eor #$FFFF
+    inc a
+    inc !TMP+10
+?first:
+    sta !TMP+0
 
--
-    lsr !G_WORK+2
-    bcc +
-    lda !G_ROW
+    lda !TMP+2
+    bpl ?second
+    eor #$FFFF
+    inc a
+    inc !TMP+10
+?second:
+    sta !TMP+2
+
+    jsl mul16
+
+    lda !TMP+10
+    lsr a                       ; the carry now holds the low bit of the count
+    bcc ?positive
+
+    lda !TMP+4                  ; one of the two was negative, so the product is
+    eor #$FFFF
     clc
-    adc !G_WORK+0
-    sta !G_ROW
-+
-    asl !G_WORK+0
-    lda !G_WORK+2
-    bne -
+    adc #$0001
+    sta !TMP+4
+    lda !TMP+6
+    eor #$FFFF
+    adc #$0000
+    sta !TMP+6
 
-    lda !G_ROW
-    clc
-    adc !G_BASE
-    sta !G_ROW
-    lda !G_BASE+2
-    sta !G_ROW+2
-    rts
+?positive:
+    lda !TMP+4
+    asl a                       ; bit fifteen of the low half into the carry,
+    lda !TMP+6
+    rol a                       ; then the high half doubled around it
+endmacro
 
-; ---------------------------------------------------------------------------
-; Whether the row in !G_ROW sits below the key wanted.
-;
-; Keys are argument words the cartridge wrote, so they are compared as unsigned
-; and in the same order the builder sorted them in. A two word key compares the
-; second word only when the first is equal, which is what sorting on the pair
-; means.
-;
-; Out: carry clear when the row is below the key, set otherwise.
-; ---------------------------------------------------------------------------
-ground_below:
-    ldy #$0000
-    lda [!G_ROW],y
-    cmp !G_KEY+0
-    bcc .below
-    bne .notbelow               ; above it on the first word alone
-
-    lda !G_KEYS
-    cmp #$0002
-    bcc .notbelow               ; a one word key, and it matched
-
-    ldy #$0002
-    lda [!G_ROW],y
-    cmp !G_KEY+2
-    bcc .below
-
-.notbelow:
-    sec
-    rts
-
-.below:
-    clc
-    rts
-
-; ---------------------------------------------------------------------------
-; Find the row a key names, or the nearest one above it.
-;
-; A plain lower bound: halve the range until it is empty, and !G_LOW is then
-; the first row whose key is not below the one wanted. That row is the answer
-; when the key is in the table, and the nearest one above it when it is not.
-;
-; A key the table does not hold is possible. The tables carry every $02 argument
-; set all three recordings hold, so the demo never misses, but a player doing
-; something no recording did would. These arguments are an aircraft's attitude
-; sampled every frame, so the row above is the next frame's worth away rather
-; than anything: a near miss instead of a failure.
-;
-; Twelve compares at worst, for the largest of the three tables.
-;
-; In:  !G_KEY, !G_BASE, !G_STRIDE, !G_KEYS, !G_ROWS.
-; Out: !G_ROW a long pointer to the row chosen.
-; ---------------------------------------------------------------------------
 ; ---------------------------------------------------------------------------
 ; A long pointer to one entry of a trig table, out of an angle in the accumulator.
 ;
@@ -1054,73 +1008,40 @@ macro trig_pointer(table)
     sta !G_ROW+2
 endmacro
 
-ground_find:
-    stz !G_LOW
-    lda !G_ROWS
-    sta !G_HIGH
-
-.step:
-    lda !G_LOW
-    cmp !G_HIGH
-    bcs .settled
-
-    clc
-    adc !G_HIGH                 ; low plus high cannot pass sixteen bits: the
-    lsr a                       ; largest table has 3,302 rows
-    sta !G_MID
-
-    jsr ground_rowat
-    jsr ground_below
-    bcc .above
-
-    lda !G_MID                  ; this row could still be the one, so it
-    sta !G_HIGH                 ; becomes the top of the range
-    bra .step
-
-.above:
-    lda !G_MID
-    inc a
-    sta !G_LOW
-    bra .step
-
-.settled:
-    lda !G_LOW
-    cmp !G_ROWS
-    bcc .inside
-
-    lda !G_ROWS                 ; every key in the table is below the one
-    dec a                       ; wanted, so the last row is the nearest
-
-.inside:
-    sta !G_MID
-    jsr ground_rowat
-    rts
-
 ; ---------------------------------------------------------------------------
-; The ten words $0a reads, out of the three tables $02's arguments key.
+; The same, for the clamped cosine, whose four banks are not consecutive.
 ;
-; $02 writes all ten into the part's own memory and answers four words that
-; have nothing to do with them, which is why the recorded-answer table could
-; never carry them. state02build.py drives the part across every $02 argument
-; set the recordings hold and splits what it finds three ways:
-;
-;   keyed on argument 6        the step, the horizon, the second exponent
-;   keyed on arguments 2 and 6 both mantissas and the first exponent
-;   keyed on argument 5        the matrix, as two words
-;
-; The split is measured, not assumed: across all 6,980 distinct sets no key
-; carries two different answers, which is what makes each table a function of
-; its key rather than a hopeful reading.
-;
-; The matrix is two words because the other two are those two again. The part
-; writes the cosine twice and the sine twice, once negated, on every one of
-; those 6,980 sets, and state02build.py refuses a set that breaks it rather
-; than storing half a matrix.
-;
-; !CARRY_02 is where dsp1-port.asm keeps $02's arguments as they arrive. Reading
-; them here rather than doing the lookup when $02 completes costs nothing: the
-; game asks $02 once per frame and $0a once per frame, so it is the same three
-; searches either way, and it leaves the port untouched.
+; The window the redirected accesses land in sits between the two pairs, so the
+; upper half is one bank further along than counting would put it. Adding that
+; one is the whole difference from the macro above.
+; ---------------------------------------------------------------------------
+macro clamped_pointer()
+    sta !TMP+0
+
+    and.w #$3FFF
+    asl a
+    clc
+    adc.w #$8000
+    sta !G_ROW+0
+
+    lda !TMP+0
+    xba
+    and.w #$00FF
+    lsr a
+    lsr a
+    lsr a
+    lsr a
+    lsr a
+    lsr a                       ; which of the four banks this angle falls in
+    cmp.w #$0002
+    bcc ?below
+    inc a                       ; the upper pair sits past the window bank
+?below:
+    clc
+    adc.w #(dsp1_clamped_cosine>>16)
+    sta !G_ROW+2
+endmacro
+
 ; ---------------------------------------------------------------------------
 ground_state:
     ; The step, out of the part's own sine rather than out of a recorded table.
@@ -1142,60 +1063,86 @@ ground_state:
     lda [!G_ROW],y
     sta !G_STEP
 
-    ; The line table, keyed on argument 6. Still a recorded table, and still
-    ; able to miss, for the horizon and the second exponent. The horizon is the
-    ; cosine of the same angle scaled by argument 4 across the whole range the
-    ; recordings cover, but the part clamps it somewhere above that range and
-    ; the clamp has not been read out of the part yet, so it stays a lookup
-    ; rather than becoming a formula that is right until it is not.
+    ; The horizon, the second mantissa and the second exponent, all three out of
+    ; the one value $02 derives them from.
+    ;
+    ; asm/dsp1-derived.asm carries what that value is and why it is a table
+    ; rather than the cosine: near and past a quarter turn the part holds it at a
+    ; floor, and the floor has not been read out of the part's program. It does
+    ; not need to be. The value depends on argument 6 alone, so every angle a
+    ; word can hold was asked for and the answer cannot miss.
+    ;
+    ; Measured against the part across 737 angles spread over the whole word, all
+    ; three are exact. The recorded table they replace missed on 3%, 21% and 3%
+    ; of the demo's own frames.
     lda.l !CARRY_02+12
-    sta !G_KEY+0
-    lda.w #!STATE02_LINE_ROWS
-    sta !G_ROWS
-    lda.w #!STATE02_LINE_STRIDE
-    sta !G_STRIDE
-    lda.w #!STATE02_LINE_KEYS
-    sta !G_KEYS
-    lda.w #(state02_line&$FFFF)
-    sta !G_BASE
-    lda.w #(state02_line>>16)
-    sta !G_BASE+2
-    jsr ground_find
-
-    ldy #$0004                  ; past the key word and the step, which is
-    lda [!G_ROW],y              ; taken from the sine above instead
-    sta !G_HORIZON
-    ldy #$0006
+    %clamped_pointer()
     lda [!G_ROW],y
+    sta !G_HELD
+
+    ; The horizon is that value times argument 4, shifted down fifteen places.
+    lda.l !CARRY_02+8           ; argument 4
+    sta !TMP+2
+    lda !G_HELD
+    %multiply_shifted()
+    sta !G_HORIZON
+
+    ; The second mantissa and exponent are the normalise and the reciprocal of
+    ; the same value, which is the chain every scanline already runs. The part's
+    ; exponent there is the doubling count plus one, and %invert() leaves the
+    ; count less six, so seven is the difference between them.
+    lda !G_HELD
+    %invert()
+    lda !G_RA
+    sta !G_MAN2
+    lda !G_RB
+    clc
+    adc.w #$0007
     sta !G_EXP2
 
-    ; The scale table, keyed on arguments 2 and 6 in that order, which is the
-    ; order state02build.py sorted the rows in.
-    lda.l !CARRY_02+4
-    sta !G_KEY+0
+    ; The first scale, out of argument 2 and the part's own cosine.
+    ;
+    ; Measured against the part across 1,404 argument sets spanning both scales
+    ; and the whole turn: the value behind the pair is argument 2 plus argument 3
+    ; times the cosine of argument 6, shifted down fifteen places, and the pair
+    ; is that value normalised with the exponent fifteen less the doublings.
+    ;
+    ; The cosine goes in one less than the table holds it wherever it is positive.
+    ; That one is the part's own multiplier, not a correction: it was measured by
+    ; asking the part with an argument of $8000, which turns the multiply into a
+    ; negation and hands the multiplicand straight back.
+    ;
+    ; The sixteen sets that disagree are the ones where argument 2 plus the
+    ; product overflows a signed word, which the part resolves in a way that has
+    ; not been read out of its program. The recorded table this replaces answered
+    ; the first mantissa wrongly on 39% of the demo's own frames.
     lda.l !CARRY_02+12
-    sta !G_KEY+2
-    lda.w #!STATE02_SCALE_ROWS
-    sta !G_ROWS
-    lda.w #!STATE02_SCALE_STRIDE
-    sta !G_STRIDE
-    lda.w #!STATE02_SCALE_KEYS
-    sta !G_KEYS
-    lda.w #(state02_scale&$FFFF)
-    sta !G_BASE
-    lda.w #(state02_scale>>16)
-    sta !G_BASE+2
-    jsr ground_find
+    %trig_pointer(dsp1_cosine_of)
+    ldy #$0000
+    lda [!G_ROW],y
+    beq +
+    bmi +
+    dec a                       ; the part's multiplier hands back one less than
++                               ; the table holds, for a positive cosine
+    sta !TMP+2
+    lda.l !CARRY_02+6           ; argument 3
+    %multiply_shifted()
 
-    ldy #$0004                  ; past the two key words
-    lda [!G_ROW],y
+    clc
+    adc.l !CARRY_02+4           ; argument 2
+    bne +
+
+    stz !G_MAN1                 ; the part answers a pair of noughts for nought
+    stz !G_EXP1
+    bra ++
++
+    %normalise()
     sta !G_MAN1
-    ldy #$0006
-    lda [!G_ROW],y
+    lda.w #$000F
+    sec
+    sbc !G_COUNT
     sta !G_EXP1
-    ldy #$0008
-    lda [!G_ROW],y
-    sta !G_MAN2
+++
 
     ; The matrix, out of the part's own sine and cosine rather than out of a
     ; table of what a recording happened to ask for.

@@ -28,7 +28,7 @@ presses rather than a script, so on the corrected part the plane flies the same
 inputs into the ground.
 """
 
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -91,6 +91,48 @@ def argument_sets(runs: Iterable[Sequence[Any]]) -> tuple[tuple[int, ...], ...]:
         if one.command == SETUP and len(one.words) == parameter.WORDS
     }
     return tuple(sorted(found))
+
+
+WHOLE_SCALE = 0x8000
+"""The scale to ask `$02` for so the horizon comes back as the value behind it.
+
+The horizon is that value times argument 4 shifted down fifteen places, measured
+exact against the part across the whole word. Asking with $8000 makes the shift
+undo the multiply and leaves minus the value, so one question reads it out.
+"""
+
+CLAMPED_ANGLES = 0x10000
+"""How many angles the clamped cosine covers, which is every one a word can hold."""
+
+
+def clamped(
+    part: Any, count: int = CLAMPED_ANGLES, watch: Callable[[int], None] | None = None
+) -> tuple[int, ...]:
+    """The value `$02` derives its horizon and its second scale from, per angle.
+
+    It is the cosine of the angle for most of the turn and something else near
+    and past a quarter turn, where the part holds it at a floor. What that floor
+    is has not been read out of the part's program, and it does not have to be:
+    the value is a function of the angle alone, so asking the part for all 65,536
+    of them is a complete answer that cannot miss.
+
+    Three of the ten words `$0a` reads come out of this one table. The horizon is
+    it times argument 4, shifted down fifteen places. The second mantissa and the
+    second exponent are the normalise and the reciprocal of it, which the
+    cartridge already runs for every scanline.
+
+    Read through the horizon rather than out of the part's memory directly,
+    because the cell the part keeps it in is the horizon's own and holds the
+    scaled value, not this.
+    """
+    found: list[int] = []
+    for angle in range(count):
+        derived.ask(part, SETUP, (0, 0, 0, 0, WHOLE_SCALE, 0, angle), ANSWER_WORDS)
+        horizon = part.core.stores.scratch[parameter.CELLS["horizon"]]
+        found.append(-derived.signed(horizon) & 0xFFFF)
+        if watch is not None and angle % 4096 == 0:
+            watch(angle)
+    return tuple(found)
 
 
 def state_of(part: Any) -> dict[str, int]:
@@ -233,6 +275,10 @@ def main(argv: tuple[str, ...] | list[str] = (), say: Any = print) -> int:
         (into / f"state02-{name}.bin").write_bytes(state02.packed(table))
     (into / "state02-map.asm").write_text(source(built))
     (into / "state02-data.asm").write_text(placement(FIRST_BANK))
+
+    say(f"driving the part for {CLAMPED_ANGLES:,} clamped cosines")
+    values = clamped(hardware.load("snesdsp").Chip(argv[0]), watch=lambda at: say(f"  {at:,}"))
+    say(f"  wrote {derived.write(into / 'state02-clamped.bin', values):,} bytes")
     for line in report(built):
         say(line)
     return 0

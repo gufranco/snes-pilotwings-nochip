@@ -167,7 +167,36 @@ incbin "../build/cosine-2.bin"
 org $988000
 incbin "../build/cosine-3.bin"
 
+; The value $02 derives its horizon and its second scale from, one entry per
+; angle, driven out of the part by state02build.py.
+;
+; It is the cosine of the angle for most of the turn and something else near and
+; past a quarter turn, where the part holds it at a floor. What that floor is has
+; not been read out of the part's program, and it does not need to be: the value
+; is a function of the angle alone, so every angle a word can hold is asked for
+; and the answer cannot miss.
+;
+; Three of the ten words $0a reads come out of this: the horizon is this times
+; argument 4 shifted down fifteen places, and the second mantissa and exponent
+; are the normalise and the reciprocal of it. They were looked up in a table
+; recorded from playthroughs before, which missed on 3%, 21% and 3% of the
+; demo's own frames.
+;
+; Four banks, and the two pairs are not next to each other because the window the
+; redirected accesses land in sits between them. The reader adds one to the bank
+; for the upper half, which is what steps over it.
+org $FB8000
+dsp1_clamped_cosine:
+incbin "../build/state02-clamped-0.bin"
+org $FC8000
+incbin "../build/state02-clamped-1.bin"
+org $FE8000
+incbin "../build/state02-clamped-2.bin"
+org $FF8000
+incbin "../build/state02-clamped-3.bin"
+
 print "reciprocal of starts at ", hex(dsp1_reciprocal_of)
+print "clamped cosine starts at", hex(dsp1_clamped_cosine)
 print "recip up starts at      ", hex(dsp1_recip_up)
 print "recip down starts at    ", hex(dsp1_recip_down)
 print "recip exponent starts at", hex(dsp1_recip_exponent)
