@@ -2947,3 +2947,70 @@ the doubling count is the same to within five. It measures 11.30 against 11.07.
 That is the fourth change this session that was strictly cheaper in instructions
 and measured slower, and the first one measured on an instrument known to be
 exact to 0.05. It is recorded rather than explained.
+
+## 37. The cost map, and why the small changes cannot be measured
+
+**11.07 console frames per frame of the game's clock**, against the retail
+cartridge's 1.00. Every figure below is from the exact clock section 36 added,
+over game frames 250 to 1000.
+
+### What each piece costs
+
+Each row is the whole flight with one piece removed. The floor row leaves the
+game and everything this project adds except `$0a` itself, and hands the game's
+own code back the index register it carries on from, so the game does not notice.
+
+| | console frames per game frame | what it says |
+|---|---|---|
+| the retail cartridge | 1.00 | |
+| `$0a` reduced to nothing | 2.66 | everything else this project adds is 1.66 |
+| as it stands | 11.07 | so `$0a` is 8.41, three quarters of the whole |
+| with ground_line never called | 6.10 | ground_line is 4.97 |
+| with ground_state never called | 4.99 | ground_state is 2.32, and it runs once a frame |
+
+`ground_state` finds `$02`'s state and rebuilds the multiply tables, and the
+rebuild is the bulk of it: measured on a counter, 2.9 of the four tables are
+rebuilt per frame, each 256 entries.
+
+Counted rather than estimated, per game frame: 132 calls into the port stubs, 29
+into the mirrored hooks, 16 into the lookup, 130 halvings inside it, and one call
+to `ground_block`.
+
+### 15 frames a second is not ruled out by the floor
+
+Section 36 put the floor at 4.45 and concluded the target was unreachable. That
+was wrong: the stubs it rested on left `ground_normalise` and `ground_scale`
+running on garbage, and both loop a number of times that depends on the value
+they are given. The clean floor is 2.66, so 15 frames a second needs `$0a` down
+from 8.41 to 1.34, which is a sixth of what it costs now. Hard, but the ceiling
+is 22 frames a second rather than 13.
+
+### Why nothing small can be measured here
+
+The clock is exact and its cost model is linear: a spin loop of 176 turns costs
+0.47 console frames and one of 704 costs 1.92, which is 4.09 times for four times
+the work.
+
+What is not stable is the comparison between two builds. The counter the window
+is cut on runs from before the demo starts, and a change anywhere alters how many
+console frames the run takes to reach a given count, so two builds sit at
+different moments of the flight for the same counter value. Committed reaches
+count 250 at console frame 4520 and a build differing only inside
+`ground_normalise` reaches it at 4373. The gap between those two then reads as
+1.64 over a fifty frame window, 0.37 over three hundred and fifty, and 0.23 over
+seven hundred and fifty. None of those is a per-frame cost.
+
+So only differences of about a console frame survive. Everything identified as
+available is smaller: the index arithmetic inside the multiply is worth about
+0.2, the build's indirect stores about 0.06, counting a loop in a register about
+0.19. Five such changes were built and measured this session and all five came
+back worse, which is what an unmeasurable difference looks like.
+
+### What was measured and rejected
+
+| | |
+|---|---|
+| dropping the two least-read tables and multiplying directly | 13.49 against 11.07, so a general multiply costs about five times a table lookup |
+| a larger cache of built tables | 53.6% of frames reuse the previous frame's constant and 53.5% reuse one of the last thirty two, so there is nothing beyond the check already made |
+| storing the table through an indexed address rather than a direct page pointer | 11.26 against 11.07 |
+| counting the normalise doublings in a register | 11.30 against 11.07, with a byte-identical flight model and the same doubling count to within five |
