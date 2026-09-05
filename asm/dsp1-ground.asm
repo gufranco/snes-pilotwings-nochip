@@ -568,6 +568,92 @@ ground_reciprocal:
 ; In:  A the mantissa, !G_EXP the exponent.
 ; Out: A the scale.
 ; ---------------------------------------------------------------------------
+; An arithmetic shift right by a count worked out at the time.
+;
+; The processor has no such instruction and no variable shift at all, so this
+; was a loop: compare, rotate, count down, branch, ten cycles a place. Written
+; out once per place and entered part way down, a place costs five and the count
+; is spent once on the way in rather than on every turn.
+;
+; The two scales a scanline both come through here, 352 times a frame, and the
+; count they ask for averages about seven.
+;
+; In:  A the count, 0 to 15, and !G_NORM the value.
+; Out: A the value shifted. Uses X.
+; ---------------------------------------------------------------------------
+ground_shift_at:
+    dw ground_shift_0
+    dw ground_shift_1
+    dw ground_shift_2
+    dw ground_shift_3
+    dw ground_shift_4
+    dw ground_shift_5
+    dw ground_shift_6
+    dw ground_shift_7
+    dw ground_shift_8
+    dw ground_shift_9
+    dw ground_shift_10
+    dw ground_shift_11
+    dw ground_shift_12
+    dw ground_shift_13
+    dw ground_shift_14
+    dw ground_shift_15
+
+ground_shift:
+    asl a                       ; two bytes an entry in the table above
+    tax
+    lda !G_NORM
+    jmp (ground_shift_at,x)
+
+ground_shift_15:
+    cmp #$8000
+    ror a
+ground_shift_14:
+    cmp #$8000
+    ror a
+ground_shift_13:
+    cmp #$8000
+    ror a
+ground_shift_12:
+    cmp #$8000
+    ror a
+ground_shift_11:
+    cmp #$8000
+    ror a
+ground_shift_10:
+    cmp #$8000
+    ror a
+ground_shift_9:
+    cmp #$8000
+    ror a
+ground_shift_8:
+    cmp #$8000
+    ror a
+ground_shift_7:
+    cmp #$8000
+    ror a
+ground_shift_6:
+    cmp #$8000
+    ror a
+ground_shift_5:
+    cmp #$8000
+    ror a
+ground_shift_4:
+    cmp #$8000
+    ror a
+ground_shift_3:
+    cmp #$8000
+    ror a
+ground_shift_2:
+    cmp #$8000
+    ror a
+ground_shift_1:
+    cmp #$8000
+    ror a
+ground_shift_0:
+    rts
+
+; ---------------------------------------------------------------------------
 ground_scale:
     jsr ground_normalise
 
@@ -583,14 +669,7 @@ ground_scale:
     cmp #$0010
     bcs .flat                   ; sixteen or more reads a ROM word of nought
 
-    tay
-    lda !G_NORM
--
-    cmp #$8000                  ; bit fifteen into the carry, then straight
-    ror a                       ; back into bit fifteen: an arithmetic shift
-    dey
-    bne -
-    rts
+    jmp ground_shift
 
 .flat:
     lda #$0000
@@ -1034,25 +1113,201 @@ macro build_table(table)
     stz !TMP+8
     stz !TMP+10
 
+    ; Sixteen entries a turn. Advancing the index and testing the loop were a
+    ; third of what an entry cost when they were paid once an entry, and where
+    ; each of the sixteen sits is known when this is assembled, so they are paid
+    ; once per sixteen instead. Past sixteen the return falls away: thirty two
+    ; and sixty four are worth another 0.2% between them and cost twice and four
+    ; times the code.
+    ;
+    ; The carry the low half's addition leaves is what the high half's needs, and
+    ; nothing between them touches it.
     ldx #$0000
-?entry:
+?turn:
     lda !TMP+8
-    sta.l <table>+1,x           ; past the nought each entry opens with
+    sta.l <table>+1,x
     clc
-    adc !TMP+0                  ; and on to the next entry's, keeping the carry
+    adc !TMP+0
     sta !TMP+8
 
     lda !TMP+10
     sta.l <table>+3,x
-    adc !TMP+6                  ; the carry above is still the one wanted here
+    adc !TMP+6
     sta !TMP+10
 
-    txa                         ; eight bytes an entry, added once rather than
-    clc                         ; counted up eight times
-    adc #$0008
+    lda !TMP+8
+    sta.l <table>+9,x
+    clc
+    adc !TMP+0
+    sta !TMP+8
+
+    lda !TMP+10
+    sta.l <table>+11,x
+    adc !TMP+6
+    sta !TMP+10
+
+    lda !TMP+8
+    sta.l <table>+17,x
+    clc
+    adc !TMP+0
+    sta !TMP+8
+
+    lda !TMP+10
+    sta.l <table>+19,x
+    adc !TMP+6
+    sta !TMP+10
+
+    lda !TMP+8
+    sta.l <table>+25,x
+    clc
+    adc !TMP+0
+    sta !TMP+8
+
+    lda !TMP+10
+    sta.l <table>+27,x
+    adc !TMP+6
+    sta !TMP+10
+
+    lda !TMP+8
+    sta.l <table>+33,x
+    clc
+    adc !TMP+0
+    sta !TMP+8
+
+    lda !TMP+10
+    sta.l <table>+35,x
+    adc !TMP+6
+    sta !TMP+10
+
+    lda !TMP+8
+    sta.l <table>+41,x
+    clc
+    adc !TMP+0
+    sta !TMP+8
+
+    lda !TMP+10
+    sta.l <table>+43,x
+    adc !TMP+6
+    sta !TMP+10
+
+    lda !TMP+8
+    sta.l <table>+49,x
+    clc
+    adc !TMP+0
+    sta !TMP+8
+
+    lda !TMP+10
+    sta.l <table>+51,x
+    adc !TMP+6
+    sta !TMP+10
+
+    lda !TMP+8
+    sta.l <table>+57,x
+    clc
+    adc !TMP+0
+    sta !TMP+8
+
+    lda !TMP+10
+    sta.l <table>+59,x
+    adc !TMP+6
+    sta !TMP+10
+
+    lda !TMP+8
+    sta.l <table>+65,x
+    clc
+    adc !TMP+0
+    sta !TMP+8
+
+    lda !TMP+10
+    sta.l <table>+67,x
+    adc !TMP+6
+    sta !TMP+10
+
+    lda !TMP+8
+    sta.l <table>+73,x
+    clc
+    adc !TMP+0
+    sta !TMP+8
+
+    lda !TMP+10
+    sta.l <table>+75,x
+    adc !TMP+6
+    sta !TMP+10
+
+    lda !TMP+8
+    sta.l <table>+81,x
+    clc
+    adc !TMP+0
+    sta !TMP+8
+
+    lda !TMP+10
+    sta.l <table>+83,x
+    adc !TMP+6
+    sta !TMP+10
+
+    lda !TMP+8
+    sta.l <table>+89,x
+    clc
+    adc !TMP+0
+    sta !TMP+8
+
+    lda !TMP+10
+    sta.l <table>+91,x
+    adc !TMP+6
+    sta !TMP+10
+
+    lda !TMP+8
+    sta.l <table>+97,x
+    clc
+    adc !TMP+0
+    sta !TMP+8
+
+    lda !TMP+10
+    sta.l <table>+99,x
+    adc !TMP+6
+    sta !TMP+10
+
+    lda !TMP+8
+    sta.l <table>+105,x
+    clc
+    adc !TMP+0
+    sta !TMP+8
+
+    lda !TMP+10
+    sta.l <table>+107,x
+    adc !TMP+6
+    sta !TMP+10
+
+    lda !TMP+8
+    sta.l <table>+113,x
+    clc
+    adc !TMP+0
+    sta !TMP+8
+
+    lda !TMP+10
+    sta.l <table>+115,x
+    adc !TMP+6
+    sta !TMP+10
+
+    lda !TMP+8
+    sta.l <table>+121,x
+    clc
+    adc !TMP+0
+    sta !TMP+8
+
+    lda !TMP+10
+    sta.l <table>+123,x
+    adc !TMP+6
+    sta !TMP+10
+
+    txa                         ; a hundred and twenty eight bytes a turn, which
+    clc                         ; is sixteen entries of eight
+    adc #$0080
     tax
     cpx.w #!MULSPAN
-    bcc ?entry
+    bcs ?filled
+    jmp ?turn
+?filled:
 endmacro
 
 ; ---------------------------------------------------------------------------
@@ -1117,7 +1372,8 @@ ground_tables:
     bne .matrix
     lda !G_MAT+2
     cmp !G_LAST+2
-    beq .scale
+    bne .matrix
+    jmp .scale
 
 .matrix:
     lda !G_MAT+0
@@ -1136,7 +1392,8 @@ ground_tables:
     bne .build_scale
     lda !G_MAN2
     cmp !G_LAST+6
-    beq .done
+    bne .build_scale
+    jmp .done
 
 .build_scale:
     lda !G_MAN1
