@@ -310,7 +310,7 @@ endmacro                        ; there is a read, a change and a write
 ; second's in !TMP+8, both sign-corrected and both still to be shifted.
 ; Uses X, Y and !TMP+0 to !TMP+11.
 ; ---------------------------------------------------------------------------
-macro mulk_products(one, two)
+macro mulk_products(one, two, first)
     sta !TMP+0
 
     and #$00FF                  ; the low byte, times eight, is where its entry
@@ -346,7 +346,12 @@ macro mulk_products(one, two)
     sec
     sbc.l <one>+9
 ?first:
-    sta !TMP+6
+    tay                         ; the first product is finished here rather than
+    lda !TMP+4                  ; parked, because the index the second needs is
+    asl a                       ; already in X and nothing between disturbs it
+    tya
+    rol a
+    sta <first>
 
     lda.l <two>+0,x
     clc
@@ -441,12 +446,10 @@ endmacro
 ; own shift in Y.
 ground_normalise:
     ldx #$0000
-    sta !G_NORM
     cmp #$0000
     beq .settled
 
 .again:
-    sta !G_NORM                 ; the last value that fitted
     asl a                       ; carry the old sign, negative the new one
     bcs .wasneg
     bpl .keep                   ; was positive and still is
@@ -456,9 +459,13 @@ ground_normalise:
     bmi .keep                   ; was negative and still is
 
 .stop:
+    ror a                       ; the doubling overflowed, so it is undone. The
+                                ; bit it pushed out is still in the carry, which
+                                ; is where a rotate right puts bit fifteen back
+                                ; from, so this is the value exactly as it was
     stx !G_COUNT
-    lda !G_NORM                 ; the doubling would have overflowed, so the
-    rts                         ; value before it is the answer
+    sta !G_NORM
+    rts
 
 .keep:
     inx
@@ -466,6 +473,7 @@ ground_normalise:
 
 .settled:
     stx !G_COUNT
+    sta !G_NORM
     rts
 
 ; ---------------------------------------------------------------------------
@@ -737,16 +745,12 @@ ground_line:
     ; The four words. The first scale takes the two matrix words the part reads
     ; from $7f and $6f, and the second takes the two from $7e and $6e.
     lda !G_S1
-    %mulk_products(!MULTAB0, !MULTAB1)
-    %mulk_shift(!TMP+4, !TMP+6)
-    sta !G_OUT+0
+    %mulk_products(!MULTAB0, !MULTAB1, !G_OUT+0)
     %mulk_shift_negated(!TMP+8, !TMP+10)
     sta !G_OUT+4
 
     lda !G_S2
-    %mulk_products(!MULTAB1, !MULTAB0)
-    %mulk_shift(!TMP+4, !TMP+6)
-    sta !G_OUT+2
+    %mulk_products(!MULTAB1, !MULTAB0, !G_OUT+2)
     %mulk_shift(!TMP+8, !TMP+10)
     sta !G_OUT+6
     rts

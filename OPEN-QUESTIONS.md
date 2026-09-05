@@ -3084,3 +3084,68 @@ answers more slowly than its cartridge, so a change trading a memory access for
 an instruction reads better here than it runs. Every change above moves in the
 same direction on both instruments, which is the check that matters; a change
 where they disagree needs the console's verdict on a long window and a reason.
+
+## 39. Under ten console frames a game frame
+
+**9.94 console frames per frame of the game's clock**, from 11.07, which is 6.0
+frames a second against the retail cartridge's 60. One call to `ground_block`
+costs 303,276 processor cycles against 387,215 this morning, measured on the
+model section 38 added.
+
+### Where it went, and what was done about it
+
+The split, on the model, with every multiply table rebuilt:
+
+| | share at the start of this round |
+|---|---|
+| building the four multiply tables | 25% |
+| the six multiplies a scanline | 25% |
+| the two scales, which normalise and then shift | 16% |
+| normalising | 9.5% |
+| everything else, including the reciprocal and the loop | 24.5% |
+
+Four changes, each measured on its own and kept only if the ground it computed
+was byte for byte the ground the original computed:
+
+**Sixteen table entries a turn.** Advancing the index and testing the loop were
+a third of what an entry cost when they were paid once an entry. Where each of
+the sixteen sits is known when the file is assembled, so they are paid once per
+sixteen. The return falls away past that: thirty two and sixty four are worth
+another 0.2% between them and cost twice and four times the code.
+
+**The variable shift written out.** An arithmetic shift right by a count worked
+out at the time was a loop of compare, rotate, count down and branch, ten cycles
+a place. Written out once per place and entered part way down, a place costs
+five and the count is spent once on the way in. Both scales a scanline come
+through it, 352 times a frame.
+
+**The normalise not storing as it goes.** It doubled a value while the sign
+held, keeping the last one that fitted in memory so that it could be put back.
+It does not need to: the bit a doubling pushes out stays in the carry, and a
+rotate right puts it back in bit fifteen, so the doubling that overflowed is
+undone rather than remembered. That takes a store out of every one of the 2,120
+doublings a frame.
+
+**The first of a paired multiply finished where it stands.** The two products
+sharing an index were both parked in memory and shifted afterwards. The first is
+finished before the second begins instead, because the index the second needs is
+already in the index register and nothing between them disturbs it.
+
+### What is left, and what it is not
+
+| | cycles of the 303,276 |
+|---|---|
+| building the tables | about 78,000 |
+| the multiplies | about 78,000 |
+| everything else in a scanline | about 130,000 |
+
+The build writes 4,096 bytes per rebuild and 2.9 of the four tables rebuild per
+frame. That is irreducible without writing fewer bytes, and the entries are
+already the narrowest that answer both halves of a multiply from one table. A
+larger cache of built tables buys nothing, measured: 53.6% of frames reuse the
+previous frame's constant and 53.5% reuse one of the last thirty two.
+
+Two limits on the instrument are worth repeating. It counts processor cycles and
+not console cycles, so it does not know the console's memory answers more slowly
+than its cartridge. And it measures one call from one state. Every change above
+moves the same way on both instruments, which is the check that matters.
