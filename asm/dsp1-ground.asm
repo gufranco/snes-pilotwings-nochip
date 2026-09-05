@@ -297,24 +297,99 @@ macro mulk(table)
     rol a                       ; page is the console's own memory, so a shift
 endmacro                        ; there is a read, a change and a write
 
-macro mulk_negated(table)
-    %mulk_product(<table>)
-    eor #$FFFF                  ; this site wants the constant negated, and the
-    sta !TMP+6                  ; whole product negated is the same answer, where
-    lda !TMP+4                  ; negating after the shift would round the wrong
-    eor #$FFFF                  ; way on every product the shift does not divide
-    clc
-    adc #$0001
-    sta !TMP+4
-    lda !TMP+6
-    adc #$0000
+; ---------------------------------------------------------------------------
+; Both products of one varying word, for the two tables the matrix uses.
+;
+; Four of the six multiplies a scanline are the two scales against the two
+; matrix constants, so each scale is multiplied twice. An entry's address is its
+; number shifted three places and that number is the same for both tables, so
+; the address is worked out once and read from twice. Every table has the same
+; shape, which is what makes one index reach into either.
+;
+; In:  A the varying word. Out: the first table's product in !TMP+4, the
+; second's in !TMP+8, both sign-corrected and both still to be shifted.
+; Uses X, Y and !TMP+0 to !TMP+11.
+; ---------------------------------------------------------------------------
+macro mulk_products(one, two)
+    sta !TMP+0
 
+    and #$00FF                  ; the low byte, times eight, is where its entry
+    asl a                       ; is, and it is the entry in either table
+    asl a
+    asl a
+    tax
+    lda.l <one>+1,x
+    sta !TMP+4
+    lda.l <one>+3,x
+    sta !TMP+6
+    lda.l <two>+1,x
+    sta !TMP+8
+    lda.l <two>+3,x
+    sta !TMP+10
+
+    lda !TMP+0                  ; and the high byte the same way, once for both
+    xba
+    and #$00FF
+    asl a
+    asl a
+    asl a
+    tax
+
+    lda.l <one>+0,x
+    clc
+    adc !TMP+4
+    sta !TMP+4
+    lda.l <one>+2,x
+    adc !TMP+6
+    bit !TMP+0
+    bpl ?first
+    sec
+    sbc.l <one>+9
+?first:
+    sta !TMP+6
+
+    lda.l <two>+0,x
+    clc
+    adc !TMP+8
+    sta !TMP+8
+    lda.l <two>+2,x
+    adc !TMP+10
+    bit !TMP+0
+    bpl ?second
+    sec
+    sbc.l <two>+9
+?second:
+    sta !TMP+10
+endmacro
+
+macro mulk_shift(low, high)
+    lda <high>
     tay
-    lda !TMP+4
+    lda <low>
     asl a
     tya
     rol a
 endmacro
+
+macro mulk_shift_negated(low, high)
+    lda <high>
+    eor #$FFFF
+    sta <high>
+    lda <low>
+    eor #$FFFF
+    clc
+    adc #$0001
+    sta <low>
+    lda <high>
+    adc #$0000
+    tay
+    lda <low>
+    asl a
+    tya
+    rol a
+endmacro
+
+                       ; there is a read, a change and a write
 
 ; ---------------------------------------------------------------------------
 ; The signed fractional product, which is what every multiply here is.
@@ -583,16 +658,17 @@ ground_line:
     ; The four words. The first scale takes the two matrix words the part reads
     ; from $7f and $6f, and the second takes the two from $7e and $6e.
     lda !G_S1
-    %mulk(!MULTAB0)
+    %mulk_products(!MULTAB0, !MULTAB1)
+    %mulk_shift(!TMP+4, !TMP+6)
     sta !G_OUT+0
-    lda !G_S2
-    %mulk(!MULTAB1)
-    sta !G_OUT+2
-    lda !G_S1
-    %mulk_negated(!MULTAB1)
+    %mulk_shift_negated(!TMP+8, !TMP+10)
     sta !G_OUT+4
+
     lda !G_S2
-    %mulk(!MULTAB0)
+    %mulk_products(!MULTAB1, !MULTAB0)
+    %mulk_shift(!TMP+4, !TMP+6)
+    sta !G_OUT+2
+    %mulk_shift(!TMP+8, !TMP+10)
     sta !G_OUT+6
     rts
 
