@@ -123,6 +123,7 @@
 !G_S2PAD   = $8E
 !G_NEG     = $90                ; whether the reciprocal's sign has to go back
 !G_SEEN    = $92                ; the distance the scanline before this one had
+!G_STEP2   = $94                ; twice the step, for the doubled running sum
 
 ; The two the table reads need. There was a bisecting search here as well, over
 ; three tables recorded from playthroughs, and it is gone: every one of the ten
@@ -860,13 +861,12 @@ macro line(mark)
 if <mark> == 1
 line_distance:
 endif
-    lda !G_ACC+0                ; the distance, out of the running product:
-    asl a                       ; bit fifteen of the low half into the carry,
-    lda !G_ACC+2                ; then the high half doubled around it, which is
-    rol a                       ; the whole thirty two bit value shifted down
-                                ; fifteen places, sign and all
-    clc
-    adc !G_HORIZON
+    lda !G_ACC+2                ; the distance, out of the running product. The
+    clc                         ; sum is kept at twice what the part holds it at,
+    adc !G_HORIZON              ; so its high half is already the whole thirty two
+                                ; bit value shifted down fifteen places, sign and
+                                ; all, and the shift that used to stand here is
+                                ; one instruction in ground_state instead
 
     ; Everything below this point is a function of that distance and of state the
     ; block fixed before the loop, so a scanline whose distance matches the one
@@ -965,7 +965,7 @@ endif
     ; twelve cycles a scanline that did no arithmetic.
     lda !G_ACC+0
     clc
-    adc !G_STEP
+    adc !G_STEP2
     sta !G_ACC+0
     lda !G_ACC+2
     adc !G_STEPHI
@@ -1681,10 +1681,21 @@ ground_block:
 
     ; The first scanline has no previous one to copy from, so the distance it is
     ; about to compute is stored complemented, which nothing can match.
-    lda !G_ACC+0
+    ; The running sum is kept at twice what the part holds it at, so its high
+    ; half is the whole thirty two bit value shifted down fifteen places and the
+    ; distance is a load and an add rather than a load, a shift, a load and a
+    ; rotate. The step it advances by is doubled to match.
+    ;
+    ; The step itself cannot be doubled where it is read, because ground_seed
+    ; takes its magnitude and a step of $7fff doubled is a word that reads as
+    ; minus two. So the doubling happens here, after the seed has used it.
+    asl !G_ACC+0
+    rol !G_ACC+2
+    lda !G_STEP
     asl a
+    sta !G_STEP2
+
     lda !G_ACC+2
-    rol a
     clc
     adc !G_HORIZON
     eor #$FFFF
