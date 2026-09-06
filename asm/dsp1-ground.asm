@@ -1587,53 +1587,73 @@ ground_tables:
 
     lda.w #!MULREADY
     sta !G_AGAIN
-    lda #$0000                  ; nothing built yet, so neither check below can
-    sta !G_LAST+0               ; match what it is about to be given: a cosine
-    sta !G_LAST+2               ; and a sine are never both these, nor are two
-    sta !G_LAST+4               ; mantissas
+    ; Nothing built yet, so no check below may match what it is about to be
+    ; given. Each is set to the complement of the constant it guards, which no
+    ; value can equal. A pair of constants that could not both be some fixed pair
+    ; was enough while the tables were checked in pairs; checked one at a time,
+    ; a sine of nought would have matched a nought held here.
+    lda !G_MAT+0
+    eor #$FFFF
+    sta !G_LAST+0
+    lda !G_MAT+2
+    eor #$FFFF
+    sta !G_LAST+2
+    lda !G_MAN1
+    eor #$FFFF
+    sta !G_LAST+4
+    lda !G_MAN2
+    eor #$FFFF
     sta !G_LAST+6
-    dec !G_LAST+0
-    dec !G_LAST+4
 
 .padded:
+    ; Each table is checked on its own constant rather than in pairs. The two
+    ; halves of a pair used to move together, when the constants came out of a
+    ; table recorded from playthroughs and a whole row changed at once. They are
+    ; computed now, and measured over 595 frame steps of the demo they move
+    ; apart: 59%, 59%, 89% and 56%. Checking them in pairs rebuilds 2.978 tables
+    ; a frame where checking them one at a time rebuilds 2.639.
+    ;
+    ; The branch over a build has to be a jump, because a build is sixteen
+    ; entries written out and far too long to reach with one.
     lda !G_MAT+0
     cmp !G_LAST+0
-    bne .matrix
-    lda !G_MAT+2
-    cmp !G_LAST+2
-    bne .matrix
-    jmp .scale
-
-.matrix:
-    lda !G_MAT+0
+    bne .cosine
+    jmp .after_cosine
+.cosine:
     sta !G_LAST+0
     sta !TMP+0
     %build_table(!MULTAB0)
+.after_cosine:
 
     lda !G_MAT+2
+    cmp !G_LAST+2
+    bne .sine
+    jmp .after_sine
+.sine:
     sta !G_LAST+2
     sta !TMP+0
     %build_table(!MULTAB1)
+.after_sine:
 
-.scale:
     lda !G_MAN1
     cmp !G_LAST+4
-    bne .build_scale
-    lda !G_MAN2
-    cmp !G_LAST+6
-    bne .build_scale
-    jmp .done
-
-.build_scale:
-    lda !G_MAN1
+    bne .first
+    jmp .after_first
+.first:
     sta !G_LAST+4
     sta !TMP+0
     %build_table(!MULTAB2)
+.after_first:
 
     lda !G_MAN2
+    cmp !G_LAST+6
+    bne .second
+    jmp .after_second
+.second:
     sta !G_LAST+6
     sta !TMP+0
     %build_table(!MULTAB3)
+.after_second:
 
 .done:
     rts
