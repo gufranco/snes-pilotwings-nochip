@@ -3705,3 +3705,68 @@ writes values that are already there.
 
 Neither fix moves the number on its own, which is why either one alone reads as a
 failed idea. Across four windows of the demo the remaining figure is 0.0% to 3.5%.
+
+## 49. The lookup, halved twice, and the sixty four keys it had never read
+
+Section 47 profiled a whole game frame and found the recorded-answer search was
+42.5% of it. This is what came off, and how it was measured, because the second
+question turned out to matter more than the first.
+
+### The console cannot rank two builds, and this is the third time that bit
+
+`tools/cycles.py` says so in its own docstring, and it was written after five
+changes were rejected on the console's say-so. It was still tempting to read the
+demo's frame counter here, and the demo lied twice in a row: a change that the
+model measures as 2.2% cheaper read as 0.23% slower over one window, and a change
+that costs nothing read as a 6% gain.
+
+The reason is not noise. A change moves where the demo sits when the window
+opens, the scenery there is different, and different scenery is different work.
+So the lookup is measured by driving `dsp1_answer` over 600 keys taken from a
+recording, on the processor model, with the same keys for every build.
+
+| build | cycles for those 600 answers |
+|---|---:|
+| before | 3,977,534 |
+| the arithmetic routed, the multiply gone | 2,115,359 |
+| the address written into the comparison | 2,046,824 |
+| the bank test by addition | 2,001,365 |
+| the offset counted from the table | 1,887,371 |
+| the answer's start read from the index | 1,767,955 |
+| a mismatched key returning properly | 1,708,420 |
+| the entry found by index rather than walk | 1,599,914 |
+| the comparison written out at the step | 1,566,405 |
+
+### The one that was not an optimisation
+
+Two of those changes moved where the rows begin, and the second of them broke a
+key. Command `$02`'s row 4,649 started answering with row 4,648.
+
+The key was in the table. The search missed it, because its first word had its
+low byte at `$9AFFFF` and its high byte at what the processor reads next, which
+is `$9B0000`, and on a low cartridge the table's next byte is at `$9B8000`. The
+search already had a slower bank-aware walk for keys that sit across the join.
+It had nothing for a single word split down the middle.
+
+Whether that can happen at all comes down to one number. A bank holds 32,768
+bytes, which is even, and every stride here is a whole number of words, so a bank
+boundary falls between two words exactly when the row stream starts on an even
+offset. It started at 193.
+
+Counted across the whole table: **64 key words were split**, and had been since
+the table was first built. Every one of them made the search miss a key the table
+holds, and the fallback answered with the row beside it. One byte of padding
+after the command count fixes all 64, and the encoder now refuses a layout that
+would put a row on an odd offset.
+
+### What that byte was worth, and what it cost
+
+Sampling the flight model against the retail cartridge at every flight clock the
+two share, over 1,200 samples: before the fix, our build differs from retail by
+more than eight bytes; after it, it never does.
+
+It also made the demo slower in console frames, from 19,800 to 26,380 for 3,500
+game frames. That is not a regression to undo. The aircraft was flying a course
+64 wrong answers had put it on, and the course it flies now is the one retail
+flies, which is more work. Judging this build against the last one on the
+console's own clock would have rejected the fix.
