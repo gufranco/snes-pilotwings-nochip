@@ -366,11 +366,6 @@ endif
 ?second:
 endmacro
 
-; Nothing to shift and nothing to fetch: the high half is the shifted product
-; already, and it is still in the accumulator.
-macro mulk_shift(low, high)
-endmacro
-
 ; Negating the product and then shifting is the same as taking one off it,
 ; shifting, and flipping every bit of what comes out. Negating is flipping every
 ; bit and adding one, so the product negated is one less than it flipped, and
@@ -385,13 +380,15 @@ endmacro
 ; down fifteen is the complement of p less one shifted down fifteen.
 ;
 ; Two comes off rather than one, because the pair holds twice the product.
-macro mulk_shift_negated(low, high)
-    sta <high>                  ; parked, because the low half has to be
-    lda <low>                   ; subtracted from first to leave the borrow
-    sec
-    sbc #$0002
-    lda <high>                  ; a load leaves the borrow alone, so the high
-    sbc #$0000                  ; half takes it from the subtraction above
+macro mulk_shift_negated(low)
+    ; The high half is already in the accumulator and only the borrow the low
+    ; half's subtraction would leave is missing. A compare produces exactly that
+    ; borrow without touching the accumulator, so nothing has to be parked and
+    ; fetched back: the carry a compare clears is the borrow a subtraction of two
+    ; from a low half below two would have made.
+    ldx <low>
+    cpx.w #$0002
+    sbc #$0000
     eor #$FFFF
 endmacro
 
@@ -858,8 +855,10 @@ endmacro
 ; nearest label above each address, so the stages report their own cost instead
 ; of a reader having to guess which of them the hot addresses belong to. They
 ; assemble to nothing.
-ground_line:
+macro line(mark)
+if <mark> == 1
 line_distance:
+endif
     lda !G_ACC+0                ; the distance, out of the running product:
     asl a                       ; bit fifteen of the low half into the carry,
     lda !G_ACC+2                ; then the high half doubled around it, which is
@@ -868,14 +867,18 @@ line_distance:
     clc
     adc !G_HORIZON
 
+if <mark> == 1
 line_reciprocal:
+endif
     %invert()
 
 ; The exponent is worked out before the multiply in both stages below, so the
 ; product goes straight into the scale rather than being parked and fetched back.
 ; In the second stage that also leaves Y untouched for the whole scanline, which
 ; is what lets the four answer words be written where they are wanted.
+if <mark> == 1
 line_mantissa:
+endif
     lda !G_RB
     clc
     adc !G_EXP1
@@ -889,7 +892,9 @@ line_mantissa:
     ; The second scale multiplies the first chain's mantissa, not the
     ; reciprocal. That is the cascade, and it is the whole reason six attempts
     ; to recover this from the answers failed.
+if <mark> == 1
 line_cascade:
+endif
     lda !G_EXP
     clc
     adc !G_EXP2
@@ -904,14 +909,17 @@ line_cascade:
 ; Written straight into the two buffers the game reads, at the offset Y holds,
 ; rather than into four direct page words the caller then copied across. Y is
 ; the caller's own index and nothing between here and there disturbs it.
+if <mark> == 1
 line_words_first:
+endif
     %mulk_products(!MULTAB0, !MULTAB1, !STREAM_ONE, !G_S1, 1)
-    %mulk_shift_negated(!TMP+8, !TMP+10)
+    %mulk_shift_negated(!TMP+8)
     sta.w !STREAM_TWO,y
 
+if <mark> == 1
 line_words_second:
+endif
     %mulk_products(!MULTAB1, !MULTAB0, !STREAM_ONE+2, !G_S2, 0)
-    %mulk_shift(!TMP+8, !TMP+10)
     sta.w !STREAM_TWO+2,y
 
     ; One line further down the screen, which used to be its own subroutine. The
@@ -924,6 +932,10 @@ line_words_second:
     lda !G_ACC+2
     adc !G_STEPHI
     sta !G_ACC+2
+endmacro
+
+ground_line:
+    %line(0)
     rts
 
 ; ---------------------------------------------------------------------------
@@ -1639,15 +1651,23 @@ ground_block:
     ; to be parked in the direct page and fetched back a scanline later.
     ldy #$0000
 
-.turn:
-    jsr ground_line
+ground_turn:                    ; a plain label rather than a local one: the
+                                ; scanline written out below carries labels of
+                                ; its own, and a local one would attach to the
+                                ; last of those instead of to this loop
+    %line(1)                    ; written out here rather than called: the loop
+                                ; has nothing to do between the call and the
+                                ; return, and they were twelve cycles a scanline.
+                                ; ground_answer still calls it, once
 
     iny                         ; four bytes a scanline, two words in each buffer
     iny
     iny
     iny
     cpy.w #(!STREAM_TURNS*4)
-    bne .turn
+    beq +                       ; the scanline is too long to branch back over
+    jmp ground_turn
++
 
     tya                         ; what the original loop's own index reached
     tax
