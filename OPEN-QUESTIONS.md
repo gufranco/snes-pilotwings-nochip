@@ -3473,3 +3473,78 @@ arithmetic comes out at about 4% for a good deal more complexity. Building the
 scale tables at half their length and deriving the odd entries with an addition
 would save about 6%, and puts a branch and a thirty two bit add into the hottest
 path in the program to do it.
+
+## 45. Six more ideas, costed and closed
+
+The mean call is 77,044 processor cycles. What follows is every idea left, with
+the measurement that decided it, so none of them has to be thought about twice.
+
+### Copy on the scales rather than on the distance
+
+Two scanlines with the same two scales have the same four answers, and the scales
+repeat more often than the distance does. But the scales cost most of a scanline
+to reach, so this could only skip the four answer multiplies, and only on lines
+whose distance already changed.
+
+Measured over 1,577 consecutive pairs of computing scanlines: both scales the
+same on 7.8%, the first only on 7.7%, the second only on 2.3%. Saving 248 cycles
+on 7.8% of them is 19, against about 20 to compare and keep them. It pays for
+nothing.
+
+### Build only the entries a block reads
+
+A block reads 52 to 70 of each table's 256 entries, so three quarters of every
+build is work nothing looks at. Building an entry when it is first wanted needs
+its value out of nowhere, which is a full multiply at 354 cycles against 34 to
+extend the running sum, so 62 of those cost more than 256 of these. Building only
+the contiguous hull of what is read needs the hull known before the scanlines
+run, and it is not: the low byte of a smoothly moving word sweeps the whole range.
+
+### Cache the high byte's contribution
+
+The high byte of the first scale is the same as the line before on 94.2% of
+computing scanlines, and the second's on 91.4%. Its contribution is four table
+reads and an index, 36 cycles. Held in the direct page instead it is four reads
+at four cycles rather than six, plus eleven to check, which is nine saved when it
+hits and twenty seven spent when it misses. About seven cycles a multiply, and it
+puts four more words of state in the hottest path in the program.
+
+### Half length tables
+
+Building 128 entries and deriving the odd ones with an addition halves the build,
+which is 13,750 cycles a frame. Both bytes of a varying word need the correction,
+so it is two conditional thirty two bit adds per multiply, and the parity has to
+survive an index shift that destroys the carry it arrives in. At 40 cycles a
+multiply across 384 of them it costs 15,360. It loses.
+
+### Four byte entries
+
+The pad that lets one entry answer both a plain read and a read scaled by 256
+also lets the entry be four bytes rather than eight, because the byte above the
+last one is the next entry's pad and a positive constant's top byte is nought
+too. That takes two cycles off each index, which is four a multiply and 1,536 a
+frame. It does not work for a negative constant, whose top byte is $ff and would
+overwrite the next entry's pad, and two layouts is a reader that has to know
+which.
+
+### Split the loop by the step's sign
+
+The running sum's high half only changes when the low half carries, so the
+advance could be a sixteen bit add and a rare increment rather than a thirty two
+bit add: sixteen cycles against twenty six. Which way it goes depends on the
+sign of the step, which is fixed for a block, so it wants two copies of the loop.
+The same duplication would halve the loop's own tail. Together they are about 3.5%
+for two more copies of a scanline that is already written out twice.
+
+### What that leaves
+
+| | share of the mean call |
+|---|---|
+| building the multiply tables | 20% |
+| the four stages of a computing scanline | 57% |
+| the advance and the loop's own tail | 8% |
+| copying a scanline whose distance repeated | 5% |
+
+Every one of those is arithmetic the part itself does. The ground answers the
+same bytes the DSP-1 does on all 596 frames captured across the demo, and it does
+it in a fifth of the cycles it took when it first drew anything.
