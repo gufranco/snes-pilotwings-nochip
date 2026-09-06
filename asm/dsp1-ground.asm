@@ -111,7 +111,6 @@
 !G_EXP     = $82                ; the exponent the scale about to run will use
 !G_S1      = $84                ; the two scales for this scanline
 !G_S2      = $86
-!G_OUT     = $88                ; the four words this scanline answers, $88 to $8E
 !G_NEG     = $90                ; whether the reciprocal's sign has to go back
 !G_AT      = $92                ; how far into the two buffers the loop has got
 !G_TURNS   = $94                ; how many scanlines are left
@@ -281,14 +280,12 @@ macro mulk_product(table)
 ?whole:                         ; disturbing the half being corrected
 endmacro
 
+; The product, shifted down fifteen places, which is what every multiply here
+; wants. The shift is not done: the table holds twice the constant, so the high
+; half %mulk_product leaves in the accumulator is already the shifted product.
 macro mulk(table)
     %mulk_product(<table>)
-    tay                         ; the whole product left one, high word kept,
-    lda !TMP+4                  ; which is the shift right by fifteen. The high
-    asl a                       ; half never reaches memory at all, and the low
-    tya                         ; half is shifted in the accumulator: the direct
-    rol a                       ; page is the console's own memory, so a shift
-endmacro                        ; there is a read, a change and a write
+endmacro
 
 ; ---------------------------------------------------------------------------
 ; Both products of one varying word, for the two tables the matrix uses.
@@ -339,12 +336,9 @@ macro mulk_products(one, two, first)
     sec
     sbc.l <one>+9
 ?first:
-    tay                         ; the first product is finished here rather than
-    lda !TMP+4                  ; parked, because the index the second needs is
-    asl a                       ; already in X and nothing between disturbs it
-    tya
-    rol a
-    sta <first>
+    sta.w <first>,y             ; the first product is stored here rather than
+                                ; parked, because the index the second needs is
+                                ; already in X and nothing between disturbs it
 
     lda.l <two>+0,x
     clc
@@ -360,13 +354,9 @@ macro mulk_products(one, two, first)
     sta !TMP+10
 endmacro
 
+; Nothing to shift: the high half is the shifted product already.
 macro mulk_shift(low, high)
     lda <high>
-    tay
-    lda <low>
-    asl a
-    tya
-    rol a
 endmacro
 
 ; Negating the product and then shifting is the same as taking one off it,
@@ -378,20 +368,17 @@ endmacro
 ; The shift itself has to come after, not before: the part negates the whole
 ; product, and negating a shifted answer would round the wrong way on every
 ; product the shift does not divide.
+; The same, negated. Shifting a negated product and negating a shifted one are
+; not the same number, so the negation is done on the product: minus p shifted
+; down fifteen is the complement of p less one shifted down fifteen.
+;
+; Two comes off rather than one, because the pair holds twice the product.
 macro mulk_shift_negated(low, high)
     lda <low>
-    dec a
-    sta <low>
-    cmp #$FFFF                  ; it wrapped, so the borrow goes to the high half
-    bne ?whole
-    dec <high>
-?whole:
-    lda <high>
-    tay
-    lda <low>
-    asl a
-    tya
-    rol a
+    sec
+    sbc #$0002
+    lda <high>                  ; a load leaves the borrow alone, so the high
+    sbc #$0000                  ; half takes it from the subtraction above
     eor #$FFFF
 endmacro
 
@@ -669,76 +656,138 @@ endmacro
 ; In:  A the count, 0 to 15, and !G_NORM the value.
 ; Out: A the value shifted. Uses X.
 ; ---------------------------------------------------------------------------
-ground_shift_at:
-    dw ground_shift_0
-    dw ground_shift_1
-    dw ground_shift_2
-    dw ground_shift_3
-    dw ground_shift_4
-    dw ground_shift_5
-    dw ground_shift_6
-    dw ground_shift_7
-    dw ground_shift_8
-    dw ground_shift_9
-    dw ground_shift_10
-    dw ground_shift_11
-    dw ground_shift_12
-    dw ground_shift_13
-    dw ground_shift_14
-    dw ground_shift_15
+ground_up_at:
+    dw ground_up_0
+    dw ground_up_1
+    dw ground_up_2
+    dw ground_up_3
+    dw ground_up_4
+    dw ground_up_5
+    dw ground_up_6
+    dw ground_up_7
+    dw ground_up_8
+    dw ground_up_9
+    dw ground_up_10
+    dw ground_up_11
+    dw ground_up_12
+    dw ground_up_13
+    dw ground_up_14
+    dw ground_up_15
 
+ground_down_at:
+    dw ground_down_0
+    dw ground_down_1
+    dw ground_down_2
+    dw ground_down_3
+    dw ground_down_4
+    dw ground_down_5
+    dw ground_down_6
+    dw ground_down_7
+    dw ground_down_8
+    dw ground_down_9
+    dw ground_down_10
+    dw ground_down_11
+    dw ground_down_12
+    dw ground_down_13
+    dw ground_down_14
+    dw ground_down_15
+
+; A value with bit fifteen clear shifts in noughts, which is one instruction a
+; place. A value with bit fifteen set has to shift in ones, which is two. Doing
+; both with `cmp #$8000 : ror a` cost the shorter case three cycles a place it
+; did not need, and the shorter case is 72% of them, measured over one call.
+;
+; The sign is read once, before the chain, and never changes inside it: shifting
+; a negative value right arithmetically leaves it negative.
 ground_shift:
-    asl a                       ; two bytes an entry in the table above
+    asl a                       ; two bytes an entry in the tables above
     tax
     lda !G_NORM
-    jmp (ground_shift_at,x)
+    bmi ground_shift_down
+    jmp (ground_up_at,x)
 
-ground_shift_15:
-    cmp #$8000
+ground_shift_down:
+    jmp (ground_down_at,x)
+
+ground_up_15:
+    lsr a
+ground_up_14:
+    lsr a
+ground_up_13:
+    lsr a
+ground_up_12:
+    lsr a
+ground_up_11:
+    lsr a
+ground_up_10:
+    lsr a
+ground_up_9:
+    lsr a
+ground_up_8:
+    lsr a
+ground_up_7:
+    lsr a
+ground_up_6:
+    lsr a
+ground_up_5:
+    lsr a
+ground_up_4:
+    lsr a
+ground_up_3:
+    lsr a
+ground_up_2:
+    lsr a
+ground_up_1:
+    lsr a
+ground_up_0:
+    rts
+
+ground_down_15:
+    sec
     ror a
-ground_shift_14:
-    cmp #$8000
+ground_down_14:
+    sec
     ror a
-ground_shift_13:
-    cmp #$8000
+ground_down_13:
+    sec
     ror a
-ground_shift_12:
-    cmp #$8000
+ground_down_12:
+    sec
     ror a
-ground_shift_11:
-    cmp #$8000
+ground_down_11:
+    sec
     ror a
-ground_shift_10:
-    cmp #$8000
+ground_down_10:
+    sec
     ror a
-ground_shift_9:
-    cmp #$8000
+ground_down_9:
+    sec
     ror a
-ground_shift_8:
-    cmp #$8000
+ground_down_8:
+    sec
     ror a
-ground_shift_7:
-    cmp #$8000
+ground_down_7:
+    sec
     ror a
-ground_shift_6:
-    cmp #$8000
+ground_down_6:
+    sec
     ror a
-ground_shift_5:
-    cmp #$8000
+ground_down_5:
+    sec
     ror a
-ground_shift_4:
-    cmp #$8000
+ground_down_4:
+    sec
     ror a
-ground_shift_3:
-    cmp #$8000
+ground_down_3:
+    sec
     ror a
-ground_shift_2:
-    cmp #$8000
+ground_down_2:
+    sec
     ror a
-ground_shift_1:
-    cmp #$8000
+ground_down_1:
+    sec
     ror a
-ground_shift_0:
+ground_down_0:
     rts
 
 ; ---------------------------------------------------------------------------
@@ -782,7 +831,7 @@ ground_scale:
 ; One scanline, which is the whole of $0a for one line of the screen.
 ;
 ; In:  !G_LINE, and the state ground_state loaded.
-; Out: !G_OUT+0 through !G_OUT+6, the four words the part answers.
+; Out: the four words the part answers, written into the two buffers at Y.
 ; ---------------------------------------------------------------------------
 ; The seven labels below name the stages rather than being jumped to. The
 ; assembler prints them, and tools/profile.py buckets a call's cycles by the
@@ -802,16 +851,19 @@ line_distance:
 line_reciprocal:
     %invert()
 
+; The exponent is worked out before the multiply in both stages below, so the
+; product goes straight into the scale rather than being parked and fetched back.
+; In the second stage that also leaves Y untouched for the whole scanline, which
+; is what lets the four answer words be written where they are wanted.
 line_mantissa:
-    lda !G_RA
-    %mulk(!MULTAB2)
-    sta !G_MA
     lda !G_RB
     clc
     adc !G_EXP1
     sta !G_EXP
 
-    lda !G_MA
+    lda !G_RA
+    %mulk(!MULTAB2)
+    sta !G_MA
     jsr ground_scale
     sta !G_S1
 
@@ -819,30 +871,32 @@ line_mantissa:
     ; reciprocal. That is the cascade, and it is the whole reason six attempts
     ; to recover this from the answers failed.
 line_cascade:
-    lda !G_MA
-    %mulk(!MULTAB3)
-    tay                         ; keep it while the exponent is worked out
     lda !G_EXP
     clc
     adc !G_EXP2
     sta !G_EXP
-    tya
+
+    lda !G_MA
+    %mulk(!MULTAB3)
     jsr ground_scale
     sta !G_S2
 
     ; The four words. The first scale takes the two matrix words the part reads
     ; from $7f and $6f, and the second takes the two from $7e and $6e.
+; Written straight into the two buffers the game reads, at the offset Y holds,
+; rather than into four direct page words the caller then copied across. Y is
+; the caller's own index and nothing between here and there disturbs it.
 line_words_first:
     lda !G_S1
-    %mulk_products(!MULTAB0, !MULTAB1, !G_OUT+0)
+    %mulk_products(!MULTAB0, !MULTAB1, !STREAM_ONE)
     %mulk_shift_negated(!TMP+8, !TMP+10)
-    sta !G_OUT+4
+    sta.w !STREAM_TWO,y
 
 line_words_second:
     lda !G_S2
-    %mulk_products(!MULTAB1, !MULTAB0, !G_OUT+2)
+    %mulk_products(!MULTAB1, !MULTAB0, !STREAM_ONE+2)
     %mulk_shift(!TMP+8, !TMP+10)
-    sta !G_OUT+6
+    sta.w !STREAM_TWO+2,y
     rts
 
 ; ---------------------------------------------------------------------------
@@ -1219,6 +1273,17 @@ macro build_table(table)
 ?signed:
     sta !TMP+6
 
+    ; Twice the constant, so an entry holds twice the product and the high half
+    ; of it is the product already shifted down fifteen places. That shift was
+    ; five instructions after every one of the six multiplies a scanline; now it
+    ; is one instruction here, once per rebuild.
+    ;
+    ; Doubling a value that is already sign extended across the pair leaves the
+    ; sign word alone: the bit the low half loses off the top is the one the high
+    ; half's own doubling brings back in, and for a negative constant both are
+    ; ones.
+    asl !TMP+0
+
     ; The sum's high half lives in the index register. The direct page is the
     ; console's own memory and it answers more slowly than the cartridge, so an
     ; entry that read and wrote both halves there paid four times for it; this
@@ -1542,17 +1607,8 @@ ground_block:
     sta !G_TURNS
 
 .turn:
-    jsr ground_line
-
-    ldx !G_AT
-    lda !G_OUT+0
-    sta.w !STREAM_ONE,x
-    lda !G_OUT+2
-    sta.w !STREAM_ONE+2,x
-    lda !G_OUT+4
-    sta.w !STREAM_TWO,x
-    lda !G_OUT+6
-    sta.w !STREAM_TWO+2,x
+    ldy !G_AT                   ; where in the two buffers this scanline goes,
+    jsr ground_line             ; which ground_line writes through itself
 
     jsr ground_next
     lda !G_AT
@@ -1596,15 +1652,19 @@ ground_answer:
     lda !ARG+0
     sta !G_LINE
     jsr ground_seed
-    jsr ground_line
 
-    lda !G_OUT+0
+    ldy #$0000                  ; ground_line writes into the two buffers, so the
+    jsr ground_line             ; first entry of each is where this one lands.
+                                ; ground_block rewrites every entry from the
+                                ; first on every call, so nothing reads what is
+                                ; left here
+    lda.w !STREAM_ONE+0
     sta.l !OUT+0
-    lda !G_OUT+2
+    lda.w !STREAM_ONE+2
     sta.l !OUT+2
-    lda !G_OUT+4
+    lda.w !STREAM_TWO+0
     sta.l !OUT+4
-    lda !G_OUT+6
+    lda.w !STREAM_TWO+2
     sta.l !OUT+6
 
     plp
