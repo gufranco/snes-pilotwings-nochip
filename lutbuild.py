@@ -43,7 +43,37 @@ import exchanges
 BANK_BYTES = 0x8000
 """What one low-addressed bank holds, and so how the blob is cut up."""
 
-HEADER = 1
+HEADER = 2
+"""The count of commands, and one byte of nothing after it.
+
+The pad is what keeps every row on an even offset, and that is what keeps a
+word from ever being split across two banks.
+
+A bank holds 32,768 bytes, which is even, so a bank boundary falls between two
+words exactly when the row stream starts on an even offset. Every stride here is
+a whole number of words, so once the first row is even every word after it is.
+Start the stream on an odd offset instead and some word, eventually, has its
+first byte at $FFFF and its second in a bank the cartridge does not put there:
+on a low cartridge the byte after $9AFFFF is $9B8000, not $9B0000.
+
+It happened. With a one byte header the rows began at 449 and command $02's row
+4,649 began at 65,535, so its first word was read half from the table and half
+from the console's own memory, the search missed a key it holds, and the
+fallback answered with the row below. One key in 2,801 across a run.
+"""
+
+COMMAND_MAP = 256
+"""A byte per command byte, saying which entry answers it, or $FF for none.
+
+It sits between the count and the entries, so it is always at the same place and
+the entries are always 257 bytes in. Without it the cartridge walked the entries
+comparing command bytes, which averaged six comparisons and a hundred and
+seventy five cycles on every lookup the game makes.
+"""
+
+NO_ENTRY = 0xFF
+"""What the map holds for a command the table does not answer."""
+
 ENTRY_BYTES = 16
 """How wide one command's entry in the index is.
 
@@ -115,7 +145,9 @@ def encode(
     commands = sorted(tables)
     out = bytearray()
     out.append(len(commands))
-    rows_at = HEADER + ENTRY_BYTES * len(commands)
+    out.append(0)
+    out += bytes(commands.index(one) if one in commands else NO_ENTRY for one in range(COMMAND_MAP))
+    rows_at = HEADER + COMMAND_MAP + ENTRY_BYTES * len(commands)
     body = bytearray()
     for command in commands:
         rows, key_words, answer_words = tables[command]
@@ -130,7 +162,13 @@ def encode(
             body += struct.pack(f"<{key_words}H", *_padded(key, key_words))
         for _, answer in ordered:
             body += struct.pack(f"<{answer_words}H", *_padded(answer, answer_words))
+    if (rows_at + len(body)) % 2 or rows_at % 2:
+        raise Uneven(f"the rows begin at {rows_at}, which is odd, so a word can be split")
     return bytes(out + body)
+
+
+class Uneven(Exception):
+    """A layout that puts a row on an odd offset, which HEADER explains."""
 
 
 def _padded(words: Sequence[int], width: int) -> tuple[int, ...]:

@@ -8,7 +8,36 @@ import lutbuild
 ROOT = Path(__file__).resolve().parent
 
 
+ENTRY = lutbuild.HEADER + lutbuild.COMMAND_MAP
+"""Where the first command's entry begins: past the count, its pad, and the map."""
+
+
 class HeaderTest(unittest.TestCase):
+    def test_the_map_names_the_entry_that_answers_a_command(self) -> None:
+        raw = lutbuild.encode({0x13: ((((1,), (9,)),), 1, 1), 0x00: ((((2,), (8,)),), 1, 1)})
+
+        self.assertEqual(raw[lutbuild.HEADER + 0x00], 0)
+        self.assertEqual(raw[lutbuild.HEADER + 0x13], 1)
+
+    def test_the_map_says_nothing_answers_a_command_the_table_lacks(self) -> None:
+        raw = lutbuild.encode({0x13: ((((1,), (9,)),), 1, 1)})
+
+        self.assertEqual(raw[lutbuild.HEADER + 0x06], lutbuild.NO_ENTRY)
+
+    def test_the_entry_says_where_the_answers_begin(self) -> None:
+        rows = (((1,), (0xAAAA,)), ((2,), (0xBBBB,)))
+        raw = lutbuild.encode({0x13: (rows, 1, 1)})
+
+        at = struct.unpack_from("<I", raw, ENTRY + 8)[0]
+        answers = struct.unpack_from("<I", raw, ENTRY + 12)[0]
+        self.assertEqual(answers, at + 4)
+        self.assertEqual(struct.unpack_from("<H", raw, answers)[0], 0xAAAA)
+
+    def test_the_rows_begin_on_an_even_offset(self) -> None:
+        raw = lutbuild.encode({0x13: ((((1,), (9,)),), 1, 1)})
+
+        self.assertEqual(struct.unpack_from("<I", raw, ENTRY + 8)[0] % 2, 0)
+
     def test_it_opens_with_the_command_count(self) -> None:
         raw = lutbuild.encode({0x13: ((((1,), (9,)),), 1, 1)})
 
@@ -22,44 +51,44 @@ class HeaderTest(unittest.TestCase):
     def test_the_index_names_the_command_byte(self) -> None:
         raw = lutbuild.encode({0x13: ((((1,), (9,)),), 1, 1)})
 
-        self.assertEqual(raw[1], 0x13)
+        self.assertEqual(raw[ENTRY], 0x13)
 
     def test_the_index_carries_the_key_width(self) -> None:
         raw = lutbuild.encode({0x13: ((((1, 2), (9, 8, 7)),), 2, 3)})
 
-        self.assertEqual(raw[2], 2)
+        self.assertEqual(raw[ENTRY + 1], 2)
 
     def test_the_answer_width_reaches_past_a_byte(self) -> None:
         wide = tuple(range(764))
         raw = lutbuild.encode({0x0A: ((((1,), wide),), 1, 764)})
 
-        self.assertEqual(struct.unpack_from("<H", raw, lutbuild.HEADER + 2)[0], 764)
+        self.assertEqual(struct.unpack_from("<H", raw, ENTRY + 2)[0], 764)
 
     def test_the_index_carries_the_row_count(self) -> None:
         rows = tuple(((one,), (one,)) for one in range(300))
         raw = lutbuild.encode({0x13: (rows, 1, 1)})
 
-        self.assertEqual(struct.unpack_from("<I", raw, lutbuild.HEADER + 4)[0], 300)
+        self.assertEqual(struct.unpack_from("<I", raw, ENTRY + 4)[0], 300)
 
 
 class RowsTest(unittest.TestCase):
     def test_the_keys_come_before_the_answers(self) -> None:
         raw = lutbuild.encode({0x13: ((((0x1111,), (0x2222,)),), 1, 1)})
-        at = struct.unpack_from("<I", raw, lutbuild.HEADER + 8)[0]
+        at = struct.unpack_from("<I", raw, ENTRY + 8)[0]
 
         self.assertEqual(struct.unpack_from("<H", raw, at)[0], 0x1111)
 
     def test_the_answers_follow_every_key(self) -> None:
         rows = (((1,), (0xAAAA,)), ((2,), (0xBBBB,)))
         raw = lutbuild.encode({0x13: (rows, 1, 1)})
-        at = struct.unpack_from("<I", raw, lutbuild.HEADER + 8)[0]
+        at = struct.unpack_from("<I", raw, ENTRY + 8)[0]
 
         self.assertEqual(struct.unpack_from("<H", raw, at + 4)[0], 0xAAAA)
 
     def test_the_keys_are_sorted_so_a_search_can_halve(self) -> None:
         rows = (((5,), (1,)), ((1,), (2,)))
         raw = lutbuild.encode({0x13: (rows, 1, 1)})
-        at = struct.unpack_from("<I", raw, lutbuild.HEADER + 8)[0]
+        at = struct.unpack_from("<I", raw, ENTRY + 8)[0]
 
         self.assertEqual(struct.unpack_from("<HH", raw, at), (1, 5))
 

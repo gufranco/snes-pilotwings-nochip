@@ -339,41 +339,40 @@ endif
 ; ---------------------------------------------------------------------------
 ; Find the command's entry in the index.
 ;
-; Walks the index rather than indexing into it, because the index is sixteen
-; entries and a walk is shorter than the arithmetic to skip one. Sets carry when
-; the command was found, clears it when it was not, which is the case a command
-; the recordings never saw would take.
+; Indexes into it rather than walking it. The table opens with a byte for every
+; command byte a command byte can be, saying which entry answers it, so finding
+; an entry is one read and four doublings whatever the command is.
+;
+; It used to walk the entries comparing command bytes. That averaged six
+; comparisons and about a hundred and seventy five cycles, on every lookup the
+; game makes, to answer a question 256 bytes of table answers outright.
+;
+; Sets carry when the command was found, clears it when it was not, which is the
+; case a command the recordings never saw would take.
 ;
 ; In:  !CMD.
-; Out: !KEYW, !ANSW, !ROWS, !ROWAT filled in, carry set.
+; Out: !KEYW, !KEYLAST, !ANSW, !ROWS, !ROWAT, !ANSAT filled in, carry set.
 ; ---------------------------------------------------------------------------
 lut_entry:
     php
     rep #$30
 
-    lda.l !LUT                  ; how many commands the table holds
-    and #$00FF
-    sta !SCRATCH                ; countdown
-    ldx.w #$0001                ; the first entry sits after that one byte
-
--
-    lda.l !LUT,x
-    and #$00FF
-    cmp !CMD
-    beq .found
-
-    txa                         ; step over this entry, which is sixteen bytes
-    clc                         ; wide so that stepping is a shift rather than
-    adc #$0010                  ; an addition wherever anything indexes it
+    lda !CMD                    ; the command byte names its own entry: the
+    and #$00FF                  ; table opens with a byte per command byte
     tax
-    dec !SCRATCH
-    bne -
+    lda.l !LUT+2,x
+    and #$00FF
+    cmp #$00FF
+    beq .missing                ; the table does not answer this one
 
-    plp
-    clc                         ; no entry: the caller falls back
-    rtl
+    asl a                       ; which entry it is, times the sixteen bytes an
+    asl a                       ; entry takes, which is four doublings because
+    asl a                       ; the width was chosen to make it four
+    asl a
+    clc
+    adc.w #(2+256)              ; past the count, its pad, and the map
+    tax
 
-.found:
     lda.l !LUT+1,x              ; the key width is one byte, so the byte above
     and #$00FF                  ; it has to be masked off before it is stored
     sta !KEYW
@@ -404,6 +403,11 @@ lut_entry:
 
     plp
     sec
+    rtl
+
+.missing:
+    plp
+    clc                         ; no entry: the caller falls back
     rtl
 
 ; ---------------------------------------------------------------------------
