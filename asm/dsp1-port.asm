@@ -294,18 +294,23 @@ dsp_width:
 ;
 ; Both halves of the accumulator are stored whether or not the high one means
 ; anything, because working that out first needs the flags, and reading the
-; flags needs the stack untouched. Storing both costs four cycles and removes
-; the ordering problem entirely.
+; flags needs the stack untouched. Storing both removes the ordering problem
+; entirely.
+;
+; Both go in one store rather than two and a swap. The accumulator is sixteen
+; bits wide inside the processor whatever mode the caller was in: eight bit mode
+; hides the high half rather than discarding it, so widening the register and
+; storing a word writes exactly the two bytes the swap used to write, seven
+; cycles sooner. This runs 99 times a game frame.
 ;
 ; In:  A the caller's value, with php the only thing pushed.
 ; Out: !PORT_VALUE the value, !PORT_WIDE zero when the caller was sixteen bit.
 ; ---------------------------------------------------------------------------
 macro capture()
+    rep #$20
+    sta.l !PORT_VALUE           ; the low half, which is always real, and above
+                                ; it the high half, real only in sixteen bit mode
     sep #$20
-    sta.l !PORT_VALUE           ; the low half, which is always real
-    xba
-    sta.l !PORT_VALUE+1         ; the high half, real only in sixteen bit mode
-    xba
     lda $01,s                   ; the flags php pushed, one byte above the stack
     and #$20                    ; the M bit: set means the caller had eight bits
     sta.l !PORT_WIDE
@@ -326,16 +331,13 @@ dsp_write:
     rep #$30
     phx
     phy
-    phd
+
+    ; The direct page is not saved here. Everything below reaches its state as a
+    ; long address, so it does not care where the page is, and the three routines
+    ; in this project that move the page all put it back themselves. Saving it
+    ; again cost eight cycles on every one of the 99 writes a game frame.
 
     sep #$20
-    lda.l !PORT_READY           ; has this block been set up at all?
-    cmp #!READY
-    beq .known
-    jsl dsp_port_reset
-    sep #$20
-
-.known:
     lda.l !PORT_WRITES
     inc a
     sta.l !PORT_WRITES
@@ -344,6 +346,22 @@ dsp_write:
     bne .argument
 
     ; Nothing was in progress, so this byte is a command.
+    ;
+    ; The check that this block has been set up at all lives here rather than on
+    ; every write. Work RAM reads as nought before anything writes it, so a
+    ; console that starts clean arrives here with no command in progress and is
+    ; set up before the first command is taken. A console that starts on a
+    ; pattern can arrive at the argument path instead, and then the count of
+    ; arguments still to come runs down to nought and reaches this on the write
+    ; after it. That is the same self-correction the count already relied on, and
+    ; it is one command's worth of wrong answers either way.
+    lda.l !PORT_READY           ; has this block been set up at all?
+    cmp #!READY
+    beq .known
+    jsl dsp_port_reset
+    sep #$20
+
+.known:
     lda.l !PORT_VALUE
     sta.l !PORT_CMD
 
@@ -409,13 +427,18 @@ dsp_write:
     rep #$30
     lda.l !PORT_VALUE
 
+    ; The word arrives here in the accumulator, and it is put on the stack rather
+    ; than back in !PORT_VALUE and read out again. Working out where it goes needs
+    ; the accumulator for the index, so something has to hold it in the meantime,
+    ; and the stack holds it for nine cycles less than a long store and a long
+    ; load do.
 .place:
-    sta.l !PORT_VALUE
+    pha
     lda.l !PORT_AT
     and.w #$00FF
     asl a                       ; two bytes to a word
     tax
-    lda.l !PORT_VALUE
+    pla
     sta.l !PORT_ARGS,x
 
     sep #$20
@@ -604,7 +627,6 @@ dsp_write:
     ; high half is the caller's B register when the caller was eight bits wide,
     ; and restoring it puts that back too.
     rep #$30
-    pld
     ply
     plx
     lda.l !PORT_VALUE
