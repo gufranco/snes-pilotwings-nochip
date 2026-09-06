@@ -310,7 +310,7 @@ endmacro
 ; through Y, the second's in !TMP+8 and !TMP+10, both sign-corrected.
 ; Uses X and !TMP+4 to !TMP+11.
 ; ---------------------------------------------------------------------------
-macro mulk_products(one, two, first, from)
+macro mulk_products(one, two, first, from, keeplow)
     lda <from>                  ; read twice rather than read once and parked
     and #$00FF                  ; the low byte, times eight, is where its entry
     asl a                       ; is, and it is the entry in either table
@@ -354,7 +354,9 @@ macro mulk_products(one, two, first, from)
     lda.w (<two>&$FFFF)+0,x
     clc
     adc !TMP+8
-    sta !TMP+8
+if <keeplow> == 1
+    sta !TMP+8                  ; only the caller that negates reads this back
+endif
     lda.w (<two>&$FFFF)+2,x
     adc !TMP+10
     cpx.w #$0400
@@ -362,12 +364,11 @@ macro mulk_products(one, two, first, from)
     sec
     sbc.w (<two>&$FFFF)+9
 ?second:
-    sta !TMP+10
 endmacro
 
-; Nothing to shift: the high half is the shifted product already.
+; Nothing to shift and nothing to fetch: the high half is the shifted product
+; already, and it is still in the accumulator.
 macro mulk_shift(low, high)
-    lda <high>
 endmacro
 
 ; Negating the product and then shifting is the same as taking one off it,
@@ -385,7 +386,8 @@ endmacro
 ;
 ; Two comes off rather than one, because the pair holds twice the product.
 macro mulk_shift_negated(low, high)
-    lda <low>
+    sta <high>                  ; parked, because the low half has to be
+    lda <low>                   ; subtracted from first to leave the borrow
     sec
     sbc #$0002
     lda <high>                  ; a load leaves the borrow alone, so the high
@@ -688,13 +690,15 @@ endmacro
 macro scale()
     %normalise()
 
-    lda !G_EXP
+    ; The count less the exponent is how many places to shift right, so it is
+    ; subtracted that way round rather than the other way and negated. The
+    ; multiplier's own fifteen is already off the exponent, taken out of the
+    ; first one once per block.
+    lda !G_COUNT
     sec
-    sbc !G_COUNT                ; the multiplier's own fifteen is already off,
-    bpl ?saturating             ; taken out of the first exponent once per block
-
-    eor #$FFFF                  ; how many places to shift right
-    inc a
+    sbc !G_EXP
+    beq ?exact                  ; nothing to shift, and nothing to clamp either
+    bmi ?clamp                  ; the exponent is above the count, so it saturates
     cmp #$0010
     bcs ?flat                   ; sixteen or more reads a ROM word of nought
 
@@ -711,8 +715,7 @@ macro scale()
     lda #$0000
     jmp ?done
 
-?saturating:
-    bne ?clamp
+?exact:
     lda !G_NORM                 ; exactly nought: untouched
     jmp ?done
 
@@ -902,12 +905,12 @@ line_cascade:
 ; rather than into four direct page words the caller then copied across. Y is
 ; the caller's own index and nothing between here and there disturbs it.
 line_words_first:
-    %mulk_products(!MULTAB0, !MULTAB1, !STREAM_ONE, !G_S1)
+    %mulk_products(!MULTAB0, !MULTAB1, !STREAM_ONE, !G_S1, 1)
     %mulk_shift_negated(!TMP+8, !TMP+10)
     sta.w !STREAM_TWO,y
 
 line_words_second:
-    %mulk_products(!MULTAB1, !MULTAB0, !STREAM_ONE+2, !G_S2)
+    %mulk_products(!MULTAB1, !MULTAB0, !STREAM_ONE+2, !G_S2, 0)
     %mulk_shift(!TMP+8, !TMP+10)
     sta.w !STREAM_TWO+2,y
 
