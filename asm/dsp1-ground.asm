@@ -250,9 +250,9 @@ macro mulk_product(table)
     sta !TMP+0                  ; kept for its sign, at the end
 
     and #$00FF                  ; the low byte, times eight, is where its entry is
-    asl a
-    asl a
-    asl a
+    asl a                       ; and shifting a byte three places can never push
+    asl a                       ; a bit out, so the carry is clear afterwards and
+    asl a                       ; the addition below needs no clearing of its own
     tax
     lda.l <table>+1,x           ; past the nought, so this is k times that byte
     sta !TMP+4
@@ -267,7 +267,6 @@ macro mulk_product(table)
     asl a
     tax
     lda.l <table>+0,x           ; from the nought, so this is that entry times 256
-    clc
     adc !TMP+4                  ; the sum's low half is wanted only for the carry
     lda.l <table>+2,x           ; it leaves, so it is never written down
     adc !TMP+6
@@ -325,7 +324,6 @@ macro mulk_products(one, two, first)
     tax
 
     lda.l <one>+0,x
-    clc
     adc !TMP+4                  ; the first product's low half is wanted only for
     lda.l <one>+2,x             ; the carry, so it is never written down either
     adc !TMP+6
@@ -641,155 +639,38 @@ endmacro
 ; In:  A the mantissa, !G_EXP the exponent.
 ; Out: A the scale.
 ; ---------------------------------------------------------------------------
-; An arithmetic shift right by a count worked out at the time.
+; $0077: a mantissa and an exponent turned into a scale, written out where it is
+; used rather than called.
 ;
-; The processor has no such instruction and no variable shift at all, so this
-; was a loop: compare, rotate, count down, branch, ten cycles a place. Written
-; out once per place and entered part way down, a place costs five and the count
-; is spent once on the way in rather than on every turn.
+; It normalises again, works out how far to shift, and shifts. The part shifts by
+; multiplying by a power of two out of its data ROM, whose words are 1, 2, 4 and
+; so on up to 16,384 with nought below them, so the multiply is a shift and a
+; shift of sixteen or more is a multiply by nought.
 ;
-; The two scales a scanline both come through here, 352 times a frame, and the
-; count they ask for averages about seven.
+; The two exits above nought are the part's own:
 ;
-; In:  A the count, 0 to 15, and !G_NORM the value.
-; Out: A the value shifted. Uses X.
+;   exactly nought   hand back the normalised value untouched      $080, $086
+;   above nought     clamp to $7fff or $8001 by sign               $083, $085
+;
+; $8001 rather than $8000. The part loads that constant, so the most negative
+; scale it can answer is minus 32,767. Both exits are reached in practice: across
+; 43,440 answer words the exact one fired 121 times and the clamp 132.
+;
+; The processor has no variable shift, so the shift is written out once per place
+; and entered part way down. A value with bit fifteen clear shifts in noughts,
+; which is one instruction a place; only one with bit fifteen set needs two, and
+; measured over one call the shorter case is 72% of them at an average of 5.12
+; places. The sign is read once and never changes inside the chain, because
+; shifting a negative value right arithmetically leaves it negative.
+;
+; This was a subroutine that jumped to another. Both scales a scanline came
+; through it, 352 times a frame of the game's clock, and the call, the jump and
+; the return were fifteen cycles that did no arithmetic. Written out twice
+; instead, it costs a couple of hundred bytes of an image with three free banks.
+;
+; In:  A the mantissa, !G_EXP the exponent. Out: A the scale. Uses X.
 ; ---------------------------------------------------------------------------
-ground_up_at:
-    dw ground_up_0
-    dw ground_up_1
-    dw ground_up_2
-    dw ground_up_3
-    dw ground_up_4
-    dw ground_up_5
-    dw ground_up_6
-    dw ground_up_7
-    dw ground_up_8
-    dw ground_up_9
-    dw ground_up_10
-    dw ground_up_11
-    dw ground_up_12
-    dw ground_up_13
-    dw ground_up_14
-    dw ground_up_15
-
-ground_down_at:
-    dw ground_down_0
-    dw ground_down_1
-    dw ground_down_2
-    dw ground_down_3
-    dw ground_down_4
-    dw ground_down_5
-    dw ground_down_6
-    dw ground_down_7
-    dw ground_down_8
-    dw ground_down_9
-    dw ground_down_10
-    dw ground_down_11
-    dw ground_down_12
-    dw ground_down_13
-    dw ground_down_14
-    dw ground_down_15
-
-; A value with bit fifteen clear shifts in noughts, which is one instruction a
-; place. A value with bit fifteen set has to shift in ones, which is two. Doing
-; both with `cmp #$8000 : ror a` cost the shorter case three cycles a place it
-; did not need, and the shorter case is 72% of them, measured over one call.
-;
-; The sign is read once, before the chain, and never changes inside it: shifting
-; a negative value right arithmetically leaves it negative.
-ground_shift:
-    asl a                       ; two bytes an entry in the tables above
-    tax
-    lda !G_NORM
-    bmi ground_shift_down
-    jmp (ground_up_at,x)
-
-ground_shift_down:
-    jmp (ground_down_at,x)
-
-ground_up_15:
-    lsr a
-ground_up_14:
-    lsr a
-ground_up_13:
-    lsr a
-ground_up_12:
-    lsr a
-ground_up_11:
-    lsr a
-ground_up_10:
-    lsr a
-ground_up_9:
-    lsr a
-ground_up_8:
-    lsr a
-ground_up_7:
-    lsr a
-ground_up_6:
-    lsr a
-ground_up_5:
-    lsr a
-ground_up_4:
-    lsr a
-ground_up_3:
-    lsr a
-ground_up_2:
-    lsr a
-ground_up_1:
-    lsr a
-ground_up_0:
-    rts
-
-ground_down_15:
-    sec
-    ror a
-ground_down_14:
-    sec
-    ror a
-ground_down_13:
-    sec
-    ror a
-ground_down_12:
-    sec
-    ror a
-ground_down_11:
-    sec
-    ror a
-ground_down_10:
-    sec
-    ror a
-ground_down_9:
-    sec
-    ror a
-ground_down_8:
-    sec
-    ror a
-ground_down_7:
-    sec
-    ror a
-ground_down_6:
-    sec
-    ror a
-ground_down_5:
-    sec
-    ror a
-ground_down_4:
-    sec
-    ror a
-ground_down_3:
-    sec
-    ror a
-ground_down_2:
-    sec
-    ror a
-ground_down_1:
-    sec
-    ror a
-ground_down_0:
-    rts
-
-; ---------------------------------------------------------------------------
-ground_scale:
+macro scale()
     %normalise()
 
     lda !G_EXP
@@ -797,33 +678,158 @@ ground_scale:
     sbc !G_COUNT
     sec
     sbc #$000F                  ; fifteen, the multiplier's own shift
-    bpl .saturating
+    bpl ?saturating
 
     eor #$FFFF                  ; how many places to shift right
     inc a
     cmp #$0010
-    bcs .flat                   ; sixteen or more reads a ROM word of nought
+    bcs ?flat                   ; sixteen or more reads a ROM word of nought
 
-    jmp ground_shift
-
-.flat:
-    lda #$0000
-    rts
-
-.saturating:
-    bne .clamp
-    lda !G_NORM                 ; exactly nought: untouched
-    rts
-
-.clamp:
+    asl a                       ; two bytes an entry in the tables below
+    tax
     lda !G_NORM
-    bmi .low
-    lda #$7FFF
-    rts
+    bmi ?down
+    jmp (?up_at,x)
 
-.low:
+?down:
+    jmp (?down_at,x)
+
+?flat:
+    lda #$0000
+    jmp ?done
+
+?saturating:
+    bne ?clamp
+    lda !G_NORM                 ; exactly nought: untouched
+    jmp ?done
+
+?clamp:
+    lda !G_NORM
+    bmi ?low
+    lda #$7FFF
+    jmp ?done
+
+?low:
     lda #$8001
-    rts
+    jmp ?done
+
+?up_at:
+    dw ?up_0
+    dw ?up_1
+    dw ?up_2
+    dw ?up_3
+    dw ?up_4
+    dw ?up_5
+    dw ?up_6
+    dw ?up_7
+    dw ?up_8
+    dw ?up_9
+    dw ?up_10
+    dw ?up_11
+    dw ?up_12
+    dw ?up_13
+    dw ?up_14
+    dw ?up_15
+
+?down_at:
+    dw ?down_0
+    dw ?down_1
+    dw ?down_2
+    dw ?down_3
+    dw ?down_4
+    dw ?down_5
+    dw ?down_6
+    dw ?down_7
+    dw ?down_8
+    dw ?down_9
+    dw ?down_10
+    dw ?down_11
+    dw ?down_12
+    dw ?down_13
+    dw ?down_14
+    dw ?down_15
+
+?down_15:
+    sec
+    ror a
+?down_14:
+    sec
+    ror a
+?down_13:
+    sec
+    ror a
+?down_12:
+    sec
+    ror a
+?down_11:
+    sec
+    ror a
+?down_10:
+    sec
+    ror a
+?down_9:
+    sec
+    ror a
+?down_8:
+    sec
+    ror a
+?down_7:
+    sec
+    ror a
+?down_6:
+    sec
+    ror a
+?down_5:
+    sec
+    ror a
+?down_4:
+    sec
+    ror a
+?down_3:
+    sec
+    ror a
+?down_2:
+    sec
+    ror a
+?down_1:
+    sec
+    ror a
+?down_0:
+    jmp ?done
+
+?up_15:
+    lsr a
+?up_14:
+    lsr a
+?up_13:
+    lsr a
+?up_12:
+    lsr a
+?up_11:
+    lsr a
+?up_10:
+    lsr a
+?up_9:
+    lsr a
+?up_8:
+    lsr a
+?up_7:
+    lsr a
+?up_6:
+    lsr a
+?up_5:
+    lsr a
+?up_4:
+    lsr a
+?up_3:
+    lsr a
+?up_2:
+    lsr a
+?up_1:
+    lsr a
+?up_0:
+?done:
+endmacro
 
 ; ---------------------------------------------------------------------------
 ; One scanline, which is the whole of $0a for one line of the screen.
@@ -862,7 +868,7 @@ line_mantissa:
     lda !G_RA
     %mulk(!MULTAB2)
     sta !G_MA
-    jsr ground_scale
+    %scale()
     sta !G_S1
 
     ; The second scale multiplies the first chain's mantissa, not the
@@ -876,7 +882,7 @@ line_cascade:
 
     lda !G_MA
     %mulk(!MULTAB3)
-    jsr ground_scale
+    %scale()
     sta !G_S2
 
     ; The four words. The first scale takes the two matrix words the part reads
@@ -895,6 +901,17 @@ line_words_second:
     %mulk_products(!MULTAB1, !MULTAB0, !STREAM_ONE+2)
     %mulk_shift(!TMP+8, !TMP+10)
     sta.w !STREAM_TWO+2,y
+
+    ; One line further down the screen, which used to be its own subroutine. The
+    ; caller has nothing to do between the two, so the call and the return were
+    ; twelve cycles a scanline that did no arithmetic.
+    lda !G_ACC+0
+    clc
+    adc !G_STEP
+    sta !G_ACC+0
+    lda !G_ACC+2
+    adc !G_STEPHI
+    sta !G_ACC+2
     rts
 
 ; ---------------------------------------------------------------------------
@@ -961,19 +978,6 @@ ground_seed:
     lda #$0000
 .kept:
     sta !G_STEPHI
-    rts
-
-; ---------------------------------------------------------------------------
-; One line further down the screen.
-; ---------------------------------------------------------------------------
-ground_next:
-    lda !G_ACC+0
-    clc
-    adc !G_STEP
-    sta !G_ACC+0
-    lda !G_ACC+2
-    adc !G_STEPHI
-    sta !G_ACC+2
     rts
 
 ; ---------------------------------------------------------------------------
@@ -1599,24 +1603,23 @@ ground_block:
                                 ; port never sees it
     jsr ground_seed
 
-    stz !G_AT
-    lda.w #!STREAM_TURNS
-    sta !G_TURNS
+    ; Y is where in the two buffers this scanline goes, and it is also the loop's
+    ; counter. ground_line writes through it and leaves it alone, so nothing has
+    ; to be parked in the direct page and fetched back a scanline later.
+    ldy #$0000
 
 .turn:
-    ldy !G_AT                   ; where in the two buffers this scanline goes,
-    jsr ground_line             ; which ground_line writes through itself
+    jsr ground_line
 
-    jsr ground_next
-    lda !G_AT
-    clc
-    adc #$0004
-    sta !G_AT
-
-    dec !G_TURNS
+    iny                         ; four bytes a scanline, two words in each buffer
+    iny
+    iny
+    iny
+    cpy.w #(!STREAM_TURNS*4)
     bne .turn
 
-    ldx !G_AT                   ; what the original loop's own index reached
+    tya                         ; what the original loop's own index reached
+    tax
     ldy #$0000
 
     pld
