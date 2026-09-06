@@ -532,6 +532,125 @@ lut_row:
     rtl
 
 ; ---------------------------------------------------------------------------
+; Compare the row whose key sits at !TRYB against the wanted key.
+;
+; Leaves the flags a compare leaves: equal when every word matched, carry set
+; when the row is above. Written as a macro rather than a routine because the
+; search reaches it about thirteen times per lookup, and a call and its return
+; are twelve cycles of a step that measures around a hundred and twenty. The one
+; caller that is not the search keeps a routine below.
+; ---------------------------------------------------------------------------
+macro compare()
+    ; Working out where the row sits is written here rather than called, because
+    ; this routine runs about thirteen times per lookup and twenty one lookups
+    ; per game frame. Two calls and their returns are twenty one cycles of every
+    ; step, against a step that measures around a hundred and twenty.
+    ;
+    ; lut_place still exists for the fallback and for the answer copy, which are
+    ; handed a row number rather than an offset and reach it once rather than
+    ; thirteen times. What is below has to stay the same arithmetic as that one;
+    ; it is the only place in this file where a sequence is written twice.
+
+    lda !TRYB                   ; how far into the bank, which is fifteen bits.
+    and #$7FFF                  ; !TRYB counts from the start of the whole table
+    ora #$8000                  ; because a low cartridge starts each bank there
+    sta !SCRATCH
+
+    lda !TRYB                   ; which bank: everything above those fifteen
+    asl a                       ; bits, which is the high word doubled with the
+    lda !TRYB+2                 ; low word's top bit carried into it
+    rol a
+    clc
+    adc.w #!LUTBANK
+if !LUTBANK < !WORKRAM
+    cmp.w #!WORKRAM
+    bcc +
+    clc
+    adc #$0002                  ; past the two banks that are memory, not ROM
++
+endif
+    sta !SCRATCH+2
+
+    ; The wanted key is in the direct page, and the 65816 has no compare that
+    ; indexes the direct page by Y. Absolute indexing by Y exists, so the
+    ; comparison reaches the key as an absolute address, and that address is the
+    ; page's base plus the offset within it. Naming the offset alone reads from
+    ; the bottom of the bank instead, where the game keeps its own variables, so
+    ; no key ever matches and every search closes on nothing. The one row that
+    ; still answered was the first, which is where an empty range leaves the
+    ; index, and that is why the table looked as though it held a single row.
+    ; The data bank is already zero: dsp1_answer sets it once on the way in.
+
+    ; Does the whole key fit in what is left of this bank? Almost always, and
+    ; then Y can walk it. About one row in sixteen hundred sits across the join
+    ; and needs the address moved on properly for every word.
+    ;
+    ; Asked by adding rather than by subtracting. The room left used to be worked
+    ; out first, as nought minus the address, and then compared against the key's
+    ; width; adding the offset of the key's last byte to its first and reading the
+    ; carry answers the same question in three instructions instead of eight, and
+    ; the offset is worked out once per lookup rather than once per step.
+    lda !SCRATCH
+    clc
+    adc !KEYLAST
+    bcs ?slow                   ; past the end of the bank, so it sits across
+
+?fast:
+    ldy #$0000
+    ldx !KEYW
+?loop:
+    lda [!SCRATCH],y
+    cmp.w !PAGE+!ARG,y
+    bne ?differ
+    iny
+    iny
+    dex
+    bne ?loop
+    bra ?same
+
+?slow:
+    ldy #$0000
+    ldx !KEYW
+?walk:
+    phy                         ; the row is read at the address itself, so Y
+    ldy #$0000                  ; has to be nought for the load and back to the
+    lda [!SCRATCH],y            ; argument offset for the compare
+    ply
+    cmp.w !PAGE+!ARG,y
+    bne ?differ
+    jsr lut_next
+    iny
+    iny
+    dex
+    bne ?walk
+
+?same:
+    lda #$0000                  ; every word matched
+    cmp #$0000
+    bra ?done
+
+?differ:
+    ; Nothing to unwind. This routine's whole output is the flags the compare
+    ; above left, so it must not execute anything that touches them, and an
+    ; earlier version did: it restored the data bank here, and plb takes its
+    ; flags from the byte it pulls. Worse, the bank had been pushed before the
+    ; flags were, and a stack gives things back in the order opposite to the one
+    ; it took them, so the pull meant to fetch the bank fetched the flags and
+    ; the pull meant to fetch the flags fetched the bank.
+    ;
+    ; It returned by falling into the routine below, which is where a word of
+    ; every key comparison went. That worked, and only by accident: none of the
+    ; instructions there touches the carry, and the zero flag came out clear
+    ; because the address it left was not nought. Both are true today and
+    ; neither is a property anybody stated. This is a key that did not match,
+    ; which is almost every comparison the search makes, so it was also twenty
+    ; one cycles of every step.
+
+?done:
+
+endmacro
+
+; ---------------------------------------------------------------------------
 ; Walk down the bits of the row number until the key is found or they run out.
 ;
 ; Compares word by word, most significant first, because that is the order the
@@ -607,8 +726,12 @@ lut_find:
     sta !TRYB+2
 
     jsr lut_compare             ; carry clear when the row is below what is
-    beq .hit                    ; wanted, set when it is above or equal
-    bcc .step
+    bne +                       ; wanted, set when it is above or equal. The
+    jmp .hit                    ; branches are written the long way round
++                               ; because the step below outgrew a short one
+    bcs +
+    jmp .step
++
 
     stz !LOW                    ; the first row is already above the wanted key,
     stz !LOW+2                  ; so the key would have gone before it
@@ -642,7 +765,8 @@ lut_find:
     adc !STEPB+2
     sta !TRYB+2
 
-    jsr lut_compare
+    %compare()                  ; written out rather than called: this is the
+                                ; step, and it runs thirteen times a lookup
     beq .took                   ; the key is there: stop with the row taken
     bcs .narrow                 ; the row is above what is wanted: do not move
 
@@ -663,7 +787,9 @@ lut_find:
 
     lda !STEPI                  ; bits left to try?
     ora !STEPI+2
-    bne .step
+    beq +
+    jmp .step
++
 
     lda !MID                    ; none matched. !MID is the last row below the
     clc                         ; wanted key, so the key would have gone one
@@ -694,111 +820,13 @@ lut_find:
 ; when the row is above. Reads the row through a pointer because its address is
 ; the row number times the key width times two, which has to be worked out.
 ; ---------------------------------------------------------------------------
+
+; ---------------------------------------------------------------------------
+; The same, as something a routine can call. Only the check of the first row
+; uses it, once per lookup, where the twelve cycles do not matter.
+; ---------------------------------------------------------------------------
 lut_compare:
-    ; Working out where the row sits is written here rather than called, because
-    ; this routine runs about thirteen times per lookup and twenty one lookups
-    ; per game frame. Two calls and their returns are twenty one cycles of every
-    ; step, against a step that measures around a hundred and twenty.
-    ;
-    ; lut_place still exists for the fallback and for the answer copy, which are
-    ; handed a row number rather than an offset and reach it once rather than
-    ; thirteen times. What is below has to stay the same arithmetic as that one;
-    ; it is the only place in this file where a sequence is written twice.
-
-    lda !TRYB                   ; how far into the bank, which is fifteen bits.
-    and #$7FFF                  ; !TRYB counts from the start of the whole table
-    ora #$8000                  ; because a low cartridge starts each bank there
-    sta !SCRATCH
-
-    lda !TRYB                   ; which bank: everything above those fifteen
-    asl a                       ; bits, which is the high word doubled with the
-    lda !TRYB+2                 ; low word's top bit carried into it
-    rol a
-    clc
-    adc.w #!LUTBANK
-if !LUTBANK < !WORKRAM
-    cmp.w #!WORKRAM
-    bcc +
-    clc
-    adc #$0002                  ; past the two banks that are memory, not ROM
-+
-endif
-    sta !SCRATCH+2
-
-    ; The wanted key is in the direct page, and the 65816 has no compare that
-    ; indexes the direct page by Y. Absolute indexing by Y exists, so the
-    ; comparison reaches the key as an absolute address, and that address is the
-    ; page's base plus the offset within it. Naming the offset alone reads from
-    ; the bottom of the bank instead, where the game keeps its own variables, so
-    ; no key ever matches and every search closes on nothing. The one row that
-    ; still answered was the first, which is where an empty range leaves the
-    ; index, and that is why the table looked as though it held a single row.
-    ; The data bank is already zero: dsp1_answer sets it once on the way in.
-
-    ; Does the whole key fit in what is left of this bank? Almost always, and
-    ; then Y can walk it. About one row in sixteen hundred sits across the join
-    ; and needs the address moved on properly for every word.
-    ;
-    ; Asked by adding rather than by subtracting. The room left used to be worked
-    ; out first, as nought minus the address, and then compared against the key's
-    ; width; adding the offset of the key's last byte to its first and reading the
-    ; carry answers the same question in three instructions instead of eight, and
-    ; the offset is worked out once per lookup rather than once per step.
-    lda !SCRATCH
-    clc
-    adc !KEYLAST
-    bcs .slow                   ; past the end of the bank, so it sits across
-
-.fast:
-    ldy #$0000
-    ldx !KEYW
--
-    lda [!SCRATCH],y
-    cmp.w !PAGE+!ARG,y
-    bne .differ
-    iny
-    iny
-    dex
-    bne -
-    bra .same
-
-.slow:
-    ldy #$0000
-    ldx !KEYW
--
-    phy                         ; the row is read at the address itself, so Y
-    ldy #$0000                  ; has to be nought for the load and back to the
-    lda [!SCRATCH],y            ; argument offset for the compare
-    ply
-    cmp.w !PAGE+!ARG,y
-    bne .differ
-    jsr lut_next
-    iny
-    iny
-    dex
-    bne -
-
-.same:
-    lda #$0000                  ; every word matched
-    cmp #$0000
-    rts
-
-.differ:
-    ; Nothing to unwind. This routine's whole output is the flags the compare
-    ; above left, so it must not execute anything that touches them, and an
-    ; earlier version did: it restored the data bank here, and plb takes its
-    ; flags from the byte it pulls. Worse, the bank had been pushed before the
-    ; flags were, and a stack gives things back in the order opposite to the one
-    ; it took them, so the pull meant to fetch the bank fetched the flags and
-    ; the pull meant to fetch the flags fetched the bank.
-    ;
-    ; It returned by falling into the routine below, which is where a word of
-    ; every key comparison went. That worked, and only by accident: none of the
-    ; instructions there touches the carry, and the zero flag came out clear
-    ; because the address it left was not nought. Both are true today and
-    ; neither is a property anybody stated. This is a key that did not match,
-    ; which is almost every comparison the search makes, so it was also twenty
-    ; one cycles of every step.
+    %compare()
     rts
 
 ; ---------------------------------------------------------------------------
