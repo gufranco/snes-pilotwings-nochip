@@ -254,9 +254,9 @@ macro mulk_product(table)
     asl a                       ; a bit out, so the carry is clear afterwards and
     asl a                       ; the addition below needs no clearing of its own
     tax
-    lda.l <table>+1,x           ; past the nought, so this is k times that byte
+    lda.w (<table>&$FFFF)+1,x           ; past the nought, so this is k times that byte
     sta !TMP+4
-    lda.l <table>+3,x
+    lda.w (<table>&$FFFF)+3,x
     sta !TMP+6
 
     lda !TMP+0                  ; and the high byte the same way
@@ -266,16 +266,20 @@ macro mulk_product(table)
     asl a
     asl a
     tax
-    lda.l <table>+0,x           ; from the nought, so this is that entry times 256
+    lda.w (<table>&$FFFF)+0,x           ; from the nought, so this is that entry times 256
     adc !TMP+4                  ; the sum's low half is wanted only for the carry
-    lda.l <table>+2,x           ; it leaves, so it is never written down
+    lda.w (<table>&$FFFF)+2,x           ; it leaves, so it is never written down
     adc !TMP+6
 
-    bit !TMP+0                  ; a negative word read as unsigned is too big by
-    bpl ?whole                  ; 65536, so the constant comes off the high half,
-    sec                         ; and entry one is the constant itself. Tested
-    sbc.l <table>+9             ; with bit, which reads the sign without
-?whole:                         ; disturbing the half being corrected
+    ; The high byte's index carries the sign of the whole word. It is that byte
+    ; shifted three places, so bit seven of it, which is the word's bit fifteen,
+    ; lands at bit ten. Comparing the index against that bit is a cycle cheaper
+    ; than reading the word back out of the direct page to test it.
+    cpx.w #$0400                ; a negative word read as unsigned is too big by
+    bcc ?whole                  ; 65536, so the constant comes off the high half,
+    sec                         ; and entry one is the constant itself
+    sbc.w (<table>&$FFFF)+9
+?whole:
 endmacro
 
 ; The product, shifted down fifteen places, which is what every multiply here
@@ -306,13 +310,13 @@ macro mulk_products(one, two, first)
     asl a
     asl a
     tax
-    lda.l <one>+1,x
+    lda.w (<one>&$FFFF)+1,x
     sta !TMP+4
-    lda.l <one>+3,x
+    lda.w (<one>&$FFFF)+3,x
     sta !TMP+6
-    lda.l <two>+1,x
+    lda.w (<two>&$FFFF)+1,x
     sta !TMP+8
-    lda.l <two>+3,x
+    lda.w (<two>&$FFFF)+3,x
     sta !TMP+10
 
     lda !TMP+0                  ; and the high byte the same way, once for both
@@ -323,29 +327,33 @@ macro mulk_products(one, two, first)
     asl a
     tax
 
-    lda.l <one>+0,x
+    lda.w (<one>&$FFFF)+0,x
     adc !TMP+4                  ; the first product's low half is wanted only for
-    lda.l <one>+2,x             ; the carry, so it is never written down either
+    lda.w (<one>&$FFFF)+2,x             ; the carry, so it is never written down either
     adc !TMP+6
-    bit !TMP+0
-    bpl ?first
+    ; The high byte's index carries the sign of the whole word. It is that byte
+    ; shifted three places, so bit seven of it, which is the word's bit fifteen,
+    ; lands at bit ten. Comparing the index against that bit is a cycle cheaper
+    ; than reading the word back out of the direct page to test it.
+    cpx.w #$0400
+    bcc ?first
     sec
-    sbc.l <one>+9
+    sbc.w (<one>&$FFFF)+9
 ?first:
     sta.w <first>,y             ; the first product is stored here rather than
                                 ; parked, because the index the second needs is
                                 ; already in X and nothing between disturbs it
 
-    lda.l <two>+0,x
+    lda.w (<two>&$FFFF)+0,x
     clc
     adc !TMP+8
     sta !TMP+8
-    lda.l <two>+2,x
+    lda.w (<two>&$FFFF)+2,x
     adc !TMP+10
-    bit !TMP+0
-    bpl ?second
+    cpx.w #$0400
+    bcc ?second
     sec
-    sbc.l <two>+9
+    sbc.w (<two>&$FFFF)+9
 ?second:
     sta !TMP+10
 endmacro
@@ -675,10 +683,8 @@ macro scale()
 
     lda !G_EXP
     sec
-    sbc !G_COUNT
-    sec
-    sbc #$000F                  ; fifteen, the multiplier's own shift
-    bpl ?saturating
+    sbc !G_COUNT                ; the multiplier's own fifteen is already off,
+    bpl ?saturating             ; taken out of the first exponent once per block
 
     eor #$FFFF                  ; how many places to shift right
     inc a
@@ -1187,13 +1193,19 @@ ground_state:
     adc.l !CARRY_02+4           ; argument 2
     bne +
 
+    ; The exponent is kept fifteen below what the part holds. Every scale
+    ; subtracts that fifteen, twice a scanline, 352 times a frame of the game's
+    ; clock; taken off once here it is never subtracted again. The second
+    ; exponent is added to this one rather than to the part's, so the bias
+    ; carries through the cascade untouched.
     stz !G_MAN1                 ; the part answers a pair of noughts for nought
-    stz !G_EXP1
+    lda.w #$FFF1                ; which is nought less the fifteen
+    sta !G_EXP1
     bra ++
 +
     %normalise()
     sta !G_MAN1
-    lda.w #$000F
+    lda.w #$0000
     sec
     sbc !G_COUNT
     sta !G_EXP1
@@ -1590,8 +1602,16 @@ ground_block:
 
     lda.w #!PAGE                ; the working variables, off the game's own page
     tcd
-    lda #$0000                  ; the two buffers and the multiplier are all in
-    pha                         ; bank zero
+    ; The data bank points at the multiply tables rather than at bank zero. A
+    ; read of a table is then an absolute one, which is a cycle cheaper than a
+    ; long one, and there are twenty four of them a scanline. The index is a byte
+    ; times eight, so it never reaches 253 within a page and the crossing penalty
+    ; an absolute read can carry is never paid.
+    ;
+    ; The two buffers stay reachable: the first 8 KiB of bank $7e is the same
+    ; memory as the bottom of bank zero, and both of them live there.
+    lda.w #(!MULTAB>>8)&$FF00
+    pha
     plb
     plb
 
@@ -1645,7 +1665,13 @@ ground_block:
 ; ---------------------------------------------------------------------------
 ground_answer:
     php
+    phb
     rep #$30
+
+    lda.w #(!MULTAB>>8)&$FF00   ; the multiply tables, as ground_block does, so
+    pha                         ; the reads inside ground_line are absolute
+    plb
+    plb
 
     jsr ground_state
 
@@ -1667,5 +1693,6 @@ ground_answer:
     lda.w !STREAM_TWO+2
     sta.l !OUT+6
 
+    plb
     plp
     rtl
