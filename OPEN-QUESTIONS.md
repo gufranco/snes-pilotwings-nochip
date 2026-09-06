@@ -3548,3 +3548,51 @@ for two more copies of a scanline that is already written out twice.
 Every one of those is arithmetic the part itself does. The ground answers the
 same bytes the DSP-1 does on all 596 frames captured across the demo, and it does
 it in a fifth of the cycles it took when it first drew anything.
+
+## 46. The ground is no longer most of the frame
+
+Every section from 36 onwards optimised `$0a` and measured `$0a`. None of them
+asked what share of a game frame `$0a` is. It is no longer most of it.
+
+Counting what this project's own code costs, per game frame, on the model:
+
+| | processor cycles |
+|---|---|
+| ground_block | 78,948 |
+| `$02`'s route | 8,385 |
+| `$10`'s route | 5,908 |
+| the port itself, 7 writes and 4.5 reads | 6,820 |
+| six bodies of `$00` | 2,010 |
+| total | **102,070** |
+
+A console frame is 357,368 master cycles, so at eight master to a processor cycle
+that is 2.28 console frames. The demo takes 9.48, where the retail cartridge takes
+1.00 on the same meter.
+
+Everything else was counted rather than assumed. The port serves 12 accesses a
+game frame. The thunks that route the game's own accesses through this project
+serve 28. Each of the three commands the flight screen asks for is dispatched
+exactly once. None of them is where the time goes.
+
+### The two accountings do not reconcile
+
+Stubbing `ground_block` to return immediately takes the demo from 9.48 console
+frames to 5.09, which says the ground is 4.4 frames. The model says it is 1.77.
+The ablation cannot be trusted at face value, because a demo drawing no ground
+draws different scenery and the game's own work changes with it, but a factor of
+two and a half is larger than that explains.
+
+Stubbing the port as well takes it to exactly 1.00, retail's own figure. That
+looks conclusive and is not: with the port silent the aircraft cannot fly, so the
+game is no longer doing a flight frame at all.
+
+### What would settle it
+
+A profiler that attributes master cycles to program addresses across a whole
+game frame, rather than one that runs one routine on the model. The libretro core
+exposes no per-instruction hook, so this needs either a core built with one or a
+processor model driven over a whole frame with the console's memory timing.
+
+Until then, further work on `$0a` is worth less than its cycle count suggests: it
+is 77% of this project's own code and somewhere between a fifth and a half of the
+frame, and the rest of the frame has never been measured.
