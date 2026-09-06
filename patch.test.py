@@ -57,6 +57,8 @@ STUBS = {
     "thunk_lda_1860x": 0x00ADD7,
     "thunk_ldx_1af9": 0x00ADDC,
     "raster_rearm": 0x00ADE1,
+    "raster_arm_wait": 0x00ADE6,
+    "raster_nmi": 0x00ADEB,
 }
 
 
@@ -72,6 +74,8 @@ def _cartridge(instructions: bytes = b"") -> bytes:
     out[0x8000 : 0x8000 + len(instructions)] = instructions
     out[0x7FD5] = 0x20
     out[0x7FD7] = 0x09
+    out[patch.NMI_VECTOR] = patch.NMI_HANDLER & 0xFF
+    out[patch.NMI_VECTOR + 1] = patch.NMI_HANDLER >> 8
     return bytes(out)
 
 
@@ -282,6 +286,54 @@ class MainTest(unittest.TestCase):
         )
 
         self.assertEqual(code, 1)
+
+
+class HeldTest(unittest.TestCase):
+    def test_the_entry_every_caller_passes_through_points_at_the_gap(self) -> None:
+        rom = _image()
+
+        out = patch.held(rom, STUBS)
+
+        at = patch.ARM_JUMP
+        self.assertEqual(out[at + 1] | out[at + 2] << 8, 0x8000 + (patch.ARM_GAP & 0x7FFF))
+
+    def test_the_gap_holds_a_long_jump_to_the_wait(self) -> None:
+        rom = _image()
+
+        out = patch.held(rom, STUBS)
+
+        at = patch.ARM_GAP
+        self.assertEqual(out[at], patch.JML)
+        self.assertEqual(
+            out[at + 1] | out[at + 2] << 8 | out[at + 3] << 16, STUBS["raster_arm_wait"]
+        )
+
+    def test_it_refuses_a_gap_that_holds_something(self) -> None:
+        rom = bytearray(_image())
+        rom[patch.ARM_GAP + 2] = 0x60
+
+        with self.assertRaises(patch.ArmGapTaken):
+            patch.held(bytes(rom), STUBS)
+
+
+class NmiHookTest(unittest.TestCase):
+    def test_the_vector_points_at_this_project(self) -> None:
+        rom = bytearray(_image())
+        rom[patch.NMI_VECTOR] = patch.NMI_HANDLER & 0xFF
+        rom[patch.NMI_VECTOR + 1] = patch.NMI_HANDLER >> 8
+
+        out = patch.hooked_nmi(bytes(rom), STUBS)
+
+        at = patch.NMI_VECTOR
+        self.assertEqual(out[at] | out[at + 1] << 8, STUBS["raster_nmi"] & 0xFFFF)
+
+    def test_it_refuses_a_vector_that_names_something_else(self) -> None:
+        rom = bytearray(_image())
+        rom[patch.NMI_VECTOR] = 0x34
+        rom[patch.NMI_VECTOR + 1] = 0x12
+
+        with self.assertRaises(patch.VectorMoved):
+            patch.hooked_nmi(bytes(rom), STUBS)
 
 
 class RearmTest(unittest.TestCase):
@@ -541,7 +593,8 @@ class BuildTest(unittest.TestCase):
             "thunk_lda_1876 00ADC3\nthunk_lda_1820x 00ADC8\n"
             "thunk_lda_1828x 00ADCD\nthunk_lda_1840x 00ADD2\n"
             "thunk_lda_1860x 00ADD7\nthunk_ldx_1af9 00ADDC\n"
-            "raster_rearm 00ADE1\n"
+            "raster_rearm 00ADE1\nraster_arm_wait 00ADE6\n"
+            "raster_nmi 00ADEB\n"
         )
 
         code = patch.main(

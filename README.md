@@ -59,6 +59,8 @@ to be.
 | whether the image has to grow | yes, to 3.75 MB, which is inside what a low cartridge addresses |
 | speed | one call to `$0a` costs 77,044 processor cycles averaged across 149 frames of the demo, against 393,035 when it first drew anything. The average is the figure that counts: a scanline whose distance matches the one above it copies that scanline's answers, 63.6% of them do, and how many do depends on how fast the aircraft is moving. Measured on the model rather than on the console: the console's frame-rate meter is not monotone in work, and adding 25,566 cycles of dead work to the ground made it report a better rate. OPEN-QUESTIONS sections 36 to 39 |
 | the ground drawn from the part's own arithmetic | every one of the ten words `$02` leaves behind is computed or read from a table covering the whole of its key. Driven against the part on 596 frames spanning the demo, all ten are exact. Six of them were wrong on between 3% and 39% of frames before, because they came from tables recorded from playthroughs and the search that read them answered a key it did not hold with the nearest key above it |
+| the band cut through the instrument panel | fixed, 33.7% of frames to 2.2%. Two faults, and neither is the frame rate: overclocking the processor made it worse. The game arms the band sequence once per frame of its clock, which here lands inside the picture on a quarter of frames, so it now waits for the beam to leave first. And this project's own arming rides the maskable interrupt, which the game masks for a median of 14,389 instructions once a frame, so it is also done from the interrupt that cannot be masked. Neither fix moves the number alone. OPEN-QUESTIONS section 48 |
+| where the frame actually goes | measured across a whole game frame rather than one routine on a model, by sampling the program counter and reading the assembler's own line map. The recorded-answer search was 42.5% of the frame and the ground 33.1%, so weeks of work had gone into the second heaviest thing. OPEN-QUESTIONS section 47 |
 
 ### How much of the game it covers
 
@@ -616,12 +618,12 @@ Analysis modules in Python, each with its tests beside it.
 | [`tools/identify.py`](tools/identify.py) | checks a dump, and says what is wrong when it is |
 | [`tools/cycles.py`](tools/cycles.py) | what one call to a routine costs, on the processor model, which is the only instrument fine enough to compare two builds |
 | [`asm/nochip.asm`](asm/nochip.asm) | the whole replacement, and where each piece sits in the cartridge |
-| [`asm/dsp1-answer.asm`](asm/dsp1-answer.asm) | the lookup: the index, the binary search, the answer copy, and the two commands that need no search |
+| [`asm/dsp1-answer.asm`](asm/dsp1-answer.asm) | the lookup: the index, the bit walk that finds a row without a multiply, the answer copy, and the commands routed straight to their arithmetic |
 | [`asm/dsp1-fallback.asm`](asm/dsp1-fallback.asm) | what answers when the lookup finds no row |
 | [`asm/dsp1-port.asm`](asm/dsp1-port.asm) | the stubs the game's own accesses become, and the runs replaced whole |
 | [`asm/dsp1-ground.asm`](asm/dsp1-ground.asm) | `$0a`, the command that draws the ground, and the three tables it reads |
 | [`asm/dsp1-window.asm`](asm/dsp1-window.asm) | the bank the game's redirected accesses land in |
-| [`asm/dsp1-raster.asm`](asm/dsp1-raster.asm) | the interrupt that starts the flight screen's three band sequence again, once per picture |
+| [`asm/dsp1-raster.asm`](asm/dsp1-raster.asm) | starting the flight screen's three band sequence again: once per picture from the maskable interrupt, once per frame of the game's clock from the one that cannot be masked, and holding the game's own arming until the beam is clear |
 | [`asm/dsp1-ops.asm`](asm/dsp1-ops.asm) | the three commands whose arithmetic is known exactly |
 | [`asm/dsp1-tables.asm`](asm/dsp1-tables.asm) | the four tables the part's own formulas rebuild, entry for entry |
 | [`asm/dsp1-derived.asm`](asm/dsp1-derived.asm) | where the three tables taken from the part are placed |

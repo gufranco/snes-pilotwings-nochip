@@ -92,6 +92,112 @@
 ; screen's controls want in any case.
 ; ===========================================================================
 
+; ===========================================================================
+; THE OTHER HALF OF THE SAME PROBLEM
+; ===========================================================================
+;
+; Arming the sequence once per picture fixes the fifteen pictures that were
+; drawn with the last interrupt's leftovers. It does not fix what the game's own
+; arming routine does when it runs, and that is the flicker still left.
+;
+; $00:F168 is called once per frame of the game's clock, from the main loop. It
+; writes the console's drawing mode, which layers are shown, and both of the sky
+; layer's scroll registers, and then it points the first interrupt at its
+; scanline. Every one of those is a control the screen reads while it is drawing.
+;
+; On the retail cartridge that is safe by arithmetic rather than by care. One
+; frame of the clock is one picture there, so the main loop reaches $00:F168 at
+; the same point every time, and measured across a run of the demo it lands
+; below the picture on 98.9% of frames: scanline 245 to 258, in the gap.
+;
+; Here one frame of the clock is about five pictures, so the main loop reaches
+; it at no particular scanline at all. Measured across the same run, 24.2% of
+; the calls land inside the picture. When one does, the drawing mode changes
+; part way down the screen: the panel at the top is cut off, the ground is drawn
+; through the middle of it, and the next picture puts it back. That is one frame
+; in four with a torn panel, which is what it looks like from a chair.
+;
+; The two numbers agree with each other. 24.2% of calls landing inside the
+; picture, and 24.6% of the demo's frames showing a torn panel, are the same
+; event counted twice.
+;
+; So this waits. The routine below is put in front of $00:F168 and holds it
+; until the beam is past the bottom of the picture, which is the condition
+; retail satisfies by accident. Then it jumps into $00:F168 unchanged, so the
+; arming itself is still the game's own and nothing here can drift from it.
+;
+; The wait costs about half a picture on the frames that have to wait at all,
+; against a frame that already takes five. What it buys is that the mode never
+; changes while the screen is being drawn.
+;
+; The count is there so that a screen which never leaves the picture cannot hang
+; the machine. If it ever runs out, the arming happens anyway and one picture is
+; torn, which is what happened on every frame before this existed.
+; ---------------------------------------------------------------------------
+raster_arm_wait:
+    php
+    sep #$20                    ; one byte at a time for the register read
+    rep #$10                    ; and a whole word for the countdown
+
+    ldx.w #$4000
+-
+    lda.l $004212               ; the console's own status: bit seven is set
+    bmi +                       ; while the beam is below the picture
+    dex
+    bne -
++
+
+    plp
+    jml $00F168                 ; and now the game's own routine, untouched. jml
+                                ; rather than a call, so its own rts returns to
+                                ; whoever asked for the arming in the first place
+
+; ===========================================================================
+; THE SAME ARMING AGAIN, WHERE NOTHING CAN HOLD IT UP
+; ===========================================================================
+;
+; The interrupt this file is hung on is the ordinary kind, and the ordinary kind
+; can be switched off. The game switches it off once per frame of its clock and
+; leaves it off for about a whole picture: $00:F24E turns the other kind of
+; interrupt on, and then sits in a two instruction loop at $00:F257 waiting for
+; that other kind to arrive. Measured across a run of the demo, the loop holds
+; the ordinary interrupts back for a median of 14,389 instructions.
+;
+; Anything armed for a scanline inside that window does not run at that
+; scanline. It runs when the game lets interrupts through again, which is inside
+; the other kind's own handler at $00:F102, and by then the next picture has
+; often begun. Measured the same way, 3.3% of the arming interrupts run inside
+; the picture rather than below it, and every one of those writes the top band's
+; drawing mode part way down a screen that is already being drawn. What that
+; looks like is a band of ground cut through the instrument panel for one
+; picture, which is the flicker.
+;
+; The other kind of interrupt cannot be switched off that way, and it arrives at
+; scanline 225, which is below the picture. So the arming is done there as well,
+; from in front of the game's own handler for it.
+;
+; Both are kept rather than one. The unswitchable kind only arrives once per
+; frame of the game's clock, which is not often enough on its own; the ordinary
+; kind arrives every picture but is late on 3.3% of them. Between them every
+; picture is armed, and a late one now writes values that are already there,
+; which changes nothing on the screen.
+;
+; The game's own handler is then reached unchanged, so nothing here can drift
+; from what it does.
+; ---------------------------------------------------------------------------
+raster_nmi:
+    php
+    phb
+    phk                         ; the data bank goes to this one, which is bank
+    plb                         ; zero, because raster_rearm reaches the game's
+                                ; tables and the screen's controls as plain
+                                ; addresses and both live there
+    sep #$30                    ; one byte at a time, which is what it expects
+    jsr raster_rearm
+    plb
+    plp
+    jmp $F0A0                   ; and on into the game's own handler
+
 raster_rearm:
     lda $1fef                   ; which layers the middle band asks for. The
     cmp #$13                    ; flight is the only screen that asks for $13,

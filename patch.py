@@ -273,6 +273,45 @@ change; the third is $F1DA, a bare return. `rearmed` points this one somewhere
 that does something.
 """
 
+ARM_JUMP = 0x07E7E
+"""The jump table entry every caller of the arming routine goes through.
+
+The game reaches `$00:F168` from five places and every one of them calls
+`$00:FE7E`, which is three bytes holding `jmp $F168`. Repointing that one entry
+covers all five, and none of the five has room for anything longer than the call
+it already makes.
+"""
+
+ARM_GAP = 0x07E84
+"""Six bytes of nothing inside that same table, and where the trampoline goes.
+
+The table is a run of three byte jumps. Two of its slots hold nought rather than
+a jump, which is a jump to `$00:0000` and so a slot nothing reaches: anything
+that did reach it would already have stopped the machine. Four of the six carry
+the long jump into this project's own bank, which is the one thing that will not
+fit in the entry being repointed.
+"""
+
+JML = 0x5C
+"""Jump to a full 24-bit address, which is what leaving bank zero needs."""
+
+NMI_VECTOR = 0x07FEA
+"""Where the console reads the address of the unswitchable interrupt's handler.
+
+The native mode vector rather than the emulation one, because this cartridge
+runs the processor in native mode from its first frame. The handler it names is
+`$00:F0A0`, and `hooked_nmi` puts one of this project's routines in front of it.
+"""
+
+NMI_HANDLER = 0xF0A0
+"""What that vector holds in the retail image, and so what the hook must find.
+
+Checked rather than assumed. A vector that already points somewhere else is a
+vector this patch has been applied to twice, or an image this patch was not
+written for, and both are worth stopping on.
+"""
+
+
 SPANS = (
     (0x04AA8, 0x04AB9, "dsp_route_0a"),
     (0x04AB9, 0x04AD1, "dsp_horizon"),
@@ -551,6 +590,81 @@ def rearmed(rom: bytes, stubs: Mapping[str, int]) -> bytes:
     return bytes(out)
 
 
+class ArmGapTaken(Exception):
+    """The six bytes the trampoline needs are not the six bytes that were there.
+
+    Raised rather than written over. The gap is identified by being nought, and
+    a different image with something real there would have that something
+    replaced by a jump, which is a fault nobody would find by looking at the
+    screen.
+    """
+
+
+def held(rom: bytes, stubs: Mapping[str, int]) -> bytes:
+    """The image with the flight screen's arming held until the beam is clear.
+
+    The game arms its band sequence once per frame of its clock, and every write
+    it makes to do so is a control the screen reads while it draws. Retail calls
+    it in the gap below the picture because one frame there is one picture. Here
+    one frame is about five, so a quarter of the calls land inside the picture
+    and tear the instrument panel.
+
+    So the one jump table entry all five callers pass through is pointed at a
+    trampoline in the same table's unused slots, and the trampoline is a long
+    jump into asm/dsp1-raster.asm, which waits for the beam and then jumps into
+    the game's own routine unchanged.
+    """
+    out = bytearray(rom)
+    if any(out[ARM_GAP + at] for at in range(6)):
+        raise ArmGapTaken(
+            f"the six bytes at ${ARM_GAP:05x} hold"
+            f" {out[ARM_GAP : ARM_GAP + 6].hex(' ')} rather than nothing"
+        )
+
+    target = stubs["raster_arm_wait"]
+    out[ARM_GAP] = JML
+    out[ARM_GAP + 1] = target & 0xFF
+    out[ARM_GAP + 2] = target >> 8 & 0xFF
+    out[ARM_GAP + 3] = target >> 16 & 0xFF
+
+    where = 0x8000 + (ARM_GAP & 0x7FFF)
+    out[ARM_JUMP + 1] = where & 0xFF
+    out[ARM_JUMP + 2] = where >> 8 & 0xFF
+    return bytes(out)
+
+
+class VectorMoved(Exception):
+    """The interrupt vector does not hold what this patch was written against."""
+
+
+def hooked_nmi(rom: bytes, stubs: Mapping[str, int]) -> bytes:
+    """The image with the arming also done from the interrupt nothing can mask.
+
+    The arming interrupt this project hangs on is the maskable kind, and the
+    game masks it for about a picture once per frame of its clock while it waits
+    for this one. An arming that lands in that window runs late, part way down a
+    picture that is already being drawn, and cuts a band of ground through the
+    instrument panel.
+
+    So the vector for the unmaskable kind is pointed at a routine that arms and
+    then jumps into the game's own handler. It arrives at scanline 225, below the
+    picture, and it cannot be held back. The maskable one stays where it is: it
+    arrives every picture rather than once per frame, and when it is late it now
+    writes values that are already there.
+    """
+    out = bytearray(rom)
+    held = out[NMI_VECTOR] | out[NMI_VECTOR + 1] << 8
+    if held != NMI_HANDLER:
+        raise VectorMoved(
+            f"the interrupt vector at ${NMI_VECTOR:05x} names ${held:04x}"
+            f" rather than ${NMI_HANDLER:04x}"
+        )
+    target = stubs["raster_nmi"]
+    out[NMI_VECTOR] = target & 0xFF
+    out[NMI_VECTOR + 1] = target >> 8 & 0xFF
+    return bytes(out)
+
+
 def redirected(rom: bytes) -> tuple[bytes, int]:
     """The image with every push of the part's bank naming this project's instead."""
     out = bytearray(rom)
@@ -599,6 +713,8 @@ def main(argv: Sequence[str] = (), say: Any = print) -> int:
     out = spanned(out, stubs)
     out, replaced = hooked(out, stubs)
     out = rearmed(out, stubs)
+    out = held(out, stubs)
+    out = hooked_nmi(out, stubs)
     out, moved = redirected(out)
     say(f"{moved} data bank pushes redirected")
     say(f"{replaced} three byte accesses replaced one at a time")

@@ -3596,3 +3596,112 @@ processor model driven over a whole frame with the console's memory timing.
 Until then, further work on `$0a` is worth less than its cycle count suggests: it
 is 77% of this project's own code and somewhere between a fifth and a half of the
 frame, and the rest of the frame has never been measured.
+
+## 47. The profiler exists, and it named a different routine
+
+Section 46 closed with the measurement that would settle where the frame goes: a
+profiler that attributes cycles to program addresses across a whole game frame,
+rather than one that runs one routine on a model. It exists now, and it took an
+afternoon rather than the rewrite that entry imagined.
+
+The emulator this project already carries samples the program counter every N
+instructions and writes it to a file. Windowing it on the game's own flight clock
+restricts the samples to one segment, and the assembler's symbol file turns an
+address into a file and a line. That is the whole tool.
+
+### What it said
+
+152,906 samples of one parachute flight, before any of the work below:
+
+| share | where |
+|------:|-------|
+| 42.5% | `asm/dsp1-answer.asm`, the recorded-answer search |
+| 33.1% | `asm/dsp1-ground.asm` |
+| 12.1% | `asm/dsp1-port.asm` |
+|  8.7% | the game's own code, banks `$00` and `$01` |
+
+The heaviest single routine was `lut_scale` at 15.4%, which is the thirty two bit
+multiply the search runs to turn a row number into a byte offset. The ground,
+which had absorbed every optimisation for weeks, was second.
+
+Section 46's model said the ground was 1.77 console frames of 9.48 and its
+ablation said 4.4. The profiler says 2.9 of 5.4. The model was closer, and both
+were arguing about the wrong routine.
+
+### Two things it made obvious
+
+`$00`, `$80` and `$08` have exact arithmetic in `asm/dsp1-ops.asm`, reached only
+when the table misses. They are a fifth of every lookup, and each one was paying
+a bisection over millions of bytes to fetch a word two multiplies produce. Held
+against every distinct call the three recordings hold, 29,467 of them, the
+routine and the table never disagree, so the table is now skipped for all three.
+
+The search bisected on row numbers, and a row number is not an address. Walking
+the bits of the row number from the top instead carries the byte offset alongside
+it, because each step either leaves the row alone or adds one power of two to it.
+Two shifts and an add replace the multiply. `lut_scale` fell from 15.4% to 2.9%.
+
+Together: 3,768 game frames advanced in 22,000 console frames, up from 3,405.
+
+## 48. The flicker was two faults, and neither was speed
+
+The instrument panel was cut through by a band of ground for one picture in three,
+and the obvious reading was that the frame overruns and the screen is drawn while
+the panel is being written. That reading is wrong, and the experiment that shows
+it is one command: overclocking the processor to 2.7 times its speed made the
+tearing worse, 33.7% of frames to 47.5%.
+
+Counting it needed a definition. A picture whose top 26 rows differ from both its
+neighbours, where those neighbours agree with each other, is torn: the game
+updates once per five pictures here, so a single odd picture between two identical
+ones is an artefact rather than an update. The retail cartridge scores zero on
+that measure over 600 pictures.
+
+### The first fault: the game arms the split mid-picture
+
+`$00:F168` sets the drawing mode, which layers are shown, and both of the sky
+layer's scroll registers, and the main loop calls it once per frame of the game's
+clock. On the retail cartridge one frame is one picture, so it lands below the
+picture on 98.9% of frames, at scanline 245 to 258. Here one frame is about five
+pictures and it lands wherever it lands: 24.2% of the calls are inside the
+picture.
+
+Every caller reaches it through one three byte entry in a jump table at
+`$00:FE7E`, and the same table has six unused bytes at `$00:FE84`. The entry now
+points at those bytes, they hold a long jump into this project, and the routine
+there waits for the beam to leave the picture before jumping into `$00:F168`
+unchanged. Arms inside the picture: 24.2% to 0.3%.
+
+Tearing after that fix: 33.7%. Unchanged.
+
+### The second fault: this project's own re-arm runs late
+
+Section 44's re-arm hangs on the third interrupt of the band sequence, at
+scanline 255. That interrupt is the maskable kind. The game masks it once per
+frame of its clock at `$00:F257`, a two instruction loop waiting for the other
+kind of interrupt, and holds it masked for a median of 14,389 instructions. An
+interrupt armed inside that window runs when the game lets interrupts through
+again, which is inside the other handler at `$00:F102`, and by then the next
+picture has often begun. 3.3% of the re-arms run inside the picture, and each one
+writes the top band's mode part way down a screen already being drawn.
+
+So the arming is also done from the interrupt that cannot be masked, in front of
+the game's own handler for it, by pointing the vector at `$00:FFEA` at this
+project. It arrives at scanline 225, below the picture, every time.
+
+Both are kept. The unmaskable one arrives once per frame of the game's clock,
+which is not often enough on its own; the maskable one arrives every picture but
+is late on 3.3% of them. Between them every picture is armed, and a late one now
+writes values that are already there.
+
+### What each was worth
+
+| build | torn |
+|---|---:|
+| before | 33.7% |
+| the arm held for the beam, alone | 33.7% |
+| the unmaskable arming, alone | 35.3% |
+| both | 2.2% |
+
+Neither fix moves the number on its own, which is why either one alone reads as a
+failed idea. Across four windows of the demo the remaining figure is 0.0% to 3.5%.
