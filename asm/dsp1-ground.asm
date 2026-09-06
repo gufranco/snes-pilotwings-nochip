@@ -268,9 +268,8 @@ macro mulk_product(table)
     tax
     lda.l <table>+0,x           ; from the nought, so this is that entry times 256
     clc
-    adc !TMP+4
-    sta !TMP+4
-    lda.l <table>+2,x
+    adc !TMP+4                  ; the sum's low half is wanted only for the carry
+    lda.l <table>+2,x           ; it leaves, so it is never written down
     adc !TMP+6
 
     bit !TMP+0                  ; a negative word read as unsigned is too big by
@@ -327,9 +326,8 @@ macro mulk_products(one, two, first)
 
     lda.l <one>+0,x
     clc
-    adc !TMP+4
-    sta !TMP+4
-    lda.l <one>+2,x
+    adc !TMP+4                  ; the first product's low half is wanted only for
+    lda.l <one>+2,x             ; the carry, so it is never written down either
     adc !TMP+6
     bit !TMP+0
     bpl ?first
@@ -437,16 +435,23 @@ macro normalise()
     cmp #$0000
     beq ?settled
 
+    ; Each of the two signs has its own turn, so neither pays a branch to reach
+    ; the other's, and both leave the loop by falling out of it rather than by
+    ; jumping over the tail. The three instructions that repeat are cheaper than
+    ; the branches that sharing them cost.
 ?again:
     asl a                       ; carry the old sign, negative the new one
     bcs ?wasneg
-    bpl ?keep                   ; was positive and still is
-    bra ?stop
+    bmi ?stopped                ; was positive and is not any more
+    inx
+    bra ?again
 
 ?wasneg:
-    bmi ?keep                   ; was negative and still is
+    bpl ?stopped                ; was negative and is not any more
+    inx
+    bra ?again
 
-?stop:
+?stopped:
     ror a                       ; the doubling overflowed, so it is undone. The
                                 ; bit it pushed out is still in the carry, which
                                 ; is where a rotate right puts bit fifteen back
@@ -454,13 +459,6 @@ macro normalise()
 ?settled:
     stx !G_COUNT
     sta !G_NORM
-    bra ?done
-
-?keep:
-    inx
-    bra ?again
-
-?done:
 endmacro
 
 ; ---------------------------------------------------------------------------
@@ -969,7 +967,6 @@ ground_seed:
 ; One line further down the screen.
 ; ---------------------------------------------------------------------------
 ground_next:
-    inc !G_LINE
     lda !G_ACC+0
     clc
     adc !G_STEP
