@@ -3392,3 +3392,84 @@ four tables in one interleaved pass loses, because four running sums do not fit
 past one accumulator and the shared loop tail is worth less than what that costs.
 And letting the commonest arm of the reciprocal lookup fall through saves nothing,
 because whichever arm falls through, one of the others has to branch instead.
+
+## 44. The scanline that does not have to be computed
+
+Section 43 said the ground was at its floor, with the six multiplies a scanline
+at 432 cycles and nothing structural left. That was true of the scanline and
+false of the block, because it never asked how often two scanlines are the same.
+
+They often are. Everything a scanline computes is a function of one number, the
+distance, and of state the block fixes before its loop. The distance is a running
+sum whose step is small next to the fifteen places it is shifted down, so it
+holds still for several lines at a time. Measured across the demo:
+
+| | |
+|---|---|
+| scanlines with the distance of the one above | 63.6% |
+| longest run of equal distances | 11 |
+| distinct distances in a block of 176 scanlines | about 64 |
+
+So a scanline whose distance repeats copies the four answers out of the previous
+scanline's own slots: four reads and four writes, against six multiplies, two
+scales and a reciprocal lookup. The distance is monotone within a block, so equal
+distances are always adjacent and comparing with the previous line catches every
+one of them.
+
+The mean call went from 149,882 processor cycles to 82,834.
+
+### Why the figure had to become a mean
+
+Every earlier section quoted one call on one memory snapshot, and that was fair
+while the cost did not depend on the data. It does now. On the snapshot those
+figures were taken from, the aircraft is moving fast enough that only four of its
+176 scanlines repeat, and the change reads as 386 cycles *slower* there. Across
+149 frames it is 45% faster. One frame was never representative of a change whose
+whole value is how often the data repeats.
+
+### Three faults, all found by comparison rather than by reading
+
+The name held for the previous distance was already the name of the eight byte
+cache the multiply tables check themselves against. An assembler define can be
+reassigned without complaint, so the guard was quietly overwriting that cache.
+
+A store sets no flags on this processor. The compare that decides whether to copy
+left its own flags where the reciprocal lookup expected the distance's sign, so
+every negative distance took the positive path.
+
+And the cache of constants was seeded with a pair of values no pair of constants
+could both be, which stopped being enough the moment each table was checked on
+its own constant: a sine of nought matched a nought held there and left that
+table unbuilt. Each entry is seeded with the complement of its own constant now.
+
+### What else came out with it
+
+The running sum is kept at twice the distance, so its high half is the shifted
+value already and the distance is a load and an add rather than a load, a shift,
+a load and a rotate. The step cannot be doubled where it is read, because
+ground_seed takes its magnitude and $7fff doubled reads as minus two, so the
+doubling happens after the seed has used it.
+
+Each multiply table is checked against its own constant rather than in pairs. The
+pairs moved together while the constants came out of a recorded table and a whole
+row changed at once; computed, they move apart at 59%, 59%, 89% and 56%, and one
+key each rebuilds 2.639 tables a frame where pairs rebuild 2.978.
+
+And a table built from a positive constant needs no carry clear in its inner
+loop, because a high half that only grows to $00ff cannot overflow when a nought
+sign word is added to it. A negative one still does, and gets its own copy.
+
+### Where it stops now
+
+The mean call is 77,044. The table build is 35% of it and the compute path most
+of the rest. The build is 34 cycles an entry and the last twelve of those are
+moving two halves of a running sum past a single accumulator, which the processor
+cannot avoid: it has no long store from an index register.
+
+Two further ideas were costed and left. Keying the copy on the reciprocal's
+mantissa rather than on the distance would catch 71% of scanlines instead of
+63.6%, but every copying scanline would have to run the lookup first, and the
+arithmetic comes out at about 4% for a good deal more complexity. Building the
+scale tables at half their length and deriving the odd entries with an addition
+would save about 6%, and puts a branch and a thirty two bit add into the hottest
+path in the program to do it.
