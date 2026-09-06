@@ -1363,12 +1363,31 @@ macro build_table(table)
     ;
     ; The carry the low half's addition leaves is what the high half's needs, and
     ; neither a store nor a transfer between registers touches it.
+    ; A positive constant leaves the high half's addition with no carry out, so
+    ; the low half's needs no clearing: the high half only ever grows to $00ff
+    ; and adding a nought sign word to it cannot overflow. A negative one does
+    ; carry out, so it gets its own copy of the loop with the clearing left in.
+    ; Two copies of sixteen entries against two cycles on every one of 1,024.
+    lda !TMP+6
+    beq ?plain_run
+    jmp ?signed_run
+?plain_run:
+    %build_run(<table>, 0)
+    jmp ?built                  ; a run is far too long to branch over with one
+?signed_run:
+    %build_run(<table>, 1)
+?built:
+endmacro
+
+macro build_run(table, clears)
     lda #$0000
     tay
     ldx #$0000
 ?turn:
     sta.l <table>+1,x
+if <clears> == 1
     clc
+endif
     adc !TMP+0
     sta !TMP+8
     tya
@@ -1378,7 +1397,9 @@ macro build_table(table)
     lda !TMP+8
 
     sta.l <table>+9,x
+if <clears> == 1
     clc
+endif
     adc !TMP+0
     sta !TMP+8
     tya
@@ -1388,7 +1409,9 @@ macro build_table(table)
     lda !TMP+8
 
     sta.l <table>+17,x
+if <clears> == 1
     clc
+endif
     adc !TMP+0
     sta !TMP+8
     tya
@@ -1398,7 +1421,9 @@ macro build_table(table)
     lda !TMP+8
 
     sta.l <table>+25,x
+if <clears> == 1
     clc
+endif
     adc !TMP+0
     sta !TMP+8
     tya
@@ -1408,7 +1433,9 @@ macro build_table(table)
     lda !TMP+8
 
     sta.l <table>+33,x
+if <clears> == 1
     clc
+endif
     adc !TMP+0
     sta !TMP+8
     tya
@@ -1418,7 +1445,9 @@ macro build_table(table)
     lda !TMP+8
 
     sta.l <table>+41,x
+if <clears> == 1
     clc
+endif
     adc !TMP+0
     sta !TMP+8
     tya
@@ -1428,7 +1457,9 @@ macro build_table(table)
     lda !TMP+8
 
     sta.l <table>+49,x
+if <clears> == 1
     clc
+endif
     adc !TMP+0
     sta !TMP+8
     tya
@@ -1438,7 +1469,9 @@ macro build_table(table)
     lda !TMP+8
 
     sta.l <table>+57,x
+if <clears> == 1
     clc
+endif
     adc !TMP+0
     sta !TMP+8
     tya
@@ -1448,7 +1481,9 @@ macro build_table(table)
     lda !TMP+8
 
     sta.l <table>+65,x
+if <clears> == 1
     clc
+endif
     adc !TMP+0
     sta !TMP+8
     tya
@@ -1458,7 +1493,9 @@ macro build_table(table)
     lda !TMP+8
 
     sta.l <table>+73,x
+if <clears> == 1
     clc
+endif
     adc !TMP+0
     sta !TMP+8
     tya
@@ -1468,7 +1505,9 @@ macro build_table(table)
     lda !TMP+8
 
     sta.l <table>+81,x
+if <clears> == 1
     clc
+endif
     adc !TMP+0
     sta !TMP+8
     tya
@@ -1478,7 +1517,9 @@ macro build_table(table)
     lda !TMP+8
 
     sta.l <table>+89,x
+if <clears> == 1
     clc
+endif
     adc !TMP+0
     sta !TMP+8
     tya
@@ -1488,7 +1529,9 @@ macro build_table(table)
     lda !TMP+8
 
     sta.l <table>+97,x
+if <clears> == 1
     clc
+endif
     adc !TMP+0
     sta !TMP+8
     tya
@@ -1498,7 +1541,9 @@ macro build_table(table)
     lda !TMP+8
 
     sta.l <table>+105,x
+if <clears> == 1
     clc
+endif
     adc !TMP+0
     sta !TMP+8
     tya
@@ -1508,7 +1553,9 @@ macro build_table(table)
     lda !TMP+8
 
     sta.l <table>+113,x
+if <clears> == 1
     clc
+endif
     adc !TMP+0
     sta !TMP+8
     tya
@@ -1518,7 +1565,9 @@ macro build_table(table)
     lda !TMP+8
 
     sta.l <table>+121,x
+if <clears> == 1
     clc
+endif
     adc !TMP+0
     sta !TMP+8
     tya
@@ -1529,7 +1578,9 @@ macro build_table(table)
 
     sta !TMP+8                  ; a hundred and twenty eight bytes a turn, which
     txa                         ; is sixteen entries of eight
+if <clears> == 1
     clc
+endif
     adc #$0080
     tax
     lda !TMP+8
