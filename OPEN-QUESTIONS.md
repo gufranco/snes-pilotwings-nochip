@@ -3282,3 +3282,113 @@ Where argument 2 plus the product overflows a signed word, the part resolves it
 in a way that has not been read out of its program. Sixteen of 1,404 probed
 argument sets sit there and none of the demo's own frames do, so it is recorded
 rather than guessed at.
+
+## 43. Halving the ground, and where it stops
+
+`$0a` cost 393,035 processor cycles the first time it drew anything and costs
+199,220 now. What follows is what came out, roughly in order of size, and then
+what is left.
+
+### The shift that was already in the table
+
+Every one of the six multiplies a scanline ended by shifting its product down
+fifteen places, which was five instructions each time. An entry that holds twice
+the constant holds twice the product, and the high half of that is the shifted
+product already. The doubling is one instruction per rebuild.
+
+It is safe on a value that is already sign extended across the pair: the bit the
+low half loses off the top is the one the high half's own doubling brings back
+in, and for a negative constant both are ones.
+
+### Four subroutine boundaries
+
+The scale was a subroutine that jumped to another, and both scales a scanline
+came through it 352 times a frame of the game's clock; the call, the jump to the
+shift chain and the return were fifteen cycles doing no arithmetic. The per
+scanline advance of the distance was a second one, and the scanline itself a
+third, called once per turn of a loop with nothing to do between the call and the
+return. All three are written out where they are used, at a few hundred bytes in
+an image with three free banks.
+
+Writing the scanline out cost the loop's branch becoming a jump, because the body
+is far too long to reach with one, and cost its label having to stop being local:
+a local label attaches to the last plain label above it, and the scanline carries
+six of its own for the profiler.
+
+### Reading rather than being handed
+
+Every multiply was handed its varying word in the accumulator and parked it,
+because it needs the word twice. The caller already holds it in the direct page,
+so it reads it from there both times.
+
+The second read wants the high byte, which cost a swap to bring down. The direct
+page one byte along already holds that byte. What sat above it was the next
+variable, which had to be masked off, so each of the four words a multiply reads
+is now followed by a word held at nought, cleared once per block.
+
+### Two arithmetic identities
+
+The sign a multiply corrects for is already in the high byte's index: that index
+is the byte shifted three places, so the word's bit fifteen lands at bit ten, and
+comparing the index against that bit needs nothing kept alive.
+
+The word that comes back negated needs the borrow the low half's subtraction
+would leave. A compare produces exactly that borrow without touching the
+accumulator, so the high half stays where it is.
+
+### Two things that were free to move
+
+The scale subtracted fifteen for the multiplier's own shift, twice a scanline. It
+comes off the first exponent once per block instead, and the second exponent is
+added to the biased one so the bias carries through the cascade untouched.
+
+The scale then took the count off the exponent and negated the answer. Taking the
+exponent off the count is the same number without the negation, and the three
+cases fall out of the one subtraction: nought is the exact exit, negative is the
+clamp, sixteen or more is the flat one.
+
+### One the model cannot see
+
+The data bank points at the multiply tables rather than at bank zero, so a table
+read is absolute rather than long. That is a cycle cheaper on the console and
+there are twenty four of them a scanline. The index is a byte times eight, so it
+never reaches 253 within a page and never pays the crossing penalty an absolute
+read can carry.
+
+The model charges six for both addressing modes, where the processor charges five
+and six. So it reported 288 cycles saved where the console saves about 4,200, and
+every figure here understates the change by that much.
+
+### Where it stops
+
+A repeat call that finds the tables built is 132,622, and 91% of that is four
+stages of the scanline. What is left in them is arithmetic rather than overhead:
+
+| | cycles a scanline |
+|---|---|
+| six multiplies | 432 |
+| two scales, normalise and shift | 190 |
+| the reciprocal lookup | 36 |
+| the distance, and its advance | 44 |
+| four stores into the two buffers | 24 |
+| the exponents | 28 |
+
+A multiply is 72 cycles: four table reads, two words parked because two 32-bit
+values with different indices cannot both stay in one accumulator, two additions,
+two index builds and a sign test. Every one of those is needed, and the pair of
+matrix multiplies already shares its index build, which is why four answer words
+cost 125 rather than 144.
+
+The table build is 38,597 cycles for four tables, and each entry is 34: twelve
+for two long stores, ten for a thirty two bit addition, twelve for moving the two
+halves past a single accumulator. The last of those is the only fat left, and it
+is not removable: the processor cannot store from the index registers at a long
+address, so both halves have to pass through the accumulator.
+
+Three ideas were measured and rejected rather than argued about. A table for the
+normalise inside the scale loses, because the count averages under two there and
+the table costs fifty cycles against a loop that costs twenty five. Building the
+four tables in one interleaved pass loses, because four running sums do not fit
+past one accumulator and the shared loop tail is worth less than what that costs.
+And letting the commonest arm of the reciprocal lookup fall through saves nothing,
+because whichever arm falls through, one of the others has to branch instead.
