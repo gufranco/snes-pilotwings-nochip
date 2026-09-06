@@ -102,18 +102,26 @@
 !G_EXP2    = $6C                ; and its exponent
 !G_MAT     = $6E                ; the four matrix words, $6E to $74
 
+; The four words a multiply reads are each followed by a word held at nought.
+; A multiply wants the high byte of its varying word, and reading the direct page
+; one byte along gives that byte together with whatever follows it; when what
+; follows is nought, the byte arrives on its own and nothing has to mask it. The
+; four are cleared once per block, which buys three cycles in each of the six
+; multiplies a scanline.
 !G_LINE    = $76                ; which scanline is being answered
 !G_NORM    = $78                ; what the normalise loop left
 !G_COUNT   = $7A                ; and how many doublings it took
 !G_RA      = $7C                ; the reciprocal's mantissa
-!G_RB      = $7E                ; and its exponent
-!G_MA      = $80                ; the first chain's mantissa before its shift
-!G_EXP     = $82                ; the exponent the scale about to run will use
-!G_S1      = $84                ; the two scales for this scanline
-!G_S2      = $86
+!G_RAPAD   = $7E
+!G_RB      = $80                ; and its exponent
+!G_MA      = $82                ; the first chain's mantissa before its shift
+!G_MAPAD   = $84
+!G_EXP     = $86                ; the exponent the scale about to run will use
+!G_S1      = $88                ; the two scales for this scanline
+!G_S1PAD   = $8A
+!G_S2      = $8C
+!G_S2PAD   = $8E
 !G_NEG     = $90                ; whether the reciprocal's sign has to go back
-!G_AT      = $92                ; how far into the two buffers the loop has got
-!G_TURNS   = $94                ; how many scanlines are left
 
 ; The two the table reads need. There was a bisecting search here as well, over
 ; three tables recorded from playthroughs, and it is gone: every one of the ten
@@ -234,7 +242,7 @@
 ; and the product with it is too big by k times 65536. That is the constant
 ; itself taken off the high half, and the constant is the table's own entry one.
 ;
-; In:  A the varying word. Out: A the answer. Uses X and !TMP+0 to !TMP+7.
+; In:  the varying word at `from`. Out: A the answer. Uses X and !TMP+4 to !TMP+7.
 ; ---------------------------------------------------------------------------
 ; ---------------------------------------------------------------------------
 ; The lookup itself, inlined at all six sites.
@@ -243,12 +251,12 @@
 ; a call to it would be six of those. The tables all sit inside one bank, so an
 ; entry is a long read indexed by X and needs no pointer set up first.
 ;
-; In:  A the varying word. Out: !TMP+4 and !TMP+6 the whole product.
-; Uses X and !TMP+0 to !TMP+3.
+; In:  the varying word at `from`. Out: !TMP+4 and !TMP+6 the whole product.
+; Uses X.
 ; ---------------------------------------------------------------------------
-macro mulk_product(table)
-    sta !TMP+0                  ; kept for its sign, at the end
-
+macro mulk_product(table, from)
+    lda <from>                  ; read twice rather than read once and parked:
+                                ; the caller already holds it in the direct page
     and #$00FF                  ; the low byte, times eight, is where its entry is
     asl a                       ; and shifting a byte three places can never push
     asl a                       ; a bit out, so the carry is clear afterwards and
@@ -259,9 +267,9 @@ macro mulk_product(table)
     lda.w (<table>&$FFFF)+3,x
     sta !TMP+6
 
-    lda !TMP+0                  ; and the high byte the same way
-    xba
-    and #$00FF
+    lda <from>+1                ; and the high byte the same way. The direct page
+                                ; one byte along is that byte with a nought above
+                                ; it, so nothing has to swap and nothing to mask
     asl a
     asl a
     asl a
@@ -285,8 +293,8 @@ endmacro
 ; The product, shifted down fifteen places, which is what every multiply here
 ; wants. The shift is not done: the table holds twice the constant, so the high
 ; half %mulk_product leaves in the accumulator is already the shifted product.
-macro mulk(table)
-    %mulk_product(<table>)
+macro mulk(table, from)
+    %mulk_product(<table>, <from>)
 endmacro
 
 ; ---------------------------------------------------------------------------
@@ -298,13 +306,12 @@ endmacro
 ; the address is worked out once and read from twice. Every table has the same
 ; shape, which is what makes one index reach into either.
 ;
-; In:  A the varying word. Out: the first table's product in !TMP+4, the
-; second's in !TMP+8, both sign-corrected and both still to be shifted.
-; Uses X, Y and !TMP+0 to !TMP+11.
+; In:  the varying word at `from`. Out: the first table's product written
+; through Y, the second's in !TMP+8 and !TMP+10, both sign-corrected.
+; Uses X and !TMP+4 to !TMP+11.
 ; ---------------------------------------------------------------------------
-macro mulk_products(one, two, first)
-    sta !TMP+0
-
+macro mulk_products(one, two, first, from)
+    lda <from>                  ; read twice rather than read once and parked
     and #$00FF                  ; the low byte, times eight, is where its entry
     asl a                       ; is, and it is the entry in either table
     asl a
@@ -319,9 +326,9 @@ macro mulk_products(one, two, first)
     lda.w (<two>&$FFFF)+3,x
     sta !TMP+10
 
-    lda !TMP+0                  ; and the high byte the same way, once for both
-    xba
-    and #$00FF
+    lda <from>+1                ; and the high byte the same way, once for both.
+                                ; The direct page one byte along is that byte
+                                ; with a nought above it
     asl a
     asl a
     asl a
@@ -871,8 +878,7 @@ line_mantissa:
     adc !G_EXP1
     sta !G_EXP
 
-    lda !G_RA
-    %mulk(!MULTAB2)
+    %mulk(!MULTAB2, !G_RA)
     sta !G_MA
     %scale()
     sta !G_S1
@@ -886,8 +892,7 @@ line_cascade:
     adc !G_EXP2
     sta !G_EXP
 
-    lda !G_MA
-    %mulk(!MULTAB3)
+    %mulk(!MULTAB3, !G_MA)
     %scale()
     sta !G_S2
 
@@ -897,14 +902,12 @@ line_cascade:
 ; rather than into four direct page words the caller then copied across. Y is
 ; the caller's own index and nothing between here and there disturbs it.
 line_words_first:
-    lda !G_S1
-    %mulk_products(!MULTAB0, !MULTAB1, !STREAM_ONE)
+    %mulk_products(!MULTAB0, !MULTAB1, !STREAM_ONE, !G_S1)
     %mulk_shift_negated(!TMP+8, !TMP+10)
     sta.w !STREAM_TWO,y
 
 line_words_second:
-    lda !G_S2
-    %mulk_products(!MULTAB1, !MULTAB0, !STREAM_ONE+2)
+    %mulk_products(!MULTAB1, !MULTAB0, !STREAM_ONE+2, !G_S2)
     %mulk_shift(!TMP+8, !TMP+10)
     sta.w !STREAM_TWO+2,y
 
@@ -1622,6 +1625,11 @@ ground_block:
                                 ; the game writes it through the window and the
                                 ; port never sees it
     jsr ground_seed
+
+    stz !G_RAPAD                ; the nought above each multiply's high byte
+    stz !G_MAPAD
+    stz !G_S1PAD
+    stz !G_S2PAD
 
     ; Y is where in the two buffers this scanline goes, and it is also the loop's
     ; counter. ground_line writes through it and leaves it alone, so nothing has
