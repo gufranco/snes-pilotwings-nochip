@@ -122,6 +122,7 @@
 !G_S2      = $8C
 !G_S2PAD   = $8E
 !G_NEG     = $90                ; whether the reciprocal's sign has to go back
+!G_SEEN    = $92                ; the distance the scanline before this one had
 
 ; The two the table reads need. There was a bisecting search here as well, over
 ; three tables recorded from playthroughs, and it is gone: every one of the ten
@@ -867,6 +868,27 @@ endif
     clc
     adc !G_HORIZON
 
+    ; Everything below this point is a function of that distance and of state the
+    ; block fixed before the loop, so a scanline whose distance matches the one
+    ; before it has the same four answers. Across the demo 63.6% of them do, in
+    ; runs of up to eleven, because the distance is a running sum whose step is
+    ; small next to the fifteen places it is shifted down: a block of 176
+    ; scanlines holds about 64 distinct distances.
+    ;
+    ; The four answers are copied from the previous scanline's own slots rather
+    ; than kept anywhere, which is four reads and four writes against the six
+    ; multiplies, two scales and a reciprocal they stand in for.
+if <mark> == 1
+    cmp !G_SEEN
+    bne ?fresh                  ; the scanline below is far too long to branch
+    jmp ground_repeat           ; over with one
+?fresh:
+    sta !G_SEEN
+    cmp #$0000                  ; a store sets no flags and the compare above
+                                ; left its own, so the sign the lookup below
+                                ; branches on has to be taken again
+endif
+
 if <mark> == 1
 line_reciprocal:
 endif
@@ -921,6 +943,22 @@ line_words_second:
 endif
     %mulk_products(!MULTAB1, !MULTAB0, !STREAM_ONE+2, !G_S2, 0)
     sta.w !STREAM_TWO+2,y
+
+if <mark> == 1
+    bra ground_advance
+
+ground_repeat:
+    lda.w !STREAM_ONE-4,y       ; the same distance, so the same four answers
+    sta.w !STREAM_ONE,y
+    lda.w !STREAM_ONE+2-4,y
+    sta.w !STREAM_ONE+2,y
+    lda.w !STREAM_TWO-4,y
+    sta.w !STREAM_TWO,y
+    lda.w !STREAM_TWO+2-4,y
+    sta.w !STREAM_TWO+2,y
+
+ground_advance:
+endif
 
     ; One line further down the screen, which used to be its own subroutine. The
     ; caller has nothing to do between the two, so the call and the return were
@@ -1640,6 +1678,17 @@ ground_block:
                                 ; the game writes it through the window and the
                                 ; port never sees it
     jsr ground_seed
+
+    ; The first scanline has no previous one to copy from, so the distance it is
+    ; about to compute is stored complemented, which nothing can match.
+    lda !G_ACC+0
+    asl a
+    lda !G_ACC+2
+    rol a
+    clc
+    adc !G_HORIZON
+    eor #$FFFF
+    sta !G_SEEN
 
     stz !G_RAPAD                ; the nought above each multiply's high byte
     stz !G_MAPAD
