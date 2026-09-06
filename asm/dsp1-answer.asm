@@ -170,7 +170,7 @@
 !PAGE     = $0D00               ; where this puts its direct page while it runs
                                 ; Measured free: the game never wrote $000CFC
                                 ; through $000FE3 across a full run of the demo,
-                                ; and everything here fits in $0D00 to $0D61.
+                                ; and everything here fits in $0D00 to $0D75.
 
 !LUT      = $998000             ; where lutbuild.py's blob starts, and it
                                 ; has to be the bank lut-map.asm gives it:
@@ -195,9 +195,17 @@
 !ANSW     = $34                 ; how many words its answer is
 !ROWS     = $36                 ; how many rows it has, thirty two bits
 !ROWAT    = $3A                 ; where its rows begin, as a long address
-!LOW      = $3E                 ; the search's low row, thirty two bits
-!HIGH     = $42                 ; and its high row
+!LOW      = $3E                 ; where a key that missed would have gone
 !MID      = $46                 ; the row being compared
+
+; The search walks down the bits of the row number rather than halving a range,
+; and these five carry it. Every one is thirty two bits, for the reason !MID is:
+; $06 has 75,278 rows and its byte offsets reach 1,505,560.
+!STEPI    = $62                 ; the bit being tried, as a row count
+!STEPB    = $66                 ; the same bit, as the bytes it moves
+!OFFS     = $6A                 ; where !MID's key sits, in bytes from the first
+!TRY      = $6E                 ; the row this step would move to
+!TRYB     = $72                 ; and where that row's key sits
 
 ; Twenty two bytes of working room, laid out once here so that no two users of
 ; it can quietly land on the same bytes:
@@ -507,7 +515,7 @@ lut_row:
     rtl
 
 ; ---------------------------------------------------------------------------
-; Halve the range until the key is found or the range closes.
+; Walk down the bits of the row number until the key is found or they run out.
 ;
 ; Compares word by word, most significant first, because that is the order the
 ; keys were sorted in. A key of ten words is compared ten words at a time only
@@ -516,6 +524,32 @@ lut_row:
 ; Every row number here is thirty two bits. $06 has 75,278 rows, which does not
 ; fit in sixteen, and a search that wraps finds a real row that is the wrong one
 ; rather than failing, so nothing downstream can notice.
+;
+; WHY THIS IS NOT A RANGE HALVED
+;
+; The obvious binary search keeps a low row and a high row, takes the row half
+; way between them, and throws away the half that cannot hold the key. It is the
+; same number of comparisons as this, and it was what stood here.
+;
+; What it cost was the arithmetic between the comparisons. A row number is not
+; an address: the key of row n sits n key widths times two bytes along, so every
+; step had to multiply a thirty two bit row number by the key width. That is
+; lut_scale, a shift and add loop, and measured over one parachute flight it was
+; the heaviest single routine in the whole frame, ahead of the ground and ahead
+; of the game's own code.
+;
+; The multiply is avoidable because the row numbers a search visits are not
+; arbitrary. Built one bit at a time from the top, each step either leaves the
+; row alone or adds exactly one power of two to it, so the byte offset either
+; stays or grows by that same power of two times the width. Both are kept side
+; by side and both halve together, so a step is two shifts and an add where it
+; used to be a multiply.
+;
+; The bit walked from is 17, because two to the seventeenth is 131,072 and the
+; largest command here has 75,278 rows. Starting above the table costs one
+; comparison of a row number and no table read at all, and it means the starting
+; step needs no multiply either: a width shifted up seventeen places is that
+; width doubled, sitting in the high word, with nothing in the low word.
 ;
 ; On return the carry says whether a row matched, !MID holds it when one did,
 ; and !LOW holds where it would have gone when none did, which is what the
@@ -528,61 +562,102 @@ lut_find:
     php
     rep #$30
 
-    stz !LOW                    ; the range starts as every row, from nothing
-    stz !LOW+2                  ; up to one past the last
-    lda !ROWS
-    sta !HIGH
-    lda !ROWS+2
-    sta !HIGH+2
+    stz !STEPI                  ; the first bit to try: 1 shifted up seventeen
+    lda #$0002                  ; places, which is 2 in the high word
+    sta !STEPI+2
+
+    lda !KEYW                   ; the same bit measured in bytes, which is the
+    asl a                       ; key width doubled for the two bytes in a word
+    asl a                       ; and doubled again for the seventeenth bit,
+    sta !STEPB+2                ; sitting in the high word for the other sixteen
+    stz !STEPB
+
+    stz !MID                    ; the search starts at the first row and never
+    stz !MID+2                  ; moves below it, so that row is checked here
+    stz !OFFS                   ; rather than inside the walk
+    stz !OFFS+2
+    stz !TRYB
+    stz !TRYB+2
+
+    jsr lut_compare             ; carry clear when the row is below what is
+    beq .hit                    ; wanted, set when it is above or equal
+    bcc .step
+
+    stz !LOW                    ; the first row is already above the wanted key,
+    stz !LOW+2                  ; so the key would have gone before it
+    plp
+    clc
+    rtl
 
 .step:
-    lda !LOW+2                  ; is the range empty? compare the high halves
-    cmp !HIGH+2                 ; first, and only look at the low halves when
-    bcc .open                   ; the high halves tie
-    bne .missing
-    lda !LOW
-    cmp !HIGH
-    bcs .missing                ; the range closed with nothing in it
-
-.open:
-    lda !LOW                    ; the middle of what is left, as a thirty two
-    clc                         ; bit sum halved
-    adc !HIGH
-    sta !MID
-    lda !LOW+2
-    adc !HIGH+2
-    sta !MID+2
-    lsr !MID+2                  ; halving goes high word first, so the bit
-    ror !MID                    ; falling out of it lands in the low word
-
-    jsr lut_compare             ; carry clear if the row is below what is wanted
-    bcc .below
-    beq .hit
-
-    lda !MID                    ; the row is above: keep the lower half
-    sta !HIGH
+    lda !MID                    ; the row this step would move to
+    clc
+    adc !STEPI
+    sta !TRY
     lda !MID+2
-    sta !HIGH+2
-    bra .step
+    adc !STEPI+2
+    sta !TRY+2
 
-.below:
-    lda !MID                    ; the row is below: keep the upper half,
-    clc                         ; starting one past the row just rejected
-    adc #$0001
+    lda !TRY+2                  ; is it a row at all? the high halves first, and
+    cmp !ROWS+2                 ; the low halves only when they tie
+    bcc .inside
+    bne .narrow
+    lda !TRY
+    cmp !ROWS
+    bcs .narrow                 ; past the end of the table: leave the row alone
+
+.inside:
+    lda !OFFS                   ; where that row's key sits, which is where this
+    clc                         ; row's key sits plus the bytes this bit moves
+    adc !STEPB
+    sta !TRYB
+    lda !OFFS+2
+    adc !STEPB+2
+    sta !TRYB+2
+
+    jsr lut_compare
+    beq .took                   ; the key is there: stop with the row taken
+    bcs .narrow                 ; the row is above what is wanted: do not move
+
+    lda !TRY                    ; the row is below what is wanted, so it is the
+    sta !MID                    ; new floor and the walk goes on from it
+    lda !TRY+2
+    sta !MID+2
+    lda !TRYB
+    sta !OFFS
+    lda !TRYB+2
+    sta !OFFS+2
+
+.narrow:
+    lsr !STEPI+2                ; the next bit down, in both measures at once.
+    ror !STEPI                  ; shifting goes high word first, so the bit
+    lsr !STEPB+2                ; falling out of it lands in the low word
+    ror !STEPB
+
+    lda !STEPI                  ; bits left to try?
+    ora !STEPI+2
+    bne .step
+
+    lda !MID                    ; none matched. !MID is the last row below the
+    clc                         ; wanted key, so the key would have gone one
+    adc #$0001                  ; past it
     sta !LOW
     lda !MID+2
     adc #$0000
     sta !LOW+2
-    bra .step
+    plp
+    clc
+    rtl
+
+.took:
+    lda !TRY                    ; the row that matched becomes the answer's
+    sta !MID
+    lda !TRY+2
+    sta !MID+2
 
 .hit:
     plp
     sec
-    rtl
-
-.missing:
-    plp
-    clc
     rtl
 
 ; ---------------------------------------------------------------------------
@@ -593,7 +668,7 @@ lut_find:
 ; the row number times the key width times two, which has to be worked out.
 ; ---------------------------------------------------------------------------
 lut_compare:
-    jsr lut_key_at
+    jsr lut_key_off
 
     ; The wanted key is in the direct page, and the 65816 has no compare that
     ; indexes the direct page by Y. Absolute indexing by Y exists, so the
@@ -687,6 +762,30 @@ lut_next:
     rts
 
 ; ---------------------------------------------------------------------------
+; Where the key sitting !TRYB bytes into this command's rows is, as a long
+; address in !SCRATCH.
+;
+; The search already knows the byte offset, because it carried it down the bits
+; alongside the row number, so there is nothing to work out here beyond adding
+; where the rows begin and turning a flat offset into a bank and an address.
+;
+; This is the whole reason the search stopped multiplying. lut_key_at below does
+; the same job from a row number and needs lut_scale to get there; it is still
+; the right routine for the fallback, which is handed a row number by somebody
+; else and has no offset to go with it.
+; ---------------------------------------------------------------------------
+lut_key_off:
+    lda !TRYB
+    clc
+    adc !ROWAT
+    sta !SCRATCH+4
+    lda !TRYB+2
+    adc !ROWAT+2
+    sta !SCRATCH+6
+
+    jmp lut_place
+
+; ---------------------------------------------------------------------------
 ; Where the key of the row in !MID sits, as a long address in !SCRATCH.
 ;
 ; The arithmetic is thirty two bits throughout and that is not caution. $06 has
@@ -699,6 +798,9 @@ lut_next:
 ; two, and two is exactly the width $00, $04 and $10 use. That coincidence is
 ; what made an earlier version of this file look nineteen twentieths broken
 ; rather than entirely broken.
+;
+; The search no longer comes here, because it carries the offset down with it.
+; The fallback still does: it is given a row number on its own.
 ; ---------------------------------------------------------------------------
 lut_key_at:
     lda !MID                    ; the row number, widened to thirty two bits
@@ -847,11 +949,38 @@ dsp1_answer:
     plb
     plb
 
+    ; Three commands never reach the table at all, because their arithmetic is
+    ; known to the bit and the table can only ever agree with it.
+    ;
+    ; $00 and $80 are the signed fractional product and $08 is twice the sum of
+    ; three squares. asm/dsp1-ops.asm computes each of them, and each was held
+    ; against every distinct call the three recordings hold, 29,467 of them,
+    ; with no disagreement. So the table's row and the routine's answer are the
+    ; same word, and the only difference is what it costs to arrive at.
+    ;
+    ; It costs a great deal. Those three are a fifth of every lookup the game
+    ; makes, and a lookup is a bisection over a table of millions of bytes: a
+    ; thirty two bit multiply per step to turn a row number into an offset, a
+    ; bank conversion, and a key comparison, all to fetch a word that two
+    ; multiplies would have produced. Measured over one parachute flight, the
+    ; search was 42% of the whole frame and the game ran at a sixth of speed.
+    ;
+    ; The routing is the branch below rather than a new one, because
+    ; asm/dsp1-fallback.asm already sends these three to their arithmetic. It
+    ; was written for the case where the table has no row; the case where the
+    ; table has a row nobody needs to read is the same journey.
+    lda !CMD
+    beq .routed                 ; $00
+    cmp #$0080
+    beq .routed                 ; $80 reaches the same routine in the chip
+    cmp #$0008
+    beq .routed
+
     jsl lut_entry
-    bcc .fallback               ; a command the table has never seen
+    bcc .routed                 ; a command the table has never seen
 
     jsl lut_row
-    bcc .fallback               ; a key the table has never seen
+    bcc .routed                 ; a key the table has never seen
 
     jsl lut_answer
 
@@ -867,7 +996,10 @@ dsp1_answer:
     plp
     rtl
 
-.fallback:
+; Reached two ways, and they are the same journey. A command whose arithmetic is
+; known comes straight here without touching the table. A command whose
+; arithmetic is not known comes here having missed, and takes the nearest row.
+.routed:
     jsl dsp1_fallback
     pld
     plb
