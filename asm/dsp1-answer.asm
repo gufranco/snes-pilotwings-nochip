@@ -170,7 +170,7 @@
 !PAGE     = $0D00               ; where this puts its direct page while it runs
                                 ; Measured free: the game never wrote $000CFC
                                 ; through $000FE3 across a full run of the demo,
-                                ; and everything here fits in $0D00 to $0D75.
+                                ; and everything here fits in $0D00 to $0D79.
 
 !LUT      = $998000             ; where lutbuild.py's blob starts, and it
                                 ; has to be the bank lut-map.asm gives it:
@@ -201,11 +201,14 @@
 ; The search walks down the bits of the row number rather than halving a range,
 ; and these five carry it. Every one is thirty two bits, for the reason !MID is:
 ; $06 has 75,278 rows and its byte offsets reach 1,505,560.
+!KEYLAST  = $60                 ; how far past a key's first byte its last sits
 !STEPI    = $62                 ; the bit being tried, as a row count
 !STEPB    = $66                 ; the same bit, as the bytes it moves
 !OFFS     = $6A                 ; where !MID's key sits, in bytes from the first
 !TRY      = $6E                 ; the row this step would move to
 !TRYB     = $72                 ; and where that row's key sits
+!ANSAT    = $76                 ; where this command's answers begin, thirty two
+                                ; bits, read from the index rather than derived
 
 ; Twenty two bytes of working room, laid out once here so that no two users of
 ; it can quietly land on the same bytes:
@@ -359,9 +362,9 @@ lut_entry:
     cmp !CMD
     beq .found
 
-    txa                         ; step over this entry
-    clc
-    adc #$000C
+    txa                         ; step over this entry, which is sixteen bytes
+    clc                         ; wide so that stepping is a shift rather than
+    adc #$0010                  ; an addition wherever anything indexes it
     tax
     dec !SCRATCH
     bne -
@@ -374,6 +377,10 @@ lut_entry:
     lda.l !LUT+1,x              ; the key width is one byte, so the byte above
     and #$00FF                  ; it has to be masked off before it is stored
     sta !KEYW
+
+    asl a                       ; and how far past a key's first byte its last
+    dec a                       ; one sits, which is what the search adds to an
+    sta !KEYLAST                ; address to ask whether the key fits the bank
 
     lda.l !LUT+2,x              ; the answer width is a whole word already
     sta !ANSW
@@ -388,6 +395,12 @@ lut_entry:
     lda.l !LUT+10,x             ; address here: lut_place does that, because
     sta !ROWAT+2                ; the two are not the same thing on a low
                                 ; cartridge
+
+    lda.l !LUT+12,x             ; and where this command's answers begin, which
+    sta !ANSAT                  ; is past every key. lutbuild.py works it out
+    lda.l !LUT+14,x             ; when it writes the table; the cartridge used to
+    sta !ANSAT+2                ; work it out again on every lookup, and doing so
+                                ; is a thirty two bit multiply
 
     plp
     sec
@@ -574,10 +587,20 @@ lut_find:
 
     stz !MID                    ; the search starts at the first row and never
     stz !MID+2                  ; moves below it, so that row is checked here
-    stz !OFFS                   ; rather than inside the walk
-    stz !OFFS+2
-    stz !TRYB
-    stz !TRYB+2
+                                ; rather than inside the walk
+
+    ; The offset the walk carries is counted from the start of the whole table
+    ; rather than from the start of this command's rows, so it begins at where
+    ; those rows begin rather than at nothing. That is the only difference, and
+    ; it takes a thirty two bit addition out of every step of every search: the
+    ; comparison used to add this same number back on before it could read
+    ; anything.
+    lda !ROWAT
+    sta !OFFS
+    sta !TRYB
+    lda !ROWAT+2
+    sta !OFFS+2
+    sta !TRYB+2
 
     jsr lut_compare             ; carry clear when the row is below what is
     beq .hit                    ; wanted, set when it is above or equal
@@ -668,7 +691,35 @@ lut_find:
 ; the row number times the key width times two, which has to be worked out.
 ; ---------------------------------------------------------------------------
 lut_compare:
-    jsr lut_key_off
+    ; Working out where the row sits is written here rather than called, because
+    ; this routine runs about thirteen times per lookup and twenty one lookups
+    ; per game frame. Two calls and their returns are twenty one cycles of every
+    ; step, against a step that measures around a hundred and twenty.
+    ;
+    ; lut_place still exists for the fallback and for the answer copy, which are
+    ; handed a row number rather than an offset and reach it once rather than
+    ; thirteen times. What is below has to stay the same arithmetic as that one;
+    ; it is the only place in this file where a sequence is written twice.
+
+    lda !TRYB                   ; how far into the bank, which is fifteen bits.
+    and #$7FFF                  ; !TRYB counts from the start of the whole table
+    ora #$8000                  ; because a low cartridge starts each bank there
+    sta !SCRATCH
+
+    lda !TRYB                   ; which bank: everything above those fifteen
+    asl a                       ; bits, which is the high word doubled with the
+    lda !TRYB+2                 ; low word's top bit carried into it
+    rol a
+    clc
+    adc.w #!LUTBANK
+if !LUTBANK < !WORKRAM
+    cmp.w #!WORKRAM
+    bcc +
+    clc
+    adc #$0002                  ; past the two banks that are memory, not ROM
++
+endif
+    sta !SCRATCH+2
 
     ; The wanted key is in the direct page, and the 65816 has no compare that
     ; indexes the direct page by Y. Absolute indexing by Y exists, so the
@@ -683,11 +734,16 @@ lut_compare:
     ; Does the whole key fit in what is left of this bank? Almost always, and
     ; then Y can walk it. About one row in sixteen hundred sits across the join
     ; and needs the address moved on properly for every word.
-    lda !KEYW
-    asl a
-    cmp !SCRATCH+14
-    beq .fast
-    bcs .slow
+    ;
+    ; Asked by adding rather than by subtracting. The room left used to be worked
+    ; out first, as nought minus the address, and then compared against the key's
+    ; width; adding the offset of the key's last byte to its first and reading the
+    ; carry answers the same question in three instructions instead of eight, and
+    ; the offset is worked out once per lookup rather than once per step.
+    lda !SCRATCH
+    clc
+    adc !KEYLAST
+    bcs .slow                   ; past the end of the bank, so it sits across
 
 .fast:
     ldy #$0000
@@ -731,6 +787,15 @@ lut_compare:
     ; flags were, and a stack gives things back in the order opposite to the one
     ; it took them, so the pull meant to fetch the bank fetched the flags and
     ; the pull meant to fetch the flags fetched the bank.
+    ;
+    ; It returned by falling into the routine below, which is where a word of
+    ; every key comparison went. That worked, and only by accident: none of the
+    ; instructions there touches the carry, and the zero flag came out clear
+    ; because the address it left was not nought. Both are true today and
+    ; neither is a property anybody stated. This is a key that did not match,
+    ; which is almost every comparison the search makes, so it was also twenty
+    ; one cycles of every step.
+    rts
 
 ; ---------------------------------------------------------------------------
 ; Move the address in !SCRATCH on by one word, respecting where banks end.
@@ -760,30 +825,6 @@ lut_next:
 
 .done:
     rts
-
-; ---------------------------------------------------------------------------
-; Where the key sitting !TRYB bytes into this command's rows is, as a long
-; address in !SCRATCH.
-;
-; The search already knows the byte offset, because it carried it down the bits
-; alongside the row number, so there is nothing to work out here beyond adding
-; where the rows begin and turning a flat offset into a bank and an address.
-;
-; This is the whole reason the search stopped multiplying. lut_key_at below does
-; the same job from a row number and needs lut_scale to get there; it is still
-; the right routine for the fallback, which is handed a row number by somebody
-; else and has no offset to go with it.
-; ---------------------------------------------------------------------------
-lut_key_off:
-    lda !TRYB
-    clc
-    adc !ROWAT
-    sta !SCRATCH+4
-    lda !TRYB+2
-    adc !ROWAT+2
-    sta !SCRATCH+6
-
-    jmp lut_place
 
 ; ---------------------------------------------------------------------------
 ; Where the key of the row in !MID sits, as a long address in !SCRATCH.
@@ -831,23 +872,14 @@ lut_answer:
     php
     rep #$30
 
-    ; Where the answers begin: past every key, which is the row count times the
-    ; key width times two. Thirty two bits, for the same reason as above.
-    lda !ROWS
-    sta !SCRATCH+4
-    lda !ROWS+2
-    sta !SCRATCH+6
-    lda !KEYW
-    jsr lut_scale
-    asl !SCRATCH+4
-    rol !SCRATCH+6
-
-    lda !SCRATCH+4              ; parked where the multiply cannot reach it,
-    clc                         ; because the second product is about to use
-    adc !ROWAT                  ; the same working bytes
-    sta !SCRATCH+16
-    lda !SCRATCH+6
-    adc !ROWAT+2
+    ; Where the answers begin is read from the index rather than worked out. It
+    ; is where the rows begin plus the row count times the key width times two,
+    ; and none of those three changes for the life of the table, so lutbuild.py
+    ; writes the sum into the entry and the cartridge stops multiplying twice per
+    ; lookup where once will do.
+    lda !ANSAT                  ; parked where the multiply cannot reach it,
+    sta !SCRATCH+16             ; because the product below uses those bytes
+    lda !ANSAT+2
     sta !SCRATCH+18
 
     ; Then this row's answer within them, the same way. The answer width is

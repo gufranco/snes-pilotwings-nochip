@@ -44,7 +44,18 @@ BANK_BYTES = 0x8000
 """What one low-addressed bank holds, and so how the blob is cut up."""
 
 HEADER = 1
-ENTRY_BYTES = 12
+ENTRY_BYTES = 16
+"""How wide one command's entry in the index is.
+
+Sixteen rather than the twelve the five fields need. The sixteenth byte is where
+this command's answers begin, which is where its rows begin plus its row count
+times its key width times two. The cartridge worked that out for itself on every
+lookup, and working it out is a thirty two bit multiply.
+
+Sixteen rather than thirteen because the walk over the index steps by this
+number, and stepping by a power of two is a shift where stepping by anything
+else is an addition.
+"""
 
 REGIONS = ("usa", "jp", "eur")
 
@@ -114,6 +125,7 @@ def encode(
         out += struct.pack("<H", answer_words)
         out += struct.pack("<I", len(ordered))
         out += struct.pack("<I", rows_at + len(body))
+        out += struct.pack("<I", rows_at + len(body) + len(ordered) * key_words * 2)
         for key, _ in ordered:
             body += struct.pack(f"<{key_words}H", *_padded(key, key_words))
         for _, answer in ordered:
