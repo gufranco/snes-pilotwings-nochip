@@ -4051,3 +4051,32 @@ stops: `F($8000)` is `F($4000) + 16,387` where a signed reading would want it
 So `F` is not the signed value, and it is not the unsigned one either. `$02`
 calls the reciprocal at `$00d3` and three other helpers, and the next step is to
 read where arguments 3 and 4 reach them rather than to keep sweeping.
+
+### The scalar was fitted to a composite, and it does not generalise
+
+The sweep above set the sixth argument to half a turn on the belief that this
+makes the matrix entry the offset is multiplied by exactly $8000, so that
+multiplying by it is negating and the scalar comes back untouched. That is wrong.
+The entry is `$5a`, which is `cos6 * 1`, and multiplying by $7fff cannot produce
+$8000: the most negative it reaches is $8001.
+
+So what the sweep measured, and what the grid then agreed with on 1,032 pairs,
+was not the scalar. It was the whole composite at one corner, and the shape it
+took, each argument less $4000 with one added where its top bit is set, is a
+description of that corner rather than of the arithmetic.
+
+Composing it back the other way says so plainly. Predicting all three position
+cells from the matrix's first column and that scalar is wrong on 59 of 60 random
+argument sets, and on 40 of 60 even with both angles held at nought.
+
+The obstacle is real rather than a mistake in the fitting. Every path from the
+scalar to something observable runs through a floored product, which loses a bit,
+so one observation leaves the scalar undetermined by one either way and no choice
+of argument avoids it. Recovering it needs the part's own code for where
+arguments 3 and 4 reach the helpers, which is what section 53 said the next step
+was and remains the next step.
+
+What survives from this: the vector is arguments 2, 1 and 0 reversed with nothing
+done to it, confirmed with the angles both set and unset; the offset lies along
+the matrix's first column, which the dependency map fixes and nothing here
+disturbs; and the matrix itself, which is exact and committed.
