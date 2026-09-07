@@ -3837,3 +3837,76 @@ off the frame, and the table is not short of room.
 | waiting for the beam before the game arms its band sequence | 2.8% |
 
 The search was 42.5% when section 47 measured it. The ground is now the question.
+
+## 51. The ground measured properly, and what it will not give up
+
+Section 50 left the ground at 46.8% of a frame and named it the question. It has
+a meter now, and the meter says most of it is not reducible without changing the
+arithmetic.
+
+### The meter
+
+`tools/cycles.py` runs `ground_block` once from a snapshot whose multiply tables
+have been cleared, so it measures the call that builds them. Almost every call is
+not that one. Running it twice and reporting the second gives the steady figure,
+and running that from 24 states spanning a flight gives 129,327 at the least,
+131,476 in the middle and 133,568 at the most. The spread is 3%, so one state is
+a fair sample.
+
+The gap between the two calls is 62,665 cycles, which is what building the four
+multiply tables costs. That does not appear in a frame profile at all, because
+the tables are keyed on four constants that change rarely.
+
+Bucketing one steady call by macro:
+
+| | share of a ground call |
+|---|---:|
+| the table-driven multiply, one product and two | 54.7% |
+| scaling a value by an exponent | 13.2% |
+| counting doublings | 8.8% |
+| inverting | 4.8% |
+| everything else | 18.5% |
+
+### The one thing that came off
+
+Scaling doubled a value until its sign changed, counting, and then shifted the
+result back by that count less the exponent. What the two produce together is the
+value shifted by the exponent, and the count is only there to say when that would
+overflow. So the count is now read from a table of all 65,536 words, and the
+value is shifted by the exponent itself.
+
+It is worth 1%, not the 8.8% the loop's share suggested, and the reason is worth
+recording: the counts the loop produced were small, so it averaged 33 cycles
+rather than the ninety a longer count would have cost, and the shift it saved was
+two places. The lookup and the arithmetic around it cost most of that back.
+
+Folding the table to one bank by complementing negative values fails on exactly
+one value. `$ffff` counts fifteen and its complement, nought, counts nought,
+because the loop stops before it starts.
+
+### What it will not give up
+
+54.7% of the ground is six table multiplies a scanline, and each is already
+about as short as the addressing allows: two indices built from the two bytes of
+the varying word, four table reads, two adds and a sign correction. None of the
+six is the same from one scanline to the next, so none can be hoisted. Making
+the ground materially faster now means asking for fewer products, which is a
+change to the arithmetic the part performs rather than to the code that performs
+it.
+
+## 52. Fifty five cycles to move two bytes
+
+Three commands answer nothing and exist only to leave arguments behind for later
+ones, which are keyed on their own words followed by that carried set. Copying it
+ran one index register between two places: the source counts from nought and the
+destination from wherever the command's own arguments ended, so every word cost
+an add to reach the destination and a subtract to get back.
+
+Fifty five cycles to move two bytes, up to seven words a command, on about
+twenty two commands a game frame.
+
+X walks the source and Y the destination now, both stepping down together
+because the gap between them never changes. The source and the destination are
+in different banks, so only one of them can drop the bank from its instruction,
+and the destination does. Twenty two cycles a word, and the port falls from 9.3%
+of a frame to 6.4%.
