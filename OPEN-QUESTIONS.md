@@ -3960,3 +3960,54 @@ is asked 9.7 times a game frame. The arithmetic is 119 microcode instructions,
 which in 65816 with the tables already present is perhaps 2,500. It would also
 take 1.96 MB out of the table and give the command a hit rate of 100% where it
 now has none outside the recordings, which is what the parachute needs.
+
+## 54. The matrix `$06` reads, solved
+
+Section 53 scoped `$06` and found it depends on seventeen cells of what `$02`
+leaves. Nine of those are a three by three matrix the ground never touches, and
+they are now formulas rather than a table.
+
+    $5a = cos6 * 1        $5b = sin6 * -1       $5c = 0
+    $6a = cos5 * sin6     $6b = cos5 * cos6     $6c = sin5 * 1
+    $7a = sin5 * -sin6    $7b = sin5 * -cos6    $7c = cos5 * 1
+
+Found by search rather than by reading: every product of the part's own sine and
+cosine of `$02`'s fifth and sixth arguments was tried against 120 argument sets,
+and exactly one formula per cell survived. Held against the part on a grid of
+1,024 angle pairs stepping by 2,048, which puts nought, a quarter turn, half a
+turn and three quarters on the grid, every cell agrees.
+
+### Three things about the arithmetic that had to be measured
+
+The product floors rather than truncating toward nought. The part's own `$00`
+does too, checked against it on 3,000 random pairs with no disagreement.
+
+"One" is $7fff, and multiplying by it is not the identity: it takes one off a
+positive value and leaves a negative one alone. Four of the nine cells are the
+trig value less one wherever it is positive, and that is why.
+
+Negating $8000 does not fold back to $8000. The part multiplies by a positive
+one there rather than a negative one. Without that, `$7b` is wrong on every
+argument set whose sixth word is exactly half a turn, which is 126 of the 16,384
+pairs first swept.
+
+### And one table entry that had to be corrected
+
+`build/cosine.bin` is what command `$04` answers, which is the value already
+multiplied by $7fff, and that multiply cannot tell $8000 from $8001. The matrix
+uses the value before it.
+
+Getting the value before it needed the part as its own oracle. Setting `$02`'s
+sixth argument to half a turn makes its cosine $8000 and its sine nought, and
+multiplying by $8000 is negating, so two of the cross terms come back as the
+fifth argument's cosine negated and its sine as it stands, with nothing lost.
+Swept that way over 4,096 angles, the sine table is the part's own value
+everywhere and the cosine table differs at exactly one angle: half a turn.
+
+### What is left of `$06`
+
+The position, which is six cells and depends on five of `$02`'s arguments, and
+then the projection body itself: 119 instructions that subtract, run three
+multiply-accumulate chains against this matrix, take a reciprocal and scale three
+answers. The reciprocal, the clamping scale and the signed product are all
+already in the cartridge, exact.

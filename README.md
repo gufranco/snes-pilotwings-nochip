@@ -610,6 +610,7 @@ Analysis modules in Python, each with its tests beside it.
 | [`tabulate.py`](tabulate.py) | whether a command's answers can be stored instead of computed |
 | [`microcode.py`](microcode.py) | the part's own dispatch tree, walked for all 256 command bytes |
 | [`derived.py`](derived.py) | drives the part to produce the three tables no formula reproduces, and counts the doublings the ground's scaling used to work out in a loop |
+| [`attitude.py`](attitude.py) | the three by three matrix `$02` builds, as formulas over the part's own sine and cosine. Nine of the seventeen cells `$06` reads |
 | [`raster.py`](raster.py) | what `$0a` computes, read out of the part stage by stage. The reference the assembly mirrors |
 | [`parameter.py`](parameter.py) | which of `$02`'s arguments each word of its state answers to |
 | [`state02.py`](state02.py) | packs a keyed table the way a cartridge search would read it |
