@@ -3910,3 +3910,53 @@ because the gap between them never changes. The source and the destination are
 in different banks, so only one of them can drop the bank from its instruction,
 and the destination does. Twenty two cycles a word, and the port falls from 9.3%
 of a frame to 6.4%.
+
+## 53. What `$06` would take, scoped rather than guessed
+
+`$06` is 30% of every lookup the game makes, has 0% holdout coverage, and its
+table is 1.96 MB of the 2.8 MB total. Reading its arithmetic is the single
+highest-value thing left, and it has never been scoped. This is the scoping.
+
+### It is a projection, and it is 119 instructions
+
+The handler sits at $03a2 and is 119 instructions. It reads three words from the
+port, subtracts a stored position from each, runs three multiply-accumulate
+chains against a matrix, takes a reciprocal, and scales three answers.
+
+It calls six helpers: $003a normalise, $0042 a table-driven refinement, $0077
+and $0087 a scale with a clamp to $7fff and $8001, $009f, and $00d3 the
+reciprocal. Three of those the cartridge already implements exactly: the
+reciprocal is `dsp1_reciprocal_of`, the clamping scale is `%scale()` in the
+ground, and the signed product is `op_00_body`. So the work is composition
+rather than invention.
+
+### Seventeen cells, found by perturbing rather than by reading
+
+A cell a routine writes before it reads looks like an input in a listing and is
+not one, so the state `$06` depends on was found by changing one cell at a time
+and asking the same question again. Seventeen cells move the answer, the same
+seventeen on every argument set tried:
+
+| cells | what they look like |
+|---|---|
+| `$5a` `$5b` `$5c` `$6a` `$6b` `$6c` `$7a` `$7b` `$7c` | a three by three matrix, with `$5c` always nought |
+| `$9b` `$ab` `$bb` | a position, low halves |
+| `$1b` `$2b` `$3b` | the same position's high halves, always `$0000` or `$ffff` |
+| `$ce` | argument 4 of `$02`, copied |
+| `$4e` | always nought so far |
+
+So `$06` needs `$02` to have computed twelve words the ground does not use, on
+top of the ten it does. `$02`'s own arguments reach only one of them directly.
+
+### What that means for the work
+
+The order is: compute those twelve words from `$02`'s arguments the way
+`ground_state` computes its ten, then compose `$06` from operations the
+cartridge already has. Each half is verifiable on its own against the part, which
+is what makes it worth starting.
+
+What it would be worth: `$06` costs 4,496 cycles an answer through the search and
+is asked 9.7 times a game frame. The arithmetic is 119 microcode instructions,
+which in 65816 with the tables already present is perhaps 2,500. It would also
+take 1.96 MB out of the table and give the command a hit rate of 100% where it
+now has none outside the recordings, which is what the parachute needs.
