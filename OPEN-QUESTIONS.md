@@ -4011,3 +4011,43 @@ then the projection body itself: 119 instructions that subtract, run three
 multiply-accumulate chains against this matrix, take a reciprocal and scale three
 answers. The reciprocal, the clamping scale and the signed product are all
 already in the cartridge, exact.
+
+## 55. The position `$06` reads, half solved
+
+Six of the seventeen cells are a position, three low halves at `$9b`, `$ab` and
+`$bb` and their sign extensions at `$1b`, `$2b` and `$3b`. This is what it is
+made of, and what is still open.
+
+### The vector is three arguments, reversed, and nothing is done to it
+
+Setting `$02`'s third, fourth and fifth arguments to zero, half and half, the
+position comes back as `$02`'s arguments 2, 1 and 0 in that order, sign extended
+to thirty two bits. Setting the two angles to something other than nought does
+not change that: the matrix is not applied to the vector at all.
+
+### What the other two arguments add is a vector along the matrix's first column
+
+Arguments 3 and 4 add an offset, and it is nought when both are $4000. Which
+cells that offset moves says its shape:
+
+| cell | arguments it moves with | which matrix entry that is |
+|---|---|---|
+| `$9b` | 2, 3, 4, 6 | `$5a`, which is built from argument 6 alone |
+| `$ab` | 1, 3, 4, 5, 6 | `$6a`, from both angles |
+| `$bb` | 0, 3, 4, 5, 6 | `$7a`, from both angles |
+
+Those three are the matrix's first column, so the offset is that column times one
+scalar. No other arrangement leaves `$9b` free of argument 5, which it is.
+
+### The scalar is a difference and it is not linear
+
+Sweeping argument 3 with argument 4 held at $4000, and then the other way round,
+the scalar is antisymmetric in the two, so it is `F(arg3) - F(arg4)` for one
+function `F`. Between nought and $7fff `F` is very nearly the argument less
+$4000, off by one at each end in the way a multiply by $7fff is. Past $7fff it
+stops: `F($8000)` is `F($4000) + 16,387` where a signed reading would want it
+49,152 below, and `F($ffff)` is 16,384 below rather than one below.
+
+So `F` is not the signed value, and it is not the unsigned one either. `$02`
+calls the reciprocal at `$00d3` and three other helpers, and the next step is to
+read where arguments 3 and 4 reach them rather than to keep sweeping.
