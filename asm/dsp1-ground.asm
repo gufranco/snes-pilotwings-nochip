@@ -687,21 +687,54 @@ endmacro
 ; In:  A the mantissa, !G_EXP the exponent. Out: A the scale. Uses X.
 ; ---------------------------------------------------------------------------
 macro scale()
-    %normalise()
+    sta !G_NORM                 ; the value, which the shifts and the clamp read
 
-    ; The count less the exponent is how many places to shift right, so it is
-    ; subtracted that way round rather than the other way and negated. The
-    ; multiplier's own fifteen is already off the exponent, taken out of the
-    ; first one once per block.
-    lda !G_COUNT
+    ; How many times it could be doubled before its sign changed. This was a
+    ; loop, doubling and counting, and then everything it had done was undone by
+    ; shifting back the same number of places less the exponent. Both together
+    ; were 22% of what the ground costs.
+    ;
+    ; What comes out of the two is the value shifted by the exponent, and the
+    ; count is only there to say when that would overflow. So the count is read
+    ; out of a table, the value is shifted by the exponent itself, and neither
+    ; the doubling nor the undoing happens at all.
+    tax
+    bmi ?upper
+    lda.l ground_leading,x      ; one byte an entry, so the word this reads
+    and #$00FF                  ; carries the next entry above it
+    bra ?counted
+
+?upper:
+    txa
+    and #$7FFF                  ; the second piece, for a value with its top bit
+    tax                         ; set, because a bank holds half of them
+    lda.l ground_leading_high,x
+    and #$00FF
+
+?counted:
+    sta !G_COUNT
+
+    ; The count less the exponent is how many places the old pair of loops moved
+    ; the value right, and it is still what says whether the answer fits.
     sec
     sbc !G_EXP
-    beq ?exact                  ; nothing to shift, and nothing to clamp either
     bmi ?clamp                  ; the exponent is above the count, so it saturates
     cmp #$0010
     bcs ?flat                   ; sixteen or more reads a ROM word of nought
 
+    lda !G_EXP
+    bmi ?right
+
     asl a                       ; two bytes an entry in the tables below
+    tax
+    lda !G_NORM
+    jmp (?left_at,x)            ; left by the exponent, which the count above has
+                                ; just said is a shift the value has room for
+
+?right:
+    eor #$FFFF                  ; the exponent is below nought, so the value goes
+    inc a                       ; right by as many places as it is below
+    asl a
     tax
     lda !G_NORM
     bmi ?down
@@ -714,10 +747,6 @@ macro scale()
     lda #$0000
     jmp ?done
 
-?exact:
-    lda !G_NORM                 ; exactly nought: untouched
-    jmp ?done
-
 ?clamp:
     lda !G_NORM
     bmi ?low
@@ -726,6 +755,57 @@ macro scale()
 
 ?low:
     lda #$8001
+    jmp ?done
+
+?left_at:
+    dw ?left_0
+    dw ?left_1
+    dw ?left_2
+    dw ?left_3
+    dw ?left_4
+    dw ?left_5
+    dw ?left_6
+    dw ?left_7
+    dw ?left_8
+    dw ?left_9
+    dw ?left_10
+    dw ?left_11
+    dw ?left_12
+    dw ?left_13
+    dw ?left_14
+    dw ?left_15
+
+?left_15:
+    asl a
+?left_14:
+    asl a
+?left_13:
+    asl a
+?left_12:
+    asl a
+?left_11:
+    asl a
+?left_10:
+    asl a
+?left_9:
+    asl a
+?left_8:
+    asl a
+?left_7:
+    asl a
+?left_6:
+    asl a
+?left_5:
+    asl a
+?left_4:
+    asl a
+?left_3:
+    asl a
+?left_2:
+    asl a
+?left_1:
+    asl a
+?left_0:
     jmp ?done
 
 ?up_at:

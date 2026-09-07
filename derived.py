@@ -210,6 +210,54 @@ to place a run of bytes across a bank border, which is how this was found.
 """
 
 
+WHOLE_WORD = 0x10000
+"""How many values a sixteen bit word takes, and so how long the table below is."""
+
+
+def leading(value: int) -> int:
+    """How many times a word can be doubled before its sign changes.
+
+    The same count the cartridge's own loop produces: it doubles, stops when the
+    new sign differs from the old, and undoes the doubling that overflowed.
+    Nought stops before it starts, at nought.
+
+    It is a function of the value alone, which is why it can be a table. The loop
+    was two thirds of what scaling a scanline cost, and the shift that followed
+    it undid most of what it had just done.
+    """
+    if value == 0:
+        return 0
+    count = 0
+    now = value
+    while True:
+        doubled = (now << 1) & 0xFFFF
+        if (now ^ doubled) & 0x8000:
+            return count
+        now = doubled
+        count += 1
+
+
+def counted() -> bytes:
+    """That count for every value a word can hold, one byte each.
+
+    The whole word rather than half of it. A negative value and its bitwise
+    complement have the same run of leading sign bits, so folding one onto the
+    other would halve this, and it fails on exactly one value: $ffff counts
+    fifteen and its complement, nought, counts nought, because the loop stops
+    before it starts. Testing for that one value costs more on every negative
+    lookup than the bank it would save.
+    """
+    return bytes(leading(one) for one in range(WHOLE_WORD))
+
+
+def write_bytes(where: Path | str, raw: bytes) -> int:
+    """A table of single bytes, cut into pieces no larger than a bank."""
+    stem = Path(where)
+    for piece, at in enumerate(range(0, len(raw), BANK_BYTES)):
+        stem.with_name(f"{stem.stem}-{piece}{stem.suffix}").write_bytes(raw[at : at + BANK_BYTES])
+    return len(raw)
+
+
 def write(where: Path | str, values: Sequence[int]) -> int:
     """That table as the cartridge holds it, low byte first, and how long it is.
 
@@ -353,6 +401,9 @@ def main(argv: tuple[str, ...] | list[str] = (), say: Any = print) -> int:
     values = reciprocal(part, NORMAL_LOW, NORMAL_HIGH, watch=lambda at: say(f"  {at:,}"))
     say(f"  wrote {write(into / 'reciprocal.bin', values):,} bytes")
     reindex(into, values, say)
+
+    say(f"counting the doublings for all {WHOLE_WORD:,} words")
+    say(f"  wrote {write_bytes(into / 'leading.bin', counted()):,} bytes")
 
     say(f"driving it for {WHOLE:,} angles, six magnitudes each")
     sine, cosine = trig(part, watch=lambda at: say(f"  {at:,}"))

@@ -144,6 +144,26 @@ org $FA8000
 dsp1_recip_exponent_high:
 incbin "../build/recip-exponent-1.bin"
 
+; How many times a word can be doubled before its sign changes, for every value
+; a word can hold, one byte each.
+;
+; It is what the scaling loop in asm/dsp1-ground.asm used to work out by doubling
+; and counting, about eight times per call and twice per scanline. Measured on
+; the processor model, that loop and the shift that undid it were 22% of what
+; drawing the ground costs, and the count is a function of the value alone.
+;
+; Two pieces, because 65,536 bytes is two banks and nothing spans one. The reader
+; picks the piece from the value's top bit.
+;
+; derived.py writes it with no part driven, since counting doublings is
+; arithmetic.
+org $F08000
+ground_leading:
+incbin "../build/leading-0.bin"
+org $F18000
+ground_leading_high:
+incbin "../build/leading-1.bin"
+
 ; What $04 multiplies a magnitude by, per angle, for the first half it answers.
 ; A whole turn is 65,536, so the index is the angle with nothing done to it.
 org $918000
