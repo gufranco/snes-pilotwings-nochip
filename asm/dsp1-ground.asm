@@ -1459,199 +1459,203 @@ macro build_table(table)
 ?built:
 endmacro
 
+; The stores name no bank, the same way the reads in %mulk_product do. Both run
+; with the data bank already set to the tables' own, which ground_block sets once
+; on the way in, and a store that names its bank costs a cycle more. Two stores
+; an entry, 256 entries a table, and about two and a half tables a game frame.
 macro build_run(table, clears)
     lda #$0000
     tay
     ldx #$0000
 ?turn:
-    sta.l <table>+1,x
+    sta.w (<table>&$FFFF)+1,x
 if <clears> == 1
     clc
 endif
     adc !TMP+0
     sta !TMP+8
     tya
-    sta.l <table>+3,x
+    sta.w (<table>&$FFFF)+3,x
     adc !TMP+6
     tay
     lda !TMP+8
 
-    sta.l <table>+9,x
+    sta.w (<table>&$FFFF)+9,x
 if <clears> == 1
     clc
 endif
     adc !TMP+0
     sta !TMP+8
     tya
-    sta.l <table>+11,x
+    sta.w (<table>&$FFFF)+11,x
     adc !TMP+6
     tay
     lda !TMP+8
 
-    sta.l <table>+17,x
+    sta.w (<table>&$FFFF)+17,x
 if <clears> == 1
     clc
 endif
     adc !TMP+0
     sta !TMP+8
     tya
-    sta.l <table>+19,x
+    sta.w (<table>&$FFFF)+19,x
     adc !TMP+6
     tay
     lda !TMP+8
 
-    sta.l <table>+25,x
+    sta.w (<table>&$FFFF)+25,x
 if <clears> == 1
     clc
 endif
     adc !TMP+0
     sta !TMP+8
     tya
-    sta.l <table>+27,x
+    sta.w (<table>&$FFFF)+27,x
     adc !TMP+6
     tay
     lda !TMP+8
 
-    sta.l <table>+33,x
+    sta.w (<table>&$FFFF)+33,x
 if <clears> == 1
     clc
 endif
     adc !TMP+0
     sta !TMP+8
     tya
-    sta.l <table>+35,x
+    sta.w (<table>&$FFFF)+35,x
     adc !TMP+6
     tay
     lda !TMP+8
 
-    sta.l <table>+41,x
+    sta.w (<table>&$FFFF)+41,x
 if <clears> == 1
     clc
 endif
     adc !TMP+0
     sta !TMP+8
     tya
-    sta.l <table>+43,x
+    sta.w (<table>&$FFFF)+43,x
     adc !TMP+6
     tay
     lda !TMP+8
 
-    sta.l <table>+49,x
+    sta.w (<table>&$FFFF)+49,x
 if <clears> == 1
     clc
 endif
     adc !TMP+0
     sta !TMP+8
     tya
-    sta.l <table>+51,x
+    sta.w (<table>&$FFFF)+51,x
     adc !TMP+6
     tay
     lda !TMP+8
 
-    sta.l <table>+57,x
+    sta.w (<table>&$FFFF)+57,x
 if <clears> == 1
     clc
 endif
     adc !TMP+0
     sta !TMP+8
     tya
-    sta.l <table>+59,x
+    sta.w (<table>&$FFFF)+59,x
     adc !TMP+6
     tay
     lda !TMP+8
 
-    sta.l <table>+65,x
+    sta.w (<table>&$FFFF)+65,x
 if <clears> == 1
     clc
 endif
     adc !TMP+0
     sta !TMP+8
     tya
-    sta.l <table>+67,x
+    sta.w (<table>&$FFFF)+67,x
     adc !TMP+6
     tay
     lda !TMP+8
 
-    sta.l <table>+73,x
+    sta.w (<table>&$FFFF)+73,x
 if <clears> == 1
     clc
 endif
     adc !TMP+0
     sta !TMP+8
     tya
-    sta.l <table>+75,x
+    sta.w (<table>&$FFFF)+75,x
     adc !TMP+6
     tay
     lda !TMP+8
 
-    sta.l <table>+81,x
+    sta.w (<table>&$FFFF)+81,x
 if <clears> == 1
     clc
 endif
     adc !TMP+0
     sta !TMP+8
     tya
-    sta.l <table>+83,x
+    sta.w (<table>&$FFFF)+83,x
     adc !TMP+6
     tay
     lda !TMP+8
 
-    sta.l <table>+89,x
+    sta.w (<table>&$FFFF)+89,x
 if <clears> == 1
     clc
 endif
     adc !TMP+0
     sta !TMP+8
     tya
-    sta.l <table>+91,x
+    sta.w (<table>&$FFFF)+91,x
     adc !TMP+6
     tay
     lda !TMP+8
 
-    sta.l <table>+97,x
+    sta.w (<table>&$FFFF)+97,x
 if <clears> == 1
     clc
 endif
     adc !TMP+0
     sta !TMP+8
     tya
-    sta.l <table>+99,x
+    sta.w (<table>&$FFFF)+99,x
     adc !TMP+6
     tay
     lda !TMP+8
 
-    sta.l <table>+105,x
+    sta.w (<table>&$FFFF)+105,x
 if <clears> == 1
     clc
 endif
     adc !TMP+0
     sta !TMP+8
     tya
-    sta.l <table>+107,x
+    sta.w (<table>&$FFFF)+107,x
     adc !TMP+6
     tay
     lda !TMP+8
 
-    sta.l <table>+113,x
+    sta.w (<table>&$FFFF)+113,x
 if <clears> == 1
     clc
 endif
     adc !TMP+0
     sta !TMP+8
     tya
-    sta.l <table>+115,x
+    sta.w (<table>&$FFFF)+115,x
     adc !TMP+6
     tay
     lda !TMP+8
 
-    sta.l <table>+121,x
+    sta.w (<table>&$FFFF)+121,x
 if <clears> == 1
     clc
 endif
     adc !TMP+0
     sta !TMP+8
     tya
-    sta.l <table>+123,x
+    sta.w (<table>&$FFFF)+123,x
     adc !TMP+6
     tay
     lda !TMP+8
