@@ -202,6 +202,8 @@
 ; and these five carry it. Every one is thirty two bits, for the reason !MID is:
 ; $06 has 75,278 rows and its byte offsets reach 1,505,560.
 !KEYLAST  = $60                 ; how far past a key's first byte its last sits
+!HALF     = $6E                 ; a value kept while it is doubled, thirty two
+                                ; bits, where the one before it is wanted too
 !STEPI    = $62                 ; the bit being tried, as a row count
 !STEPB    = $66                 ; the same bit, as the bytes it moves
 !OFFS     = $6A                 ; where !MID's key sits, in bytes from the first
@@ -839,17 +841,55 @@ lut_answer:
     lda !ANSAT+2
     sta !SCRATCH+18
 
-    ; Then this row's answer within them, the same way. The answer width is
-    ; where a repeated-addition multiply would have fallen over: $0a answers 764
-    ; words, so this would be 764 additions per call rather than ten shifts.
+    ; Then this row's answer within them, which is the row number times the
+    ; answer width times two.
+    ;
+    ; Written out rather than multiplied. Every command in the table answers in
+    ; one, two, three or four words, so the product is the row doubled, doubled
+    ; twice, doubled three times, or the first two added together, and each of
+    ; those is a shift or two where the general multiply is a loop. The general
+    ; one is still there for the fallback, which is the only caller left.
     lda !MID
     sta !SCRATCH+4
     lda !MID+2
     sta !SCRATCH+6
+
+    asl !SCRATCH+4              ; every answer is at least one word wide, so the
+    rol !SCRATCH+6              ; doubling for the two bytes in a word is common
+
     lda !ANSW
-    jsr lut_scale
+    cmp #$0001
+    beq .scaled                 ; one word: the doubling above is the whole of it
+    cmp #$0003
+    beq .three
+
+    asl !SCRATCH+4              ; two words, or four
+    rol !SCRATCH+6
+    cmp #$0002
+    beq .scaled
+
+    asl !SCRATCH+4              ; four
+    rol !SCRATCH+6
+    bra .scaled
+
+.three:
+    lda !SCRATCH+4              ; three words is two plus one, so keep the one
+    sta !HALF                   ; and add it back to the doubled value
+    lda !SCRATCH+6
+    sta !HALF+2
+
     asl !SCRATCH+4
     rol !SCRATCH+6
+
+    lda !SCRATCH+4
+    clc
+    adc !HALF
+    sta !SCRATCH+4
+    lda !SCRATCH+6
+    adc !HALF+2
+    sta !SCRATCH+6
+
+.scaled:
 
     lda !SCRATCH+4
     clc
