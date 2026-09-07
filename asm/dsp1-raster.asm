@@ -136,9 +136,15 @@
 ; ---------------------------------------------------------------------------
 raster_arm_wait:
     php
-    sep #$20                    ; one byte at a time for the register read
-    rep #$10                    ; and a whole word for the countdown
+    sep #$20
+    lda $1fef                   ; the flight screen is the only one drawn in
+    cmp #$13                    ; three bands, and the only one this project
+    beq .flight                 ; arms once per picture of its own accord
 
+    ; Every other screen keeps the retail behaviour, with the wait in front of
+    ; it. They are not drawn in bands, nothing else here arms anything for them,
+    ; and the sequence they set up is their own.
+    rep #$10                    ; a whole word for the countdown
     ldx.w #$4000
 -
     lda.l $004212               ; the console's own status: bit seven is set
@@ -146,11 +152,44 @@ raster_arm_wait:
     dex
     bne -
 +
-
     plp
-    jml $00F168                 ; and now the game's own routine, untouched. jml
-                                ; rather than a call, so its own rts returns to
-                                ; whoever asked for the arming in the first place
+    jml $00F168                 ; the game's own routine, untouched. jml rather
+                                ; than a call, so its own rts returns to whoever
+                                ; asked for the arming in the first place
+
+; ---------------------------------------------------------------------------
+; The flight screen arms without waiting, because there is nothing left for it
+; to wait for.
+;
+; What made the wait necessary was five writes: $00:F168 sets the drawing mode,
+; which layers are shown and both of the sky layer's scroll registers, and those
+; are controls the screen reads while it is drawing. The arming itself, which is
+; where the next interrupt lands and which routine runs there, is not.
+;
+; The five writes are already made once per picture, below the picture, by
+; raster_rearm and raster_nmi, out of the same four tables and with the same
+; values. Making them again from the main loop can only change where on the
+; screen they land, so the flight screen does not make them at all.
+;
+; What it does instead is the arming, and it does that by jumping into the
+; game's own half of it rather than by copying it out. $00:F1B9 reads the
+; scanline and the handler for step nought, points the interrupt at them, and
+; ends by letting interrupts through again, which is the one thing the callers
+; of this depend on.
+;
+; The wait was 2.5% of a game frame doing nothing.
+; ---------------------------------------------------------------------------
+.flight:
+    plp
+    sep #$30                    ; the game's own routine is entered eight bits
+                                ; wide by every one of its callers, and the code
+                                ; below is the second half of it
+
+    ldx #$00                    ; step nought is the one being armed
+    stx $80
+    stz $4208                   ; the across-the-screen position, high byte
+    stz $420a                   ; and the scanline, high byte
+    jmp $F1B9
 
 ; ===========================================================================
 ; THE SAME ARMING AGAIN, WHERE NOTHING CAN HOLD IT UP
