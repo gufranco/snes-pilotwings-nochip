@@ -3770,3 +3770,70 @@ game frames. That is not a regression to undo. The aircraft was flying a course
 64 wrong answers had put it on, and the course it flies now is the one retail
 flies, which is more work. Judging this build against the last one on the
 console's own clock would have rejected the fix.
+
+## 50. The search is no longer where the frame goes
+
+Four more changes, measured the same way as section 49, by driving the lookup
+over keys taken from the table itself rather than by reading the demo's clock.
+
+| build | 600 answers | `$06` alone | `$13` alone |
+|---|---:|---:|---:|
+| section 49 left it at | 1,566,405 | 5,001 | 1,895 |
+| the two commands that need no search, written as code | 1,534,005 | 4,947 | 867 |
+| the step without a trial row number | 1,423,935 | 4,590 | 867 |
+| the answer offset without a multiply | 1,360,267 | 4,496 | 867 |
+
+### Two commands never needed a search at all
+
+`$13` and `$18` have keys that are every combination of a few values per word,
+so the row a key names is a mixed-radix number rather than something to look for.
+The cartridge worked it out by walking lists of values, and walking cost a thirty
+two bit addition for every value it rejected and a second pass over the rest of
+the list once it matched.
+
+Both the lists and what a position in one is worth are known when the table is
+written, so `lutbuild.py` writes the comparisons out as code. A rejected value is
+a compare and a branch; a match adds one constant. `$13` is asked 9.4 times a
+game frame and fell by 54%.
+
+Two shapes were tried. Testing the values in order and branching to a block below
+is one instruction cheaper per rejected value, and it puts a nine value list 125
+bytes from its own branches against a short branch's reach of 127. Testing them
+last to first, so each branch skips only its own match, has no such limit. What
+leaves a match is a jump rather than a branch, which costs the same three cycles
+and reaches anywhere.
+
+### The step stopped counting rows
+
+Whether a step lands on a row at all used to be asked of the row number against
+the row count, which meant carrying a trial row number alongside the trial
+offset. It is asked of the offset instead, against where the answers begin, which
+the index already says. The row number is then only wanted when the step is
+taken, which is about half of them.
+
+### What was measured and not built
+
+Two ideas were costed and dropped.
+
+`$06` compares 3.66 key words per step, because its first words tie often, and
+reordering its key words most-varied-first was expected to bring that near one.
+Simulated over the real table it brings it to 2.73, and gathering the arguments
+into that order costs about as much as the shorter comparisons save.
+
+Every command's key can also be narrowed: `$06` needs 7 of its 10 words to decide
+its answer, `$0d` needs 3 of 10, `$18` needs 1 of 4. The row counts barely change,
+because the dropped words are the ones that never varied, and the comparison
+still resolves at the same depth. It would take 450 KB off the table and nothing
+off the frame, and the table is not short of room.
+
+### Where the frame goes now
+
+| | share of a game frame |
+|---|---:|
+| the ground | 46.8% |
+| the recorded-answer search | 20.6% |
+| the port | 11.2% |
+| the game's own code | 15.4% |
+| waiting for the beam before the game arms its band sequence | 2.8% |
+
+The search was 42.5% when section 47 measured it. The ground is now the question.
