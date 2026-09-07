@@ -317,6 +317,51 @@ macro capture()
 endmacro
 
 ; ---------------------------------------------------------------------------
+; Copy a carried set of words in after this command's own arguments.
+;
+; Three commands answer nothing and are only there to leave arguments behind for
+; later ones, so those later ones are keyed on their own words followed by the
+; carried set. This is the copy.
+;
+; It used to run one index register between two places. The source is counted
+; from nought and the destination from wherever this command's own arguments
+; ended, so every word cost an add to reach the destination and a subtract to get
+; back: fifty five cycles to move two bytes, and up to seven words a command on
+; about twenty two commands a game frame.
+;
+; Two registers is the whole fix. X walks the source, Y walks the destination,
+; and both step down together because the gap between them never changes.
+;
+; The source and the destination are in different banks, so only one of them can
+; drop the bank from its instruction. The destination does: the data bank goes to
+; nought for the copy and comes back after, because everything else in this file
+; reaches its state as a long address and does not care where the bank is.
+; ---------------------------------------------------------------------------
+macro carry(from, last)
+    phb
+    lda.w #$0000
+    pha
+    plb
+    plb
+
+    ldx.w #<last>
+    lda.w #<last>
+    clc
+    adc.l !PORT_TAIL
+    tay
+?word:
+    lda.l <from>,x
+    sta.w !ARGL&$FFFF,y
+    dey
+    dey
+    dex
+    dex
+    bpl ?word
+
+    plb
+endmacro
+
+; ---------------------------------------------------------------------------
 ; The game wrote to the data port.
 ;
 ; A byte arriving with no command in progress starts one. Everything after it is
@@ -529,63 +574,15 @@ dsp_write:
     bra .asked
 
 .from02:
-    ldx.w #$000C
--
-    lda.l !CARRY_02,x
-    sta.l !PORT_WORD
-    txa
-    clc
-    adc.l !PORT_TAIL
-    tax
-    lda.l !PORT_WORD
-    sta.l !ARGL,x
-    txa
-    sec
-    sbc.l !PORT_TAIL
-    tax
-    dex
-    dex
-    bpl -
+    %carry(!CARRY_02, $000C)
     bra .asked
 
 .from11:
-    ldx.w #$0006
--
-    lda.l !CARRY_11,x
-    sta.l !PORT_WORD
-    txa
-    clc
-    adc.l !PORT_TAIL
-    tax
-    lda.l !PORT_WORD
-    sta.l !ARGL,x
-    txa
-    sec
-    sbc.l !PORT_TAIL
-    tax
-    dex
-    dex
-    bpl -
+    %carry(!CARRY_11, $0006)
     bra .asked
 
 .from14:
-    ldx.w #$000A
--
-    lda.l !CARRY_14,x
-    sta.l !PORT_WORD
-    txa
-    clc
-    adc.l !PORT_TAIL
-    tax
-    lda.l !PORT_WORD
-    sta.l !ARGL,x
-    txa
-    sec
-    sbc.l !PORT_TAIL
-    tax
-    dex
-    dex
-    bpl -
+    %carry(!CARRY_14, $000A)
 
 .asked:
     jsl dsp1_answer
