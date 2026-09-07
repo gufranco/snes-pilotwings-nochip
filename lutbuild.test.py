@@ -277,18 +277,46 @@ class AxesTest(unittest.TestCase):
     def test_the_source_names_every_command_it_found(self) -> None:
         text = lutbuild.axes_source({0x13: ((5, 9), (1, 2, 3))})
 
-        self.assertIn("lut_axes_table:", text)
-        self.assertIn("dw 1", text.splitlines()[6])
-        self.assertIn("dw $0013, lut_axes_13", text)
+        self.assertIn("lut_axes_dispatch:", text)
+        self.assertIn("cmp.w #$0013", text)
+        self.assertIn("jmp lut_axes_13", text)
         self.assertIn("lut_axes_13:", text)
 
-    def test_the_source_carries_the_counts_and_the_strides(self) -> None:
+    def test_it_compares_every_value_a_key_word_takes(self) -> None:
         text = lutbuild.axes_source({0x13: ((5, 9), (1, 2, 3))})
 
-        self.assertIn("dw 2, 3", text)
-        self.assertIn("dw $0005, $0009", text)
-        self.assertIn("dw 3, 1", text)
-        self.assertIn("dw $0001, $0002, $0003", text)
+        for value in (5, 9, 1, 2, 3):
+            self.assertIn(f"cmp.w #${value:04X}", text)
+
+    def test_a_value_is_worth_its_position_times_the_stride(self) -> None:
+        text = lutbuild.axes_source({0x13: ((5, 9), (1, 2, 3))})
+
+        self.assertIn("adc.w #$0003", text)
+        self.assertIn("adc.w #$0002", text)
+        self.assertIn("adc.w #$0001", text)
+
+    def test_the_first_value_of_a_word_adds_nothing(self) -> None:
+        text = lutbuild.axes_source({0x13: ((5, 9),)})
+
+        self.assertIn("adc.w #$0001", text)
+        self.assertNotIn("adc.w #$0000", text)
+
+    def test_a_value_no_row_carries_falls_to_the_search(self) -> None:
+        text = lutbuild.axes_source({0x13: ((5, 9), (1, 2, 3))})
+
+        self.assertIn("jmp lut_axes_none", text)
+        self.assertIn("jml lut_find", text)
+
+    def test_every_branch_it_writes_is_a_short_one(self) -> None:
+        text = lutbuild.axes_source({0x13: (tuple(range(40)),)})
+
+        rows = text.splitlines()
+        for at, line in enumerate(rows):
+            if not line.strip().startswith(("bne .", "beq .")):
+                continue
+            target = line.split()[1] + ":"
+            landing = next(k for k, one in enumerate(rows) if one.startswith(target))
+            self.assertLess(abs(landing - at) * 3, 120, line)
 
     def test_the_source_is_placed_where_the_assembly_expects(self) -> None:
         self.assertIn(f"org ${lutbuild.AXES_BANK:02X}8000", lutbuild.axes_source({}))

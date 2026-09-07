@@ -205,7 +205,6 @@
 !STEPI    = $62                 ; the bit being tried, as a row count
 !STEPB    = $66                 ; the same bit, as the bytes it moves
 !OFFS     = $6A                 ; where !MID's key sits, in bytes from the first
-!TRY      = $6E                 ; the row this step would move to
 !TRYB     = $72                 ; and where that row's key sits
 !ANSAT    = $76                 ; where this command's answers begin, thirty two
                                 ; bits, read from the index rather than derived
@@ -449,87 +448,11 @@ lut_row:
     php
     rep #$30
 
-    ; Is this one of them? The list is two entries long, so it is walked rather
-    ; than searched.
-    lda.l lut_axes_table
-    beq .search
-    sta !SCRATCH+4
-    ldx #$0002                  ; past the count
-.entry:
-    lda.l lut_axes_table,x
-    cmp !CMD
-    beq .block
-    inx
-    inx
-    inx
-    inx
-    dec !SCRATCH+4
-    bne .entry
-
-.search:
-    plp
-    jml lut_find                ; not one of them, so the search answers. jml
-                                ; rather than jsl, because lut_find's own rtl
-                                ; then returns to whoever called this
-
-.block:
-    lda.l lut_axes_table+2,x    ; where this command's block is
-    sta !SCRATCH+0
-    lda.w #!AXBANK
-    sta !SCRATCH+2
-
-    ldy #$0000
-    lda [!SCRATCH],y            ; how many key words the block describes
-    sta !SCRATCH+4
-    iny
-    iny
-
-    stz !MID                    ; the row, built up a word at a time
-    stz !MID+2
-    ldx #$0000                  ; and which key word is being matched, in bytes
-
-.word:
-    lda [!SCRATCH],y            ; how many values this word takes
-    sta !SCRATCH+6
-    iny
-    iny
-    lda [!SCRATCH],y            ; and how many rows one step of it covers
-    sta !SCRATCH+8
-    iny
-    iny
-
-.value:
-    lda.w !PAGE+!ARG,x          ; the wanted word, reached as an absolute
-    cmp [!SCRATCH],y            ; address for the reason lut_compare gives
-    beq .matched
-
-    lda !MID                    ; not this one, so the row moves on by one step
-    clc
-    adc !SCRATCH+8
-    sta !MID
-    bcc +
-    inc !MID+2
-+
-    iny
-    iny
-    dec !SCRATCH+6
-    bne .value
-    bra .search                 ; a value no row carries
-
-.matched:
-    iny                         ; past the one that matched and every one after
-    iny                         ; it, so that Y reaches the next word's count
-    dec !SCRATCH+6
-    bne .matched
-
-    inx
-    inx
-    dec !SCRATCH+4
-    bne .word
-
-    plp
-    sec
-    rtl
+    lda !CMD
+    jml lut_axes_dispatch       ; which is code lutbuild.py writes, and which
+                                ; either answers or jumps into the search. jml
+                                ; rather than a call, because whichever of the
+                                ; two answers returns to whoever called this
 
 ; ---------------------------------------------------------------------------
 ; Compare the row whose key sits at !TRYB against the wanted key.
@@ -740,44 +663,43 @@ lut_find:
     rtl
 
 .step:
-    lda !MID                    ; the row this step would move to
-    clc
-    adc !STEPI
-    sta !TRY
-    lda !MID+2
-    adc !STEPI+2
-    sta !TRY+2
-
-    lda !TRY+2                  ; is it a row at all? the high halves first, and
-    cmp !ROWS+2                 ; the low halves only when they tie
-    bcc .inside
-    bne .narrow
-    lda !TRY
-    cmp !ROWS
-    bcs .narrow                 ; past the end of the table: leave the row alone
-
-.inside:
-    lda !OFFS                   ; where that row's key sits, which is where this
-    clc                         ; row's key sits plus the bytes this bit moves
-    adc !STEPB
+    lda !OFFS                   ; where the row this step would move to keeps its
+    clc                         ; key, which is where this row's key sits plus
+    adc !STEPB                  ; the bytes this bit moves
     sta !TRYB
     lda !OFFS+2
     adc !STEPB+2
     sta !TRYB+2
 
+    ; Is it a row at all? Asked of the offset rather than of the row number,
+    ; because the answers begin where the keys end and the index already says
+    ; where that is. The row number is then only needed when the step is taken,
+    ; which is about half of them, so working it out moved down there.
+    lda !TRYB+2                 ; the high halves first, and the low halves only
+    cmp !ANSAT+2                ; when they tie
+    bcc .inside
+    bne .narrow
+    lda !TRYB
+    cmp !ANSAT
+    bcs .narrow                 ; past the last key: leave the row alone
+
+.inside:
     %compare()                  ; written out rather than called: this is the
                                 ; step, and it runs thirteen times a lookup
     beq .took                   ; the key is there: stop with the row taken
     bcs .narrow                 ; the row is above what is wanted: do not move
 
-    lda !TRY                    ; the row is below what is wanted, so it is the
-    sta !MID                    ; new floor and the walk goes on from it
-    lda !TRY+2
-    sta !MID+2
-    lda !TRYB
-    sta !OFFS
+    lda !TRYB                   ; the row is below what is wanted, so it is the
+    sta !OFFS                   ; new floor and the walk goes on from it
     lda !TRYB+2
     sta !OFFS+2
+    lda !MID
+    clc
+    adc !STEPI
+    sta !MID
+    lda !MID+2
+    adc !STEPI+2
+    sta !MID+2
 
 .narrow:
     lsr !STEPI+2                ; the next bit down, in both measures at once.
@@ -803,9 +725,12 @@ lut_find:
     rtl
 
 .took:
-    lda !TRY                    ; the row that matched becomes the answer's
+    lda !MID                    ; the row that matched becomes the answer's
+    clc
+    adc !STEPI
     sta !MID
-    lda !TRY+2
+    lda !MID+2
+    adc !STEPI+2
     sta !MID+2
 
 .hit:
