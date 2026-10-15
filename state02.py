@@ -21,7 +21,7 @@ def rows(table: Mapping[tuple[int, ...], tuple[int, ...]]) -> int:
 
 
 def checked(table: Mapping[tuple[int, ...], tuple[int, ...]]) -> None:
-    width = None
+    width: tuple[int, int] | None = None
     for key, words in table.items():
         shape = (len(key), len(words))
         if width is None:

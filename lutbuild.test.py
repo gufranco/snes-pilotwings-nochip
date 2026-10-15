@@ -32,6 +32,19 @@ class HeaderTest(unittest.TestCase):
         self.assertEqual(answers, at + 4)
         self.assertEqual(struct.unpack_from("<H", raw, answers)[0], 0xAAAA)
 
+    def test_an_odd_header_that_would_split_a_word_across_banks_is_refused(self) -> None:
+        # Arrange
+        held = lutbuild.HEADER
+        lutbuild.HEADER = 1
+        self.addCleanup(setattr, lutbuild, "HEADER", held)
+        tables = {0x13: ((((1,), (9,)),), 1, 1)}
+
+        # Act
+        attempt = lambda: lutbuild.encode(tables)  # noqa: E731
+
+        # Assert
+        self.assertRaises(lutbuild.Uneven, attempt)
+
     def test_the_rows_begin_on_an_even_offset(self) -> None:
         raw = lutbuild.encode({0x13: ((((1,), (9,)),), 1, 1)})
 

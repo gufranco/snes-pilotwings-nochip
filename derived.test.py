@@ -372,6 +372,23 @@ class MainTest(unittest.TestCase):
 
         self.assertEqual(derived.main((), say=said.append), 2)
 
+    def test_reindexing_turns_a_reciprocal_already_written_inside_out(self) -> None:
+        # Arrange
+        into = Path(tempfile.mkdtemp())
+        derived.write(into / "reciprocal.bin", [0x4000 + one for one in range(0x4000)])
+        said: list[str] = []
+
+        # Act
+        code = derived.main(("dsp1", str(into), "--reindex"), say=said.append)
+
+        # Assert
+        written = sorted(one.name for one in into.glob("recip-*.bin"))
+        self.assertEqual((code, said[0].startswith("turning the reciprocal")), (0, True))
+        self.assertEqual(
+            sorted({name.rsplit("-", 1)[0] for name in written}),
+            ["recip-down", "recip-exponent", "recip-up"],
+        )
+
     def test_with_no_mask_it_prints_a_usage_line(self) -> None:
         said: list[str] = []
 
@@ -461,11 +478,16 @@ class InvertedTest(unittest.TestCase):
         self.assertEqual((len(mantissa), len(exponent)), (0x8000, 0x8000))
 
     def test_the_positive_table_answers_what_the_cartridge_did(self) -> None:
+        # Arrange
+        everything_from_nought = range(0, 0x8000)
+
+        # Act
         mantissa, exponent = derived.inverted(self.mantissas, negative=False)
 
+        # Assert
         wrong = [
             v
-            for v in range(1, 0x8000)
+            for v in everything_from_nought
             if (mantissa[v], exponent[v]) != _as_the_cartridge_did(v, self.mantissas)
         ]
         self.assertEqual(wrong, [])
