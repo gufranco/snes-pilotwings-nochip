@@ -69,7 +69,6 @@ def _image(instructions: bytes = b"") -> bytes:
 
 
 def _cartridge(instructions: bytes = b"") -> bytes:
-    """A whole image the site scanner will accept, with one site in it."""
     out = bytearray(sites.CARTRIDGE_BYTES)
     out[0x8000 : 0x8000 + len(instructions)] = instructions
     out[0x7FD5] = 0x20
@@ -505,19 +504,16 @@ class HookedTest(unittest.TestCase):
         )
 
     def test_the_same_access_outside_a_block_is_left_alone(self) -> None:
-        """The reason `MIRRORED` is bounded by the blocks and not by the runs.
-
-        Two instructions at $00:D55F and $00:D581 spell shapes this table knows and
-        sit in a gap between two blocks, where the game's own data bank is in force
-        and they already reach the memory they mean to.
-        """
+        # Arrange
         opcode, operand = next(iter(patch.MIRRORED))
         rom = bytearray(0x60000)
         at = max(end for _, end in patch.WINDOWED)
         rom[at : at + 3] = bytes([opcode, operand & 0xFF, operand >> 8])
 
+        # Act
         out, replaced = patch.hooked(bytes(rom), STUBS)
 
+        # Assert
         self.assertEqual(out[at], opcode)
         self.assertEqual(replaced, 0)
 

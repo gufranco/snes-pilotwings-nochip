@@ -5,17 +5,10 @@ import hardware
 import microcode
 
 MISSING = hardware.load("snesdsp").NoFirmware
-"""What the model raises on a machine with no image for that mask."""
 
 MASKS = (microcode.MASK, "dsp1b")
 
 SHARED = ((0x00, 0x80), (0x01, 0x11), (0x03, 0x13))
-"""Command bytes this expects to reach one handler together.
-
-`$00` and `$80` is the one that matters: snes9x sends `$80` to the default arm
-of a switch, where the part sends it to the signed multiply, and the cartridge
-writes `$80` 128 times before anything else.
-"""
 
 
 def program_of(mask: str) -> tuple[int, ...]:

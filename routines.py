@@ -1,28 +1,3 @@
-"""Run the replacement's own 65816 against the part it replaces.
-
-The routines in `asm/` are assembled, loaded into the processor model, and given
-the same command and arguments the part is given. The two answers have to match
-on every input tried, and a routine that does not match is not written down as
-done.
-
-Three things this needs that a bare processor does not have.
-
-The console's multiplier is one: `$4202`, `$4203` and `$4216` are hardware, and
-on a plain 65816 they are ordinary bytes, so every multiply would answer nothing
-and every comparison would fail for a reason that has nothing to do with the
-routine. `Console` supplies that and only that.
-
-The direct page is the second. It lives in bank zero whatever the data bank
-holds, so arguments go there rather than anywhere else. Putting them where the
-data bank points is a way to watch a correct routine read nothing.
-
-The third belongs to the assembler and is recorded in `asm/dsp1-ops.asm`,
-because that is the file it bites: the width of an immediate comes from how many
-digits were typed rather than from the mode the register is in, so a short one
-shifts every instruction after it and the routine runs into whatever the shifted
-bytes happen to spell.
-"""
-
 import random
 from collections.abc import Iterator, Sequence
 from typing import Any
@@ -31,26 +6,16 @@ import hardware
 import microcode
 
 CODE = 0x0F8000
-"""Where `asm/ops-check.asm` places the routines."""
 
 FILE_AT = 0x078000
-"""The same address as a position in the file, under low ROM addressing."""
 
 SPAN = 0x0400
-"""How much of the image holds routines. Leaving it is how a return is seen."""
 
 STACK = 0x01FF
 
 ARG = 0x00
 
 OUT = 0x0E00
-"""Where a routine leaves its answer.
-
-Clear of the direct page rather than inside it, and inside a run of memory the
-game was measured never to write. A conversion has to borrow some of the game's
-memory, and picking an address without measuring is how it corrupts the game in
-a way that only shows up minutes later.
-"""
 
 MOST_STEPS = 40000
 
@@ -58,27 +23,11 @@ MULTIPLICAND = 0x004202
 MULTIPLIER = 0x004203
 
 MIRROR = 0x7F
-"""Which banks a bank number names the same bytes as.
-
-Every bank from $80 up is a second view of the one 128 below it, and this
-project reads its own tables through that view because the cartridge answers
-three cycles faster there. A model that took the bank at face value read past
-the end of the image and answered nought, which is what $04 did until this
-was added.
-"""
 
 PRODUCT = 0x004216
 
 
 class Console:
-    """Flat memory, the one piece of console hardware, and the cartridge itself.
-
-    The cartridge is read through rather than copied in. The derived tables are
-    393,216 bytes and a routine touches a handful of them, so copying the lot
-    into memory for every question costs more than the whole run of questions:
-    the first version of this did, and four hundred comparisons did not finish.
-    """
-
     __slots__ = ("cells", "first", "image", "product")
 
     def __init__(self, image: bytes = b"") -> None:
@@ -112,12 +61,10 @@ class Console:
         self.cells[at] = value
 
 
-class TooLong(Exception):
-    """A routine that never returned, which is a defect and not a slow answer."""
+class TooLong(Exception): ...
 
 
 def run(image: bytes, entry: int, words: Sequence[int], answers: int) -> tuple[int, ...]:
-    """That routine, on those arguments, as the processor runs it."""
     cpu = hardware.load("mos65xx").Cpu("65816", memory=Console(image))
     for at, word in enumerate(words):
         cpu.write8(ARG + at * 2, word & 0xFF)
@@ -143,7 +90,6 @@ def run(image: bytes, entry: int, words: Sequence[int], answers: int) -> tuple[i
 
 
 def asked(command: int, words: Sequence[int], answers: int, mask: str = microcode.MASK) -> Any:
-    """What the part answers, which is the only thing a routine is right against."""
     part = hardware.load("snesdsp").Chip(mask)
     part.write(command)
     for word in words:
@@ -160,13 +106,6 @@ def asked(command: int, words: Sequence[int], answers: int, mask: str = microcod
 
 
 def inputs(count: int, how_many: int, seed: int) -> Iterator[tuple[int, ...]]:
-    """Argument sets to try, the same ones on every run.
-
-    Seeded rather than arbitrary, so a failure names a case somebody else can
-    reach. The whole sixteen bit range is drawn from rather than a plausible
-    one: a routine right only on the values a game happens to send is a routine
-    nobody has tested.
-    """
     source = random.Random(seed)
     for _ in range(how_many):
         yield tuple(source.randrange(0x10000) for _ in range(count))

@@ -9,7 +9,6 @@ ROOT = Path(__file__).resolve().parent
 
 
 ENTRY = lutbuild.HEADER + lutbuild.COMMAND_MAP
-"""Where the first command's entry begins: past the count, its pad, and the map."""
 
 
 class HeaderTest(unittest.TestCase):

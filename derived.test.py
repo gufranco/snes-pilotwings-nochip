@@ -12,8 +12,6 @@ ROOT = Path(__file__).resolve().parent
 
 
 class _Part:
-    """A stand in for the chip that answers a rule, so no microcode is needed."""
-
     def __init__(self, rule: Callable[[int, tuple[int, ...]], Sequence[int]]) -> None:
         self.rule = rule
         self.taken: list[int] = []
@@ -101,8 +99,6 @@ class QuietPartTest(unittest.TestCase):
 
 
 class _Registers:
-    """The registers the reciprocal is driven through, at the widths it uses."""
-
     def __init__(self) -> None:
         self.a = 0
         self.b = 0
@@ -115,13 +111,6 @@ class _Registers:
 
 
 class _Routine:
-    """A part that runs one made up routine, so no microcode is needed.
-
-    It answers after `takes` instructions by putting `rule(a)` in the
-    accumulator and returning to whatever was pushed, which is what the real
-    routine does and all this driver depends on.
-    """
-
     def __init__(self, rule: Callable[[int], int], takes: int = 3) -> None:
         self.rule = rule
         self.takes = takes
@@ -301,13 +290,6 @@ class MainRunTest(unittest.TestCase):
 
 
 class _Both:
-    """A part that answers a command and also runs the routine driven directly.
-
-    `main` needs both: the trig tables come from asking `$04`, and the reciprocal
-    comes from stepping `$00d3`. One object stands in for both so the whole entry
-    point can be exercised without any microcode.
-    """
-
     def __init__(self) -> None:
         self.asking_part = _Part(lambda command, words: (1, 2))
         self.routine = _Routine(lambda one: 1)
@@ -399,12 +381,6 @@ class MainTest(unittest.TestCase):
 
 
 def _as_the_cartridge_did(value: int, mantissas: Sequence[int]) -> tuple[int, int]:
-    """The mantissa and exponent the doubling loop and the table read used to give.
-
-    A transcription of the two routines the tables replace, instruction for
-    instruction, so the tables are checked against the behaviour rather than
-    against the reasoning that produced them.
-    """
     count = 0
     accumulator = value
     if accumulator != 0:

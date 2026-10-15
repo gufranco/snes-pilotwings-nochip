@@ -1,28 +1,3 @@
-"""What one call to a routine costs, on the processor model rather than a console.
-
-The console cannot answer this, and five changes were rejected on its say-so
-before that was understood. A change to the code changes how many console frames
-a frame of the game's clock takes, which changes where the demo sits when the
-measuring window opens, which changes the scenery and so the work. The same
-change then reads as 1.64 console frames faster over one window and 0.23 slower
-over another, and neither figure is its cost.
-
-The model has none of that: the same memory, the same entry, the same registers,
-and a cycle count belonging to the routine and to nothing else. It is what found
-that eight byte table entries are worth a tenth of `$0a`, where the console had
-reported them as a loss.
-
-Two things it does not do. It counts the processor's own cycles and does not
-know that the console's memory is slower than its cartridge, so a change trading
-a memory access for an instruction reads better here than it runs. And it
-measures one call from one state, so the state has to be chosen: a snapshot of
-the console's memory taken while the demo was flying, with the fields that say
-the multiply tables are already built cleared, so the call builds them the way a
-first call would.
-
-    python3 tools/cycles.py <image> <assembler log> [<routine>] [<snapshot>]
-"""
-
 import sys
 from pathlib import Path
 from typing import Any
@@ -32,56 +7,27 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import hardware
 
 MIRROR = 0x7F
-"""Which bank a bank number names the same bytes as.
-
-Every bank from $80 up is a second view of the one 128 below it, and this
-project reads its own tables through that view because the cartridge answers
-faster there.
-"""
 
 WORK_RAM = (0x7E, 0x7F)
 
 RETURN = 0x7D0001
-"""Where the routine is made to return to, so the run knows it has ended.
-
-Inside the window bank, which carries no code, so no routine can reach it by
-running on. The address pushed is one below, because a long return adds one to
-what it pulls.
-"""
 
 MOST = 6_000_000
 
 CACHED = 0x0DC8
-"""The four constants the multiply tables were last built from."""
 
 PADDED = 0x0DD0
-"""The word that says the one byte each table entry opens with has been written."""
 
 TABLES = 0xE000
-"""Where the multiply tables begin, in the console's own memory."""
 
 POWER_ON = 0x55
 
 MULTIPLICAND = 0x004202
 MULTIPLIER = 0x004203
 PRODUCT = 0x004216
-"""The console's own multiplier, eight bits by eight into sixteen.
-
-Modelled because the arithmetic this project measures reaches for it, and a
-routine that used it would otherwise read nought and answer nothing. The eight
-cycle wait the hardware imposes is the caller's business, not this one's.
-"""
 
 
 class Memory:
-    """The cartridge as low addressing sees it, over a snapshot of the console's.
-
-    Three regions and nothing else. Banks $7E and $7F are the console's memory.
-    The first 8 KiB of it shows again at the bottom of every bank up to $3F and
-    from $80 to $BF, which is where the direct page and the two stream buffers
-    live. Everything at $8000 and above is the cartridge.
-    """
-
     __slots__ = ("first", "image", "product", "wram")
 
     def __init__(self, image: bytes, wram: bytearray) -> None:
@@ -125,12 +71,10 @@ class Memory:
             self.wram[where] = value & 0xFF
 
 
-class Missing(Exception):
-    """A routine the assembler's log does not name, which is a typo not a result."""
+class Missing(Exception): ...
 
 
 def symbol(name: str, log: str) -> int:
-    """Where the assembler put that routine, out of what it printed."""
     for line in log.splitlines():
         head = line.split()
         if len(head) >= 3 and head[0] == name and head[1] == "at":
@@ -141,14 +85,6 @@ def symbol(name: str, log: str) -> int:
 
 
 def unbuilt(wram: bytes) -> bytearray:
-    """That snapshot, with the multiply tables and the fields that cache them cleared.
-
-    A snapshot taken mid-flight says the tables are already built for the
-    constants it holds, so a call made from it skips the build and measures half
-    the routine. Worse, a build whose tables are laid out differently reads the
-    snapshot's as though they were its own and answers wrongly, which looks like
-    a correctness result and is really a measurement fault.
-    """
     out = bytearray(wram)
     for at in range(CACHED, PADDED):
         out[at] ^= 0xFF
@@ -162,12 +98,6 @@ def unbuilt(wram: bytes) -> bytearray:
 def cost(
     image: bytes, log: str, wram: bytearray, entry: str, most: int = MOST
 ) -> tuple[int, int, bytearray]:
-    """The cycles and instructions one call takes, and the memory it left behind.
-
-    A routine that never returns stops at `most` rather than running forever, and
-    reports the count it reached, which is how a run that went astray is told
-    apart from one that was merely long.
-    """
     memory = Memory(image, wram)
     cpu: Any = hardware.load("mos65xx").Cpu("65816", memory=memory)
     cpu.reset()

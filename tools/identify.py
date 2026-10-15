@@ -1,16 +1,3 @@
-"""Check the cartridge dumps on this machine against the digests published here.
-
-Absent is not a failure. A fresh clone has no dumps, that is the normal state,
-and a report that came back unwell on every machine would stop being read. What
-is a failure is a file that is present and is not the file it is named for,
-because everything built from it afterwards would be built from the wrong bytes.
-
-A refusal says which way the file is wrong and gives the command for working the
-digest out, on whichever of the three operating systems is running it. A refusal
-that leaves somebody unable to check the file themselves has reported a problem
-and withheld the means to act on it.
-"""
-
 import sys
 from collections.abc import Callable
 from pathlib import Path
@@ -46,7 +33,6 @@ class Looked:
 
 
 def judge(one: Any, data: bytes, digest: str | None = None) -> Looked:
-    """What the bytes in hand are, measured against the entry they claim to be."""
     said = dumps.diagnose(data, digest=digest)
     if said.kind == "match" and one.region in said.detail:
         return Looked(one.region, one.filename, STATE_OK, said.detail)

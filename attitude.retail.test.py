@@ -1,9 +1,3 @@
-"""Hold the matrix formulas against the part, on a grid that reaches every corner.
-
-Skipped where the part's own image is not on the machine, the same way the other
-retail tests here are.
-"""
-
 import unittest
 from pathlib import Path
 from typing import Any, override
@@ -20,13 +14,6 @@ SETUP = 0x02
 ANSWERS = 4
 
 STEP = 2048
-"""How far apart the angles on the grid sit.
-
-Chosen so the sweep divides $10000 exactly, which puts every angle the part
-treats specially on it: nought, a quarter turn, half a turn and three quarters.
-Those four are where the arithmetic saturates and where a formula that is only
-nearly right shows.
-"""
 
 
 def _tables() -> tuple[tuple[int, ...], tuple[int, ...]] | None:

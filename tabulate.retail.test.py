@@ -14,12 +14,6 @@ def microcode_here() -> bool:
 HELD = microcode_here()
 
 MULTIPLY = 0x00
-"""The command whose arithmetic can be predicted without being told anything.
-
-Two words in, one out, and the answer is their product as signed fixed point
-with fifteen fractional bits. It is the check that the protocol reading here is
-right rather than merely self-consistent.
-"""
 
 
 def q15(first: int, second: int) -> int:

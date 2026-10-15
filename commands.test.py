@@ -15,63 +15,43 @@ def instruction(program: bytes) -> object:
 
 
 def reaching(program: bytes, at: int = 0) -> commands.Access:
-    """The access at that offset, refusing to carry on if there is none."""
     found = commands.access_at(program, at)
     assert found is not None
     return found
 
 
 def nothing(*_args: object, **_named: object) -> list[object]:
-    """A disassembler that decodes nothing, which is what one out of bytes does."""
     return []
 
 
 IMMEDIATE_LONG = bytes([0xE2, 0x20, 0xA9, 0x06, 0x8F, 0x00, 0x80, 0x3F])
-"""sep #$20; lda #$06; sta $3f8000"""
 
 IMMEDIATE_ABSOLUTE = bytes([0xE2, 0x20, 0xA9, 0x11, 0x8D, 0x00, 0x80])
-"""sep #$20; lda #$11; sta $8000"""
 
 HELD_IN_Y = bytes([0xE2, 0x30, 0xA0, 0x28, 0xAD, 0x00, 0x80, 0x8C, 0x00, 0x80])
-"""sep #$30; ldy #$28; lda $8000; sty $8000"""
 
 ZERO = bytes([0xE2, 0x20, 0x9C, 0x00, 0x80])
-"""sep #$20; stz $8000"""
 
 SIXTEEN_BIT = bytes([0xC2, 0x20, 0x8D, 0x00, 0x80])
-"""rep #$20; sta $8000"""
 
 VALUE_OUT_OF_REACH = bytes([0xE2, 0x20, 0x8D, 0x00, 0x80])
-"""sep #$20; sta $8000, with nothing that loaded the accumulator"""
 
 NOTHING_IN_FRONT = bytes([0x8D, 0x00, 0x80])
-"""sta $8000 at the very start, so no origin reaches it"""
 
 DISAGREEING = bytes([0xE2, 0x20, 0xA9, 0xC2, 0x20, 0xEA, 0xEA, 0x9C, 0x00, 0x80])
-"""One decode reads sep, lda, jsr; another reads rep, nop, nop. They land
-together on the same store and disagree about how wide it is."""
 
 A_MIRROR = bytes([0xE2, 0x20, 0xA9, 0x06, 0x8D, 0xEB, 0x8F])
-"""sep #$20; lda #$06; sta $8feb, which reaches the part and is not the port"""
 
 ANSWERED = bytes([0xAD, 0x00, 0x80])
-"""lda $8000, the read that ends an exchange and leaves the part waiting again"""
 
 ARGUMENT_AFTER_COMMAND = bytes(
     [0xE2, 0x30, 0xA9, 0x00, 0x8D, 0x00, 0x80, 0xA2, 0x72, 0x8E, 0x00, 0x80]
 )
-"""sep #$30; lda #$00; sta $8000; ldx #$72; stx $8000.
-
-The second store holds a constant and is eight bits wide and is an argument
-word, because the first store already took the part out of waiting.
-"""
 
 
 HELD_IN_Y_INDEX_ONLY = bytes([0xE2, 0x10, 0xA0, 0x28, 0x8C, 0x00, 0x80])
-"""sep #$10; ldy #$28; sty $8000, which narrows the index registers and not A"""
 
 PADDED = bytes(600) + IMMEDIATE_LONG
-"""The same command, further into an image than a decode is allowed to reach back"""
 
 
 class PortTest(unittest.TestCase):

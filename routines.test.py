@@ -8,12 +8,6 @@ ROOT = Path(__file__).resolve().parent
 
 
 class _Part:
-    """A stand in for the chip, so the reader can be exercised with no microcode.
-
-    It takes a command and its arguments, then hands back the words it was told
-    to, one byte at a time, the way the real port does.
-    """
-
     def __init__(self, gives: tuple[int, ...]) -> None:
         self.bytes = [byte for word in gives for byte in (word & 0xFF, word >> 8)]
         self.written: list[int] = []
@@ -44,7 +38,6 @@ class _Loaded:
 
 
 RTL = 0x6B
-"""One `rtl`, which returns from a routine called across banks."""
 
 LDA_IMMEDIATE = 0xA9
 STA_DIRECT = 0x85
@@ -52,7 +45,6 @@ STA_LONG = 0x8F
 
 
 def image_of(code: bytes) -> bytes:
-    """An image with that code where ops-check.asm places its routines."""
     return bytes(routines.FILE_AT) + code + bytes(routines.SPAN)
 
 

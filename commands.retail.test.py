@@ -42,13 +42,6 @@ CORE = (
     0x23,
     0x28,
 )
-"""The commands every one of the three images is read as issuing.
-
-Europe reads one more, `$80`, which is the byte that leaves the part waiting for
-a command rather than computing anything. The other two carry the same loop and
-its widths are set further back than a decode reaches, so they go unread there
-rather than absent.
-"""
 
 
 @unittest.skipIf(not IMAGES, "no cartridge dump on this machine")
@@ -59,11 +52,6 @@ class AgainstTheImagesTest(unittest.TestCase):
     @classmethod
     @override
     def setUpClass(cls) -> None:
-        """Read the images once for the whole class rather than once per check.
-
-        Reading one is seconds of work, so doing it per check turns a suite that
-        runs in half a minute into one nobody waits for.
-        """
         cls.model = hardware.load("mos65xx")
         cls.read = {name: commands.read(rom, cls.model.disassemble) for name, rom in IMAGES}
 
@@ -98,13 +86,6 @@ class AgainstTheImagesTest(unittest.TestCase):
 
 
 def executed(path: Path, rom: bytes) -> dict[int, int]:
-    """Every command site the recording confirmed, and the byte it wrote there.
-
-    A command byte is the one thing the cartridge writes eight bits at a time, so
-    a program counter that only ever touches the low half of the port issued one.
-    The counter the recorder keeps points at the byte after the instruction, which
-    is what turns it back into an offset in the image.
-    """
     low: dict[int, int] = {}
     wide: set[int] = set()
     for _, pbpc, address, is_read, byte in struct.iter_unpack("<IIHBB", path.read_bytes()):

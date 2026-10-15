@@ -1,18 +1,3 @@
-"""Which cartridge dumps this project reads, and what makes each one itself.
-
-The manifest beside this module is the record; nothing here hardcodes a digest.
-Identification is by SHA-256 and by nothing else, and this project has a
-concrete reason rather than a general preference: a Nintendo Campus Challenge
-cartridge built on this game is the same length, declares the same chipset and
-carries the same internal title, so a check on any of those three accepts it as
-a retail dump.
-
-A mismatch is triaged rather than reported as a bare refusal. A person holding
-the wrong file wants to know which way it is wrong, and the three answers worth
-separating are a copier header in front of the right bytes, a file of the wrong
-length, and the right length with content nothing declares.
-"""
-
 import hashlib
 import json
 from pathlib import Path
@@ -25,11 +10,6 @@ MANIFEST = ROOT / "artifacts.manifest.json"
 CARTRIDGE_BYTES = 524288
 
 COPIER_BYTES = 512
-"""What a copier writes in front of the bytes a cartridge actually holds.
-
-The dump underneath is identical, so this is a repair rather than a rejection:
-the file is the right one wearing something a tool added.
-"""
 
 DECIDES = "sha256"
 
@@ -73,7 +53,6 @@ def artifacts() -> tuple[Artifact, ...]:
 
 
 def through() -> tuple[dict[str, Any], ...]:
-    """Artifacts this project needs that a sibling repository loads and pins."""
     return tuple(manifest()["through"])
 
 
@@ -94,11 +73,6 @@ def identify(data: bytes, digest: str | None = None) -> Artifact | None:
 
 
 def digest_commands(filename: str) -> dict[str, str]:
-    """How to compute the deciding digest, per operating system.
-
-    A refusal that leaves somebody unable to check the file themselves has
-    reported a problem and withheld the way to act on it.
-    """
     return {
         "macOS": f"shasum -a 256 {filename}",
         "Linux": f"sha256sum {filename}",

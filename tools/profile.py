@@ -1,23 +1,3 @@
-"""Where one call's cycles go, bucketed by the routine each address belongs to.
-
-tools/cycles.py answers what a call costs. This answers where the cost is, which
-is the question that decides what to work on next. It found that one scanline of
-the ground spends more of itself doubling a number until its sign would change
-than it spends on any one of the six multiplies.
-
-A cycle is charged to the nearest label at or above the address it ran at, out of
-the labels the assembler printed. Only labels typed into a source file count: the
-assembler also emits one per anonymous branch target and one per macro expansion,
-and those bucket a routine into forty pieces named after nothing.
-
-    python3 tools/profile.py <image> <symbol file> [<routine>] [<snapshot>] [--built]
-
-The symbol file is the one asar writes with --symbols=wla. Pass --built to
-measure a call that finds the multiply tables already built, which is what a
-repeat call on unchanged constants does; without it the call builds them, which
-is what a first call does.
-"""
-
 import re
 import sys
 from pathlib import Path
@@ -31,7 +11,6 @@ import cycles
 import hardware
 
 SOURCE = ("asm/*.asm", "build/lut-*.asm")
-"""Where a label has to appear for it to count as one a person typed."""
 
 LABEL = re.compile(r"^\s*([A-Za-z_][A-Za-z0-9_]*):")
 PLACED = re.compile(r"^([0-9A-Fa-f]{2}):([0-9A-Fa-f]{4})\s+:?(\S+)")
@@ -39,7 +18,6 @@ SHOW = 16
 
 
 def typed(root: Path) -> set[str]:
-    """Every label a source file declares, which is every label worth a bucket."""
     out: set[str] = set()
     for pattern in SOURCE:
         for path in root.glob(pattern):
@@ -51,7 +29,6 @@ def typed(root: Path) -> set[str]:
 
 
 def marks(symbols: str, keep: set[str]) -> list[tuple[int, str]]:
-    """The labels the assembler placed, sorted, as addresses a search can bisect."""
     out: list[tuple[int, str]] = []
     for line in symbols.splitlines():
         found = PLACED.match(line.strip())
@@ -62,7 +39,6 @@ def marks(symbols: str, keep: set[str]) -> list[tuple[int, str]]:
 
 
 def owner(placed: list[tuple[int, str]], at: int) -> str:
-    """Which of those labels an address belongs to: the last one at or below it."""
     low, high = 0, len(placed)
     while low < high:
         middle = (low + high) // 2
@@ -80,7 +56,6 @@ def spend(
     entry: str,
     placed: list[tuple[int, str]],
 ) -> tuple[dict[str, int], dict[str, int], int]:
-    """Cycles and instructions per routine, and the total, for one call."""
     memory = cycles.Memory(image, wram)
     cpu: Any = hardware.load("mos65xx").Cpu("65816", memory=memory)
     cpu.reset()
@@ -116,7 +91,6 @@ def spend(
 
 
 def report(took: dict[str, int], ran: dict[str, int], total: int, say: Any) -> None:
-    """The buckets, dearest first, with a total line to check them against."""
     say(f"  {'routine':22} {'cycles':>10} {'share':>7} {'instructions':>13}")
     for who, cost in sorted(took.items(), key=lambda pair: -pair[1])[:SHOW]:
         say(f"  {who:22} {cost:10,} {cost / total:6.1%} {ran[who]:13,}")

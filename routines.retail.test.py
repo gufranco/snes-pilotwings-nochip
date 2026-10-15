@@ -7,7 +7,6 @@ import hardware
 import routines
 
 MISSING = hardware.load("snesdsp").NoFirmware
-"""What the model raises on a machine with no image for that mask."""
 
 ROOT = Path(__file__).resolve().parent
 BUILD = ROOT / "build"
@@ -15,34 +14,19 @@ IMAGE = BUILD / "ops.sfc"
 SOURCE = ROOT / "asm" / "ops-check.asm"
 
 IMAGE_BYTES = 4 * 1024 * 1024
-"""Large enough to hold the derived tables, which sit from bank $20 on."""
 
 ASSEMBLER = "pilotwings-asar-191"
-"""The pinned assembler image, built from `asm/Dockerfile`.
-
-Named rather than found, because a different version is a different answer: the
-one this was written against has 64-bit whole numbers and no floating point, and
-`asm/dsp1-tables.asm` depends on both.
-"""
 
 TRIED = 400
-"""How many argument sets each routine is held against the part on.
-
-Four hundred rather than a handful because two of the faults found here showed
-on two inputs in sixty, both needing a particular pair of signs. A count that
-small is a count that passes a routine which is wrong.
-"""
 
 CASES = (
     ("$00", 0x00, 2, 1, "op_00"),
     ("$08", 0x08, 3, 2, "op_08"),
     ("$04", 0x04, 2, 2, "op_04"),
 )
-"""Each command a routine claims to answer: name, byte, arguments, answers, label."""
 
 
 def assembled() -> dict[str, int] | None:
-    """Build the routines and report where each landed, or nothing if it cannot."""
     BUILD.mkdir(exist_ok=True)
     IMAGE.write_bytes(bytes(IMAGE_BYTES))
     try:

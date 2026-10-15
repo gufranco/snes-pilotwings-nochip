@@ -1,16 +1,3 @@
-"""What `patch.py` finds by its bytes, against what a disassembler finds.
-
-`hooked` replaces every access to the part inside one run of the game's own code,
-and it finds them by matching three bytes rather than by decoding the run. That
-is only safe while the two agree, and a scan that drifted from the instruction
-boundaries would replace an operand and leave a branch pointing into the middle
-of a call, which is a fault no test of the scan against itself could see.
-
-So the scan is checked against a disassembler that tracks the register widths,
-on the dumps this project reads. Kept apart from the rest because it needs one of
-those dumps, and skipped out loud on a machine without them.
-"""
-
 import unittest
 from pathlib import Path
 from typing import Any, override
@@ -26,7 +13,6 @@ ROMS = ROOT / "roms"
 
 WIDE_ACCUMULATOR = False
 NARROW_INDEX = True
-"""The widths most blocks run in, and the default for a region with no block in it."""
 
 WIDTHS = {
     0x0004E: (WIDE_ACCUMULATOR, NARROW_INDEX),
@@ -42,31 +28,10 @@ WIDTHS = {
     0x05507: (WIDE_ACCUMULATOR, NARROW_INDEX),
     0x055D8: (WIDE_ACCUMULATOR, NARROW_INDEX),
 }
-"""What each block's accumulator and index widths are on entry, eight bits when true.
-
-Taken from the `sep` or `rep` that precedes each push rather than assumed, and one
-per block rather than one for the file. Assuming one cost a whole audit: read
-sixteen bits wide, $00:D04A spells `lda $1aea` followed by a three byte compare, a
-`tcs`, and an `sbc $30c2,y` naming the console's own register space. $00:D031 is
-`sep #$30`, so that block is eight bits wide, where the same bytes spell `lda
-$1aea`, `cmp #$0a` and a branch. The walk re-synchronises four instructions later
-at the port access after them, which is why the port scan cannot tell the two
-readings apart and why these are stated here.
-
-`test_the_widths_are_what_the_port_scan_agrees_with` is what holds them honest: a
-wrong pair moves an access or invents one, and the byte scan then disagrees.
-"""
 
 HELPERS = {0x04D83: (False, True)}
-"""Subroutines called from inside a block, which inherit its bank and have no push.
-
-One of them, $00:CD83, nine instructions called three times a frame from the flight
-model. Nothing that starts from a push finds it, which is how the `sbc $8000` in it
-went unreplaced from the first build.
-"""
 
 BANK = 0x8000
-"""What one bank holds, so a file offset can be read as an address inside it."""
 
 SETS_THE_FLAGS = (
     "lda",
@@ -104,19 +69,11 @@ SETS_THE_FLAGS = (
     "sep",
     "rep",
 )
-"""Every instruction in this region that writes negative or zero."""
 
 READS_THE_FLAGS = ("bpl", "bmi", "beq", "bne")
-"""And every one that branches on them."""
 
 
 def _rom() -> bytes | None:
-    """The American dump, which is the one the offsets in `patch.HOOKED` name.
-
-    Identified by its digest rather than by its filename, because the region a
-    scan is checked against is a property of one image and not of whatever a file
-    happens to be called.
-    """
     for name in sorted(ROMS.glob("*.sfc")):
         raw = name.read_bytes()
         found = dumps.identify(raw)
@@ -126,25 +83,11 @@ def _rom() -> bytes | None:
 
 
 STOPS = ("plb", "rts", "rtl", "rti", "jmp", "jml", "bra", "brl")
-"""What ends a path. A `jmp` or a `bra` ends this one and opens another."""
 
 REACH = 0x400
-"""How far past its start any one block can run. Every one of them is far shorter."""
 
 
 def _walk(rom: bytes, start: int, m: bool, x: bool, bound: int) -> Any:
-    """Every instruction reachable from one entry, following the branches.
-
-    Block by block rather than in one pass, because a walk that runs past a
-    routine's end decodes the next one at the wrong register widths and reports
-    instructions that are not there. That is not a hypothetical: bounds taken from
-    such a walk once put 44 bytes of ordinary arithmetic inside a region.
-
-    Following the branches rather than falling through, because a block can have
-    more than one arm and the arms are not laid out in order. $00:D03F has two: the
-    one a linear walk sees ends at $00:D068, and the other begins at $00:D06C, runs
-    to $00:D0AA, and holds three accesses to the game's own memory.
-    """
     hardware.install()
     from mos65xx import opcodes65816
 
@@ -182,7 +125,6 @@ def _block(rom: bytes, site: int) -> Any:
 
 
 def _decoded(rom: bytes) -> Any:
-    """Every instruction the redirect covers: the twelve blocks and the one helper."""
     found: list[Any] = []
     for site in sorted(WIDTHS):
         found += _block(rom, site)
@@ -231,31 +173,39 @@ class Accesses(unittest.TestCase):
                     found.add(at)
         return found
 
-    def test_the_widths_are_what_the_port_scan_agrees_with(self) -> None:
-        """What pins each block's widths, since the table above cannot pin itself.
+    def _walked_in_block(self, site: int) -> set[int]:
+        return {
+            one.offset
+            for one in _block(self.rom, site)
+            if one.mode == "absolute" and one.operand in (0x8000, patch.STATUS_FROM)
+        }
 
-        A wrong pair drifts the walk, which moves an access or invents one, and the
-        byte scan for the port disagrees. The port's operands are the check because
-        no ordinary instruction in these blocks carries $8000 or $C000.
-        """
-        for site in sorted(WIDTHS):
-            listing = _block(self.rom, site)
-            end = max(one.offset for one in listing)
-            walked = {
-                one.offset
-                for one in listing
-                if one.mode == "absolute" and one.operand in (0x8000, patch.STATUS_FROM)
-            }
-            scanned = set()
-            for at in range(site + 4, end + 1):
-                if self.rom[at + 1] != 0x00:
-                    continue
-                page = self.rom[at + 2]
-                port = page == patch.PORT_PAGE and self.rom[at] in patch.HOOKS
-                status = page == patch.STATUS_PAGE and self.rom[at] in patch.STATUS_HOOKS
-                if port or status:
-                    scanned.add(at)
-            self.assertEqual(walked, scanned, f"{site + BANK:#06x}")
+    def _scanned_in_block(self, site: int) -> set[int]:
+        end = max(one.offset for one in _block(self.rom, site))
+        found = set()
+        for at in range(site + 4, end + 1):
+            if self.rom[at + 1] != 0x00:
+                continue
+            page = self.rom[at + 2]
+            port = page == patch.PORT_PAGE and self.rom[at] in patch.HOOKS
+            status = page == patch.STATUS_PAGE and self.rom[at] in patch.STATUS_HOOKS
+            if port or status:
+                found.add(at)
+        return found
+
+    def test_the_widths_are_what_the_port_scan_agrees_with(self) -> None:
+        # Arrange
+        sites = sorted(WIDTHS)
+
+        # Act
+        disagreeing = [
+            f"{site + BANK:#06x}"
+            for site in sites
+            if self._walked_in_block(site) != self._scanned_in_block(site)
+        ]
+
+        # Assert
+        self.assertEqual(disagreeing, [])
 
     def test_every_block_ends_on_the_pull_that_closes_it(self) -> None:
         for site in sorted(WIDTHS):
@@ -282,14 +232,14 @@ class Accesses(unittest.TestCase):
         self.assertEqual(walked, set(patch.WINDOWED))
 
     def test_every_mirrored_access_the_scan_finds_is_a_real_instruction(self) -> None:
-        """The one place a byte scan could turn data into a call.
+        # Arrange
+        decoded = set(self.mirrored)
 
-        A port access is recognised by an operand of $8000 or $C000, which the
-        game's own data almost never spells. A mirrored access is recognised by an
-        ordinary work RAM address, which it might, so every offset the scan matches
-        has to be an instruction boundary the disassembler agrees with.
-        """
-        self.assertEqual(self._mirrors(self.rom) - set(self.mirrored), set())
+        # Act
+        scanned_only = self._mirrors(self.rom) - decoded
+
+        # Assert
+        self.assertEqual(scanned_only, set())
 
     def test_the_scan_finds_every_mirrored_access_the_disassembler_does(self) -> None:
         self.assertEqual(set(self.mirrored) - self._mirrors(self.rom), set())
@@ -329,28 +279,27 @@ class Accesses(unittest.TestCase):
 
         self.assertEqual(landing & inside, set())
 
+    def _flags_read_after(self, at: int) -> bool:
+        for step in self.listing[at + 1 :]:
+            if step.mnemonic in READS_THE_FLAGS:
+                return True
+            if step.mnemonic in SETS_THE_FLAGS:
+                return False
+        return False
+
     def test_nothing_reads_the_flags_the_index_loads_do_not_set(self) -> None:
-        """The one place the hooks answer differently from the instruction they replace.
+        # Arrange
+        loads = [
+            (at, one)
+            for at, one in enumerate(self.listing)
+            if one.mnemonic in ("ldx", "ldy") and one.mode == "absolute" and one.operand == 0x8000
+        ]
 
-        `ldx $8000` and `ldy $8000` have no long addressing mode, so their hooks
-        move the value through the stack and restore the caller's flags after,
-        which leaves negative and zero as the caller had them rather than set from
-        what was loaded. That is safe only while nothing reads them, so this walks
-        forward from each one to the next instruction that writes those flags and
-        fails if a branch on them comes first.
-        """
-        writes = set(SETS_THE_FLAGS)
-        reads = set(READS_THE_FLAGS)
+        # Act
+        read = [f"{one.address:#06x}" for at, one in loads if self._flags_read_after(at)]
 
-        for at, one in enumerate(self.listing):
-            if one.mnemonic not in ("ldx", "ldy"):
-                continue
-            if one.mode != "absolute" or one.operand != 0x8000:
-                continue
-            for step in self.listing[at + 1 :]:
-                self.assertNotIn(step.mnemonic, reads, f"{one.address:#06x} has its flags read")
-                if step.mnemonic in writes:
-                    break
+        # Assert
+        self.assertEqual(read, [])
 
     def test_every_shape_the_region_holds_has_a_thunk_named_for_it(self) -> None:
         for one in self.real.values():
@@ -358,11 +307,14 @@ class Accesses(unittest.TestCase):
             self.assertIn(self.rom[one.offset], table, f"{one.address:#06x}")
 
     def test_nothing_tests_the_data_port_the_way_only_the_status_is_tested(self) -> None:
-        """`bit` reads the status and never the port, which is what lets its hook
-        answer a constant instead of taking a word off the answer."""
-        for one in self.real.values():
-            if one.mnemonic == "bit":
-                self.assertEqual(one.operand, patch.STATUS_FROM, f"{one.address:#06x}")
+        # Arrange
+        tests = [one for one in self.real.values() if one.mnemonic == "bit"]
+
+        # Act
+        elsewhere = [f"{one.address:#06x}" for one in tests if one.operand != patch.STATUS_FROM]
+
+        # Assert
+        self.assertEqual(elsewhere, [])
 
 
 class Replaced(unittest.TestCase):
@@ -401,14 +353,6 @@ class Replaced(unittest.TestCase):
 
 
 class RasterChain(unittest.TestCase):
-    """That the handler table is where and what asm/dsp1-raster.asm assumes.
-
-    The rearm reads the same four tables the game's own arming routine reads and
-    replaces only the third handler. Every one of those addresses is a constant
-    written into this project rather than derived, so each is checked against the
-    dump instead of trusted.
-    """
-
     @override
     def setUp(self) -> None:
         rom = _rom()

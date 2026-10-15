@@ -23,8 +23,6 @@ class _Chip:
 
 
 class _Loaded:
-    """A stand in for the model, so reading a program needs no microcode."""
-
     def __init__(self, asked: list[str] | None = None) -> None:
         self.asked = asked
 
@@ -42,7 +40,6 @@ def program(words: dict[int, int], length: int = microcode.PROGRAM_WORDS) -> tup
 
 
 def tree(carry: int, no_carry: int) -> dict[int, int]:
-    """The smallest dispatch there can be: one bit tested, two arms."""
     return {
         microcode.DISPATCH: microcode.SHIFT_WORD,
         microcode.DISPATCH + 1: microcode.jump_word(microcode.ON_CARRY, carry),

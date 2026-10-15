@@ -1,28 +1,3 @@
-"""Look at this machine and say what is actually here, so a report can be believed.
-
-This project is the end of a chain. It measures a converted cartridge against a
-retail one, using models that live in other repositories, one of which runs a
-part's own microcode, which belongs to whoever made the part. Any link can be
-missing on a given machine, and from outside they all look the same: it does not
-work.
-
-So this looks, and prints what it found in a form that can be pasted into an
-issue as it stands.
-
-It asks the models it is built on for their own reports too, and files what comes
-back under their names. That is recursive by construction: whatever they examine,
-including anything they are built on in turn, arrives with it. A project can be
-entirely well while the thing underneath it is stale, and a report that looked
-only here would come back clean in exactly that case.
-
-Two rules shape the rest. A check that fails says what it saw, and a check that
-itself throws is reported as what it threw, named by type. Every line is
-something looked at on this machine just now.
-
-No byte of anybody's cartridge is printed. The digest of a dump identifies it
-without carrying it, which is the whole reason digests are published.
-"""
-
 import importlib
 import platform
 import sys
@@ -46,20 +21,11 @@ OLDEST_PYTHON = (3, 12)
 PROJECT = "snes-pilotwings-nochip"
 
 PART = "dsp1"
-"""The coprocessor this cartridge carries, and the microcode a check runs against."""
 
 MASKS = ("dsp1", "dsp1b")
-"""The two masks of that part whose answers are known to differ.
-
-Which one a retail board carries cannot be read out of a dump, so this project
-has to be able to ask both. Holding only one is not a fault on the machine; it
-is a limit on which questions can be settled here, and the report says which.
-"""
 
 
 class Finding:
-    """One thing that was looked at, and what was there."""
-
     def __init__(self, name: Any, ok: Any, detail: Any, advice: Any = None) -> None:
         self.name = name
         self.ok = ok
@@ -68,12 +34,10 @@ class Finding:
 
     @property
     def line(self) -> str:
-        """The one-line form, which is what a reader scans."""
         return f"  {'ok  ' if self.ok else '   !'}  {self.name}: {self.detail}"
 
     @property
     def report(self) -> str:
-        """The same, with what to do about it when there is something to do."""
         if self.ok or not self.advice:
             return self.line
         return f"{self.line}\n         {self.advice}"
@@ -102,7 +66,6 @@ def _default_import(package: str) -> Any:
 
 
 def _model(package: str, where: Path | str, load: Callable[[str], Any]) -> Any:
-    """Whether that model is checked out and imports, and which version it is."""
     if not Path(where).is_dir() or not any(Path(where).iterdir()):
         return Finding(
             package,
@@ -136,13 +99,6 @@ def _microcode(
     why_not: Callable[[], Any] = _default_why_not,
     available: Callable[[], Any] = _default_available,
 ) -> Any:
-    """Whether the coprocessor can actually run here.
-
-    The model runs the part's own program, which nothing in any of these
-    repositories carries. Without a copy the checks that drive the part cannot
-    run at all, and saying so plainly is better than a traceback from the first
-    thing that tries.
-    """
     try:
         reason = why_not()
         held = list(available())
@@ -165,12 +121,6 @@ def _microcode(
 
 
 def _masks(available: Callable[[], Any] = _default_available) -> Any:
-    """Which of the two masks whose answers differ can be asked here.
-
-    Absent is not a fault. It narrows what can be settled on this machine, and
-    the line says which mask is missing so a reader knows which question a run
-    here could not have answered.
-    """
     try:
         held = set(available())
     except Exception as trouble:
@@ -202,12 +152,6 @@ def _cartridges(
     root: Path | str = ROOT,
     examine: Callable[[Any], Any] = _default_examine,
 ) -> list[Any]:
-    """Every dump this project reads, and whether the one here is the one it wants.
-
-    A region with no file on this machine is reported and is not a failure. A
-    fresh clone has none, which is the normal state, and a report that came back
-    unwell on every machine would stop being read.
-    """
     try:
         found = list(examine(root))
     except Exception as trouble:
@@ -233,18 +177,10 @@ def _cartridges(
 
 
 def _default_beneath() -> Any:
-    """Every model that carries a doctor, asked for its own report.
-
-    A model with no doctor is passed over rather than reported: not every one of
-    them has grown one yet, and a line saying so on every run would be noise. A
-    model whose doctor is here and will not run is a different thing entirely and
-    is left to raise, because that is a real fault on this machine.
-    """
     return _ask_each(sorted(hardware.PACKAGES), hardware.root_of, importlib.import_module)
 
 
 def _ask_each(packages: Any, locate: Callable[[str], Any], load: Callable[[str], Any]) -> list[Any]:
-    """Each named model asked for its report, skipping the ones that have none."""
     found: list[Any] = []
     for package in packages:
         where = Path(locate(package))
@@ -261,12 +197,6 @@ def _ask_each(packages: Any, locate: Callable[[str], Any], load: Callable[[str],
 
 
 def _default_unused(load: Callable[[str], Any] = _default_import) -> Any:
-    """The parts the coprocessor model covers that this cartridge does not carry.
-
-    A model that will not import at all is reported by its own check above, so
-    here it means only that nothing can be said about which parts are spare.
-    Saying nothing is right: every finding then stands as the model wrote it.
-    """
     try:
         return sorted(set(load("snesdsp").MODELS) - set(MASKS))
     except Exception:
@@ -274,17 +204,6 @@ def _default_unused(load: Callable[[str], Any] = _default_import) -> Any:
 
 
 def _beneath(beneath: Any, unused: Callable[..., Any] = _default_unused) -> list[Any]:
-    """Everything the models found, each filed under the name of its repository.
-
-    One adjustment is made on the way through, and it is worth saying exactly
-    what it is. The coprocessor model covers six parts and reports a missing
-    image for each. This cartridge carries one of them, and the mask that
-    corrected it is the other one worth holding. A missing image for the rest is
-    a true statement about this machine and not a fault of it, so the line is
-    kept, in full, and stops being counted as a failure. Nothing is removed: a
-    report that hid those lines would be hiding the one thing somebody checking a
-    digest needs to see.
-    """
     try:
         found = list(beneath())
     except Exception as trouble:
@@ -317,7 +236,6 @@ def examine(
     load: Callable[[str], Any] = _default_import,
     beneath: Callable[[], Any] = _default_beneath,
 ) -> list[Any]:
-    """Everything worth looking at on this machine, in the order a reader wants it."""
     found = [_python(), _project()]
     found.extend(
         _model(package, hardware.root_of(package), load) for package in sorted(hardware.PACKAGES)
@@ -330,7 +248,6 @@ def examine(
 
 
 def report(found: Any) -> list[str]:
-    """The lines a person pastes into an issue."""
     unwell = [one for one in found if not one.ok]
     lines = [f"{PROJECT} {VERSION} on {platform.python_version()}, {platform.system()}", ""]
     lines.append("  the machine")

@@ -7,7 +7,6 @@ ROOT = Path(__file__).resolve().parent
 
 
 def _table(value: int = 0x4000) -> tuple[int, ...]:
-    """A reciprocal table over the whole normalised range, holding one value."""
     return (value,) * 0x4000
 
 

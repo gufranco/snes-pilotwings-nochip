@@ -1,16 +1,3 @@
-"""`raster.py` against the part it was read out of, on the recordings' own arguments.
-
-Kept apart from the rest because it needs both the microcode and the recordings.
-A machine holding them runs these paths and a machine without runs the others, so
-neither is measured for coverage and every check that could not run says so out
-loud rather than passing quietly.
-
-What this pins. `raster.py` is the reference `asm/dsp1-ground.asm` mirrors, so a
-drift between it and the part is a drift between the cartridge and the part. It
-is checked stage by stage as well as end to end, because an end-to-end check that
-passes tells you nothing about which stage would have failed first.
-"""
-
 import unittest
 from pathlib import Path
 from typing import Any, override
@@ -33,25 +20,10 @@ STREAM = 0x0A
 MASK = "dsp1"
 
 PAIRS_PER_REGION = 6
-"""How many `$02` and `$0a` pairs to check from each recording.
-
-Every pair is 704 or 764 words and the part answers them one instruction at a
-time, so the whole set would take hours. Spread evenly through the recording,
-this reaches the level flight, both climbs and the turn.
-"""
 
 LOOP = 0x364
-"""The top of the part's per-scanline loop, where a row of the capture opens."""
 
 COUNTER = 0x09
-"""Where the part keeps the line it is answering, before it steps it on.
-
-The line is read from here rather than counted from the argument, because handing
-the part its command costs it instructions and it is already part way through the
-first scanline by the time the stepping starts. Counting from the argument would
-be off by one and would look like an arithmetic fault rather than a bookkeeping
-one, which is exactly how the first attempt at this read.
-"""
 
 STAGES = {
     "raw": 0x369,
@@ -61,7 +33,6 @@ STAGES = {
     "scale one": 0x372,
     "scale two": 0x37B,
 }
-"""Where in the part's program each stage's result is readable."""
 
 
 def _missing() -> str | None:
@@ -105,7 +76,6 @@ _CELLS = (
 
 
 def _stream(part: Any, first: int, count: int) -> tuple[int, ...]:
-    """Drive `$0a` on a part already set up, reading the answer as it comes."""
     part.write(STREAM)
     part.write(first & 0xFF)
     part.write(first >> 8)
@@ -122,8 +92,6 @@ def _stream(part: Any, first: int, count: int) -> tuple[int, ...]:
 
 
 class Reciprocal(unittest.TestCase):
-    """The table `derived.py` builds, against the routine it was built from."""
-
     @override
     def setUp(self) -> None:
         why = _missing()
@@ -156,8 +124,6 @@ class Reciprocal(unittest.TestCase):
 
 
 class Chain(unittest.TestCase):
-    """Every stage of `$0a`, against the same stage inside the part."""
-
     @override
     def setUp(self) -> None:
         why = _missing()
@@ -179,7 +145,6 @@ class Chain(unittest.TestCase):
         self.assertGreater(checked, 1000)
 
     def _rows(self, part: Any, first: int, count: int) -> list[dict[str, int]]:
-        """One row per scanline, holding what the part held at each stage."""
         part.write(STREAM)
         part.write(first & 0xFF)
         part.write(first >> 8)
@@ -231,8 +196,6 @@ class Chain(unittest.TestCase):
 
 
 class Answer(unittest.TestCase):
-    """The whole stream, against the whole stream the part sends."""
-
     @override
     def setUp(self) -> None:
         why = _missing()

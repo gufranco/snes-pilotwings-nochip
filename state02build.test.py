@@ -14,21 +14,12 @@ ROOT = Path(__file__).resolve().parent
 
 
 class _Core:
-    """The part's memory, as much of it as the state lives in."""
-
     def __init__(self, cells: dict[int, int]) -> None:
         self.stores = self
         self.scratch = dict(cells)
 
 
 class _Part:
-    """A stand in for the part, answering `$02` by a rule and holding state.
-
-    It has to behave like the real one in the two ways this builder depends on:
-    it takes a command and its arguments a byte at a time, and it leaves the ten
-    cells behind in its own memory rather than in the answer.
-    """
-
     def __init__(self, rule: Any) -> None:
         self.rule = rule
         self.taken: list[int] = []
@@ -65,7 +56,6 @@ def _state(**named: int) -> dict[str, int]:
 
 
 def _flat(command: int, words: tuple[int, ...]) -> dict[str, int]:
-    """A part whose every cell follows the arguments the split says it should."""
     return _state(
         step=words[6] & 0x7FFF,
         horizon=words[6] % 97,
@@ -268,8 +258,6 @@ class StateOf(unittest.TestCase):
 
 
 class _Loaded:
-    """What `hardware.load` answers with while these tests run."""
-
     asked: ClassVar[list[str]] = []
 
     def Chip(self, mask: str) -> _Part:
@@ -278,8 +266,6 @@ class _Loaded:
 
 
 class _NoPart:
-    """Stand in for the model, so nothing here needs microcode on disk."""
-
     def __enter__(self) -> Path:
         _Loaded.asked = []
         self.held = hardware.load
@@ -318,7 +304,6 @@ class Gather(unittest.TestCase):
 
 
 def _trace() -> bytes:
-    """A recording holding one `$02` exchange, in the twelve byte record shape."""
     records = [(0, 0x001234, 0x8000, 0, 0x02)]
     for word in (1, 2, 3, 32, 256, 5, 7):
         records.append((0, 0x005678, 0x8000, 0, word & 0xFF))
@@ -346,8 +331,6 @@ class Main(unittest.TestCase):
 
 
 class _Horizon:
-    """A part that answers `$02` by putting a rule's value in the horizon cell."""
-
     def __init__(self, rule: Callable[[int, int], int]) -> None:
         self.rule = rule
         self.taken: list[int] = []

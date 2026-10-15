@@ -89,13 +89,6 @@ class ConstantsTest(unittest.TestCase):
 
 
 class FakePart:
-    """A part that takes a fixed number of words and then has nothing to say.
-
-    Written short of what it wants it still echoes, which is the behaviour the
-    measurement leans on: silence is what marks one word past the end, never the
-    end itself.
-    """
-
     def __init__(self, takes: int, gives: int) -> None:
         self.takes = takes
         self.gives = gives
