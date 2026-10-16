@@ -1,752 +1,700 @@
-<div align="center">
+English | [日本語](README.ja.md) | [简体中文](README.zh-Hans.md) | [繁體中文（香港）](README.zh-HK.md)
 
 # Pilotwings without the DSP-1
 
-**Tooling to build Pilotwings ROMs with the coprocessor designed out, so they run from any flash
-cartridge that can hold them. All three regions.**
+Tooling that builds Pilotwings images for all three regional releases with the DSP-1 coprocessor replaced by tables and 65816 code in the cartridge, held to the retail cartridges for what the game asks and to the part's own microcode for every answer.
 
-[![licence](https://img.shields.io/github/license/gufranco/snes-pilotwings-nochip)](LICENSE)
+[![CI](https://github.com/gufranco/snes-pilotwings-nochip/actions/workflows/ci.yml/badge.svg)](https://github.com/gufranco/snes-pilotwings-nochip/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-</div>
+**16** commands answered against the part on every question **3** regional recordings hold, **0** wrong answers, **43,440** of **43,440** `$0a` ground words exact, **1,021** tests, **100%** statement and branch coverage of every module, no dependencies outside the standard library and **5** pinned submodules
 
----
+```python
+import tables
+import tabulate
 
-## What this is
+for one in tables.KNOWN:
+    print(f"{one.name:10} {one.count:3} words  first {one.values()[:3]}")
+print(tables.table_bytes(), "bytes for all four")
 
-Pilotwings carries a DSP-1: an NEC uPD77C25 running a program Nintendo masked into it. The part
-computes. It rotates and projects coordinates for the mode 7 ground, divides, takes reciprocals, and
-answers the trigonometry the flight model asks for. Without it the game does not fly.
+for words in (1, 2, 3):
+    print(words, f"{tabulate.bytes_for(words):,}", tabulate.storable(words))
+```
 
-This project replaces the part with code and tables in the cartridge, and points the cartridge's own
-instructions at them. Nothing about the board changes and there is no coprocessor left to emulate.
-Whether the image has to grow at all is measured rather than assumed, and on the evidence so far it
-does not.
+```
+reciprocal 128 words  first (32767, 32514, 32264)
+sine       128 words  first (0, 804, 1607)
+cosine     128 words  first (32767, 32758, 32728)
+arccosine  256 words  first (16384, 16343, 16303)
+1280 bytes for all four
+1 131,072 True
+2 8,589,934,592 False
+3 562,949,953,421,312 False
+```
 
-You supply the retail dumps. Nothing here contains game data, and nothing ever will.
+The first loop rebuilds the four tables the DSP-1 carries in its data ROM from their formulas, which is what [`tables.py`](tables.py) searches the microcode for. The second sizes a table holding every answer to a command that reads one, two or three argument words: one word fits in a 96 Mbit cartridge and two do not. That line is why the replacement stores answers the game asks for and computes the rest.
+
+## Install
+
+| Requirement | Version |
+|:--|:--|
+| Python | 3.12 or newer |
+| git | Any, to fetch the five submodules |
+| Your own cartridge dumps | 524,288 bytes each, in `roms/` under the names in [The dumps](#the-dumps) |
+| Your own copy of the DSP-1 microcode | 8,192 bytes, as `firmware/dsp1.bin` and `firmware/dsp1b.bin` |
+| Docker | Any, only to build the assembler in [`asm/`](asm/) and the recording emulator in [`emu/`](emu/) |
+
+```bash
+git clone --recurse-submodules https://github.com/gufranco/snes-pilotwings-nochip.git
+cd snes-pilotwings-nochip
+python3 doctor.py
+```
+
+Nothing is installed from a package index and nothing is downloaded. The five models this project measures itself against are git submodules at the repository root. A source archive from the download-zip link carries none of them, so the doctor reports each as not checked out and every check that drives a model fails.
+
+The microcode can sit anywhere `UPD7725_FIRMWARE_DIR` names instead of `firmware/`. Without it, every check that drives the part reports that it had nothing to run.
+
+The doctor prints the machine, this project's version, every model and its version, whether the microcode runs, which of the two masks are present, the state of each dump, and the report of each model's own doctor filed under that model's name. It exits 0 when every check passes and 1 otherwise. Paste its whole output into any bug report. On a fresh recursive clone with no dumps and no microcode it ends with:
+
+```
+  5 of 92 checks did not pass
+```
+
+The five are the missing microcode, the two masks the DSP model has no image for, and the empty `cartridges` directory each of two submodules ships.
+
+## The interface
+
+This is a set of scripts run from the repository root, plus the modules they are built from. A script that takes arguments prints a usage line and exits 2 without them.
+
+### Commands
+
+| Command | Arguments | What it does | Exit |
+|:--|:--|:--|:--|
+| `python3 doctor.py` | none | Reports the machine and the whole chain of models | 0 clean, 1 when a check did not pass |
+| `python3 tools/identify.py` | none | Checks each file in `roms/` against [`artifacts.manifest.json`](artifacts.manifest.json) and prints the commands that compute a SHA-256 on macOS, Linux and Windows | 0 when every dump matches or is absent, 1 when one is wrong |
+| `python3 exchanges.py <trace>` | a recording | Cuts the recording at each command site and prints every command with its exchanges, share, distinct argument sets, sites and how it can be answered | 0, 2 |
+| `python3 tables.py <microcode image>` | an 8,192 byte image | Finds the four tables in the image's data ROM and prints the word each starts at | 0, 2 |
+| `python3 microcode.py <mask>` | `dsp1` or `dsp1b` | Walks the microcode's dispatch for all 256 command bytes and prints each handler with the commands the cartridge writes | 0, 2 |
+| `python3 layout.py <image> <bytes wanted>` | an image and a size | Finds runs of `$FF` or `$00` of 256 bytes or more and says whether the image holds the size without growing | 0, 2 |
+| `python3 lut.py [<rows>]` | rows per table, default 65,536 | Sizes the four tables tabulated over a whole input | 0 |
+| `python3 derived.py <mask> [<directory>] [--reindex]` | a mask, the output directory, default `build` | Drives the part for its reciprocal over `$4000` to `$7FFF` and its sine and cosine at 65,536 angles, and counts leading doublings for every word. Writes `reciprocal`, `recip-up`, `recip-down`, `recip-exponent`, `leading`, `sine` and `cosine` as 32,768 byte pieces named `<stem>-<n>.bin`. `--reindex` rebuilds the three `recip-` tables from a reciprocal already on disk | 0, 2 |
+| `python3 state02build.py <mask> [<directory>]` | a mask, the directory holding the recordings and receiving the output, default `build` | Drives `$02` on every argument set the recordings hold and writes its three state tables, `state02-map.asm`, `state02-data.asm` and the clamped cosine at 65,536 angles | 0, 2 |
+| `python3 lutbuild.py <mask> [<directory>]` | a mask, the output directory, default `build` | Builds the table of recorded answers from `build/trace-usa.bin`, `build/trace-jp.bin` and `build/trace-eur.bin`, completes `$13` and `$18` by driving the DSP-1, and writes `lut-<n>.bin`, `lut-map.asm` and `lut-axes.asm` | 0, 2 |
+| `python3 patch.py <rom> <symbols> <out> <game bytes> [--slow]` | the assembled image, a symbol file of `name hex` lines, the output path, the length of the game inside the image | Points every access the cartridge makes to the part at the replacement, clears the coprocessor from the header, sets the size byte, sets the fast ROM bit unless `--slow` is given, and rewrites the checksum | 0, 1 when the image reaches no part, 2 |
+| `python3 tools/cycles.py <image> <assembler log> [<routine>] [<snapshot>]` | an image, the assembler's printed symbols, default routine `ground_block`, default snapshot `build/nb2/wram-000300.bin` | Runs one call to the routine on the 65816 model and prints its cycles and instructions | 0, 1 without a snapshot, 2 |
+| `python3 tools/profile.py <image> <symbol file> [<routine>] [<snapshot>] [--built]` | as above, plus `--built` when the snapshot already holds the built tables | Runs one call and splits its cycles by the label each instruction sits under, top 16 | 0, 1 without a snapshot or labels, 2 |
+
+```bash
+python3 tables.py firmware/dsp1.bin
+```
+
+```
+  table        words   at     formula
+  reciprocal     128    101  2^22 / (128 + k), rounded and clamped
+  sine           128    280  sin(pi k / 128) x 32768, fraction cut off
+  cosine         128    408  cos(pi k / 128) x 32768, fraction cut off
+  arccosine      256    542  acos(k / 256) x 32768 / pi
+
+  4 of 4 carried, 1,280 bytes to reproduce them all, against 131,072 for one table over a whole input
+```
+
+The same command on `firmware/dsp1b.bin` finds the sine, cosine and arccosine two words lower, at 278, 406 and 540, and the reciprocal at 101.
+
+### The recording emulator
+
+[`emu/`](emu/) builds `pwemu`, snes9x at commit `2971061cf07fdc6fc7d18883edf4e648eb16a6d2` with a hook on every DSP-1 port access, behind a minimal libretro front end.
+
+```bash
+docker build -t pwemu emu
+docker run --rm -v "$PWD:/work" -e PWTRACE=build/trace-usa.bin pwemu roms/pilotwings-usa.sfc 12000
+```
+
+| Input | Meaning |
+|:--|:--|
+| `<rom> <frames>` | The image and the number of frames to run |
+| `PWTRACE` | Path of the binary port log |
+| `PWSCRIPT` | Input script, one `frame button...` per line, buttons named `up`, `down`, `left`, `right`, `a`, `b`, `x`, `y`, `l`, `r`, `start` and `select` |
+| `PWRAM` | Path that receives every run of work RAM no frame changed, as `start end length` |
+| `PWPC` | Path that receives the program counter sampled once a frame |
+
+It ends with `RESULT load=ok frames=<n> delivered=<n> accesses=<n> brightness=<x>` and exits 0, or exits 1 when the image cannot be read or loaded.
+
+Each record in the port log is 12 bytes, little endian: the frame as 32 bits, the program counter with its bank as 32 bits, the port address as 16 bits, 1 for a read or 0 for a write, and the byte moved. [`exchanges.py`](exchanges.py) and [`census.py`](census.py) read that format.
+
+[`emu/native.cpp`](emu/native.cpp) runs the same recording through a libretro core loaded at run time, `native <core> <rom> <frames>`, and [`emu/play.cpp`](emu/play.cpp) opens a window on one, `play <core> <rom>`.
+
+### The assembler
+
+[`asm/Dockerfile`](asm/Dockerfile) builds asar v1.81. [`asm/nochip.asm`](asm/nochip.asm) is the entry file. It places the replacement in bank `$10`, includes every other `.asm` file in [`asm/`](asm/), and reads the tables the scripts above write into `build/`. Its printed `SYM <name> <address>` lines are what [`tools/cycles.py`](tools/cycles.py) reads.
+
+### Dumps, versions and the models underneath
+
+| Module | Call | Returns |
+|:--|:--|:--|
+| [`dumps.py`](dumps.py) | `artifacts()` | The three `Artifact` records: `name`, `region`, `filename`, `declares`, `accepted`, `provenance` |
+| | `identify(data, digest=None)` | The `Artifact` whose SHA-256 matches, or `None` |
+| | `identify_digest(digest)` | The same, from a digest already computed |
+| | `diagnose(data, digest=None)` | A `Finding` with `kind`, `detail` and `repair`. `kind` is `match`, `copier-header`, `wrong-size` or `unrecognised` |
+| | `digest_commands(filename)` | The SHA-256 command for `macOS`, `Linux` and `Windows` |
+| | `manifest()`, `through()`, `not_this()` | The manifest, its sources, and the files it names to refuse |
+| [`version.py`](version.py) | `VERSION`, `stamped(name, release=None)` | The release, and the file name an image of that release carries |
+| [`hardware.py`](hardware.py) | `install(environment=None)` | Puts every model on `sys.path`, adds `firmware/` to `UPD7725_FIRMWARE_DIR`, and returns that variable |
+| | `load(package)` | A model package: `mos65xx`, `snesdsp`, `mapper`, `romimage`, `snesdriver` or `upd7725` |
+| | `root_of(package)` | The model's directory. Any other name raises `UnknownPackage` |
+| [`tools/identify.py`](tools/identify.py) | `look(artifact, root)`, `judge(artifact, data)` | A `Looked` with `region`, `filename`, `state` of `ok`, `absent` or `wrong`, `detail`, and `ok` |
+
+```python
+import dumps
+import version
+
+for one in dumps.artifacts():
+    print(one.region, one.filename, one.declares["chipset"], one.declares["map"])
+
+for data in (bytes(524_288 + 512), bytes(1_000), bytes(524_288)):
+    found = dumps.diagnose(data)
+    print(found.kind, "|", found.detail)
+
+print(version.stamped("pilotwings-usa"))
+```
+
+```
+USA pilotwings-usa.sfc 0x03 0x20
+Japan pilotwings-jp.sfc 0x03 0x20
+Europe pilotwings-eur.sfc 0x03 0x20
+copier-header | the file is 512 bytes longer than a bare dump, which is what a copier adds
+wrong-size | 1,000 bytes, which is smaller than the 524,288 a dump holds
+unrecognised | the right length, and its sha256 is 07854d2fef297a06ba81685e660c332de36d5d18d546927d30daad6d7fda1541, which none of the 3 declared dumps carries
+pilotwings-usa-v0.1.0.sfc
+```
+
+A length, a chipset or a title never identifies a dump here, and the digest always does.
+
+### Reading the cartridge's code
+
+| Module | Call | Returns |
+|:--|:--|:--|
+| [`commands.py`](commands.py) | `accesses(rom)` | Every `Access` to the data port at `$8000` or the status port at `$C000`, long form in bank `$3F` or absolute. Each has `offset`, `mnemonic`, `size`, `register`, `way` and `long` |
+| | `stores(rom)`, `store_at(rom, at)` | Offsets of stores to the data port, and the store at one offset |
+| | `read(rom, disassemble)` | A `Site` per store, decoded back up to 512 bytes, with `command`, `narrow`, `issues` and `why` |
+| | `commands(sites)` | The sorted command bytes those sites issue |
+| [`sites.py`](sites.py) | `reached(rom)`, `census(rom)` | Where the long form reaches the part, through [snes-driver-python](https://github.com/gufranco/snes-driver-python), and a `Census` of `sites` and `shapes` |
+
+```python
+import commands
+
+code = bytes.fromhex("8f 00 80 3f  ad 00 c0  8d 00 80  ea  af 00 80 3f")
+for one in commands.accesses(code):
+    print(one, one.long)
+print(commands.stores(code))
+```
+
+```
+<Access $00000 sta data write long> True
+<Access $00004 lda status read absolute> False
+<Access $00007 sta data write absolute> False
+<Access $0000b lda data read long> True
+(0, 7)
+```
+
+### Reading a recording
+
+| Module | Call | Returns |
+|:--|:--|:--|
+| [`exchanges.py`](exchanges.py) | `taken(trace)` | Every `Exchange`, cut at the site that issued it: `site`, `command`, `words`, `answer`, and `later` for words written after the answer began |
+| | `issuing(trace)` | The program counters that write the low half of the data port only, each with its one command byte |
+| | `census(trace)`, `read(path)` | A `Census` with `commands`, `total`, `issued(c)`, `distinct(c)`, `share(c)`, `sites(c)` and `table_bytes()` |
+| | `spans(census, command)` | A `Span` per argument position: `lowest`, `highest`, `distinct`, `width`, `bits`, and `dense` when the distinct values fill at least half the width |
+| | `readings(runs, command)` | A `Reading` naming the earlier command whose arguments make the key decide the answer: `carrier`, `rows`, `ambiguous`, `pure`, `tabulatable` |
+| | `tier_of(command, distinct)` | `computed` for `$00`, `inline` up to 16 argument sets, `table` above |
+| [`census.py`](census.py) | `taken(trace)`, `exchanges(trace)`, `report(census)` | The same question cut at the byte stream, each read ending an exchange. `$0a` breaks that cut. A library only: running the file prints nothing |
+
+```python
+import struct
+
+import exchanges
+
+
+def access(pc, address, is_read, byte):
+    return struct.pack("<IIHBB", 0, pc, address, is_read, byte)
+
+
+def multiply(first, second, answer):
+    out = access(0x00A000, 0x8000, 0, 0x00)
+    for word in (first, second):
+        out += access(0x00A010, 0x8000, 0, word & 0xFF)
+        out += access(0x00A010, 0x8001, 0, word >> 8)
+    out += access(0x00A020, 0x8000, 1, answer & 0xFF)
+    out += access(0x00A020, 0x8001, 1, answer >> 8)
+    return out
+
+
+trace = multiply(0x1234, 0x5678, 0x0C4C) + multiply(0x1234, 0x5678, 0x0C4C) + multiply(2, 3, 0)
+for one in exchanges.taken(trace):
+    print(one, [hex(word) for word in one.words], [hex(word) for word in one.answer])
+
+census = exchanges.census(trace)
+print("\n".join(exchanges.report(census)))
+for span in exchanges.spans(census, 0x00):
+    print(span, span.width, span.dense)
+```
+
+```
+<Exchange $00 from $00a000 2 words> ['0x1234', '0x5678'] ['0xc4c']
+<Exchange $00 from $00a000 2 words> ['0x1234', '0x5678'] ['0xc4c']
+<Exchange $00 from $00a000 2 words> ['0x2', '0x3'] ['0x0']
+3 exchanges over 1 commands
+
+  cmd   exchanges   share   distinct   sites   how to answer it
+  $00           3  100.0%          2       1   computed
+<Span 0 2..4660, 2 used> 4659 False
+<Span 1 3..22136, 2 used> 22134 False
+```
+
+The trace is three `$00` exchanges in the recording format. The site at `$00A000` only ever writes one byte to the low half of the port, so it is the command site, and the two words after it are the arguments. `$0C4C` is the signed product of `$1234` and `$5678` with fifteen fractional bits, which is what the part answers.
+
+### Asking the part
+
+These drive the microcode through [snes-dsp-python](https://github.com/gufranco/snes-dsp-python), so each needs the microcode on the machine.
+
+| Module | Call | Returns |
+|:--|:--|:--|
+| [`tabulate.py`](tabulate.py) | `shape_of(command)`, `sweep(model="dsp1")` | A `Shape` with `writes`, `reads` and `answers`, measured by writing one word more each time until the part falls silent |
+| | `ask(command, words, reads=1)`, `deterministic(command=0)` | The answer bytes, and whether two identical questions answer alike |
+| | `entries_for(words)`, `bytes_for(words, out=1)`, `storable(words)` | The size of a table over a whole input, and whether it fits in half of a 96 Mbit cartridge. These need no microcode |
+| [`tables.py`](tables.py) | `KNOWN`, `carried(image)`, `find(words, table)`, `words(image)`, `table_bytes()` | The four `Table` records, where each sits in an image, and their size. `words` raises `WrongShape` on an image that is not 8,192 bytes |
+| [`microcode.py`](microcode.py) | `program_of(mask)`, `dispatch(program)`, `handlers(program)`, `body(program, at)`, `listing(program)` | The 2,048 program words, where each command byte lands, and the instructions from a handler to its return |
+| | `ISSUED` | The 19 command bytes the cartridge writes |
+| [`derived.py`](derived.py) | `reciprocal(part)`, `refined(part, value)`, `trig(part)`, `ask(part, command, words, answers)` | The part's reciprocal over `$4000` to `$7FFF`, and its sine and cosine at every angle. `refined` raises `Runaway` after 200 instructions without returning |
+| | `leading(value)`, `counted()`, `doublings(folded)`, `inverted(mantissas, negative)` | Leading-bit counts and the reciprocal reindexed for the ground routine. `inverted` raises `ValueError` on a table that is not 16,384 entries |
+| | `write(where, values)`, `write_bytes(where, raw)`, `pieces(where)` | Write and read back 32,768 byte pieces. `pieces` raises `FileNotFoundError` when none exist |
+| [`complete.py`](complete.py) | `domains(runs)`, `wanted(values)`, `filled(command, keys, answers, have)` | Every value each argument of `$13` and `$18` takes, every combination of them, and the answers driven out of the part for the combinations no recording holds |
+| [`routines.py`](routines.py) | `run(image, entry, words, answers)`, `asked(command, words, answers)`, `inputs(count, how_many, seed)` | One assembled routine run on the 65816 model, the part's answer to the same question, and seeded random arguments. `run` raises `TooLong` after 40,000 instructions |
+
+### The arithmetic read out of the part
+
+| Module | Call | Returns |
+|:--|:--|:--|
+| [`attitude.py`](attitude.py) | `matrix(sine, cosine, five, six)` | The nine cells of the matrix `$02` builds, keyed by their scratch address `$5A` to `$7C` |
+| [`raster.py`](raster.py) | `answer(state, start, lines, table)`, `scanline(state, line, table)` | `$0a`'s four answer words per scanline, computed the way the part computes them |
+| | `product`, `normalise`, `reciprocal`, `scaled`, `shortfall(got, want)` | The stages, and how many scanlines of two answers agree |
+| [`parameter.py`](parameter.py) | `GROUPS`, `CELLS`, `gathered(seen, slots)`, `fixed(runs)`, `mirrored(state)`, `sized(rows)` | Which of `$02`'s seven arguments each state word follows. `gathered` raises `Disagreement` when a key gives two states, and `mirrored` raises `NotMirrored` when the matrix is not two words twice |
+| [`state02.py`](state02.py) | `packed(table)`, `checked(table)`, `rows(table)`, `stride(table)` | A keyed table as sorted little endian words. `checked` raises `Ragged` on rows of different widths and `TooWide` on a value outside a word |
+| [`state02build.py`](state02build.py) | `gather(mask, where)`, `driven(part, sets)`, `tables(seen)`, `clamped(part)`, `checked(built)` | The three state tables, and `TooBig` when one passes a 32,768 byte bank |
+
+```python
+import attitude
+import raster
+
+print(raster.product(0x4000, 0x4000), raster.product(0x7FFF, -0x8000))
+print(raster.normalise(0x0100), raster.normalise(-1), raster.normalise(0))
+print(raster.scaled(0x2000, 14), raster.scaled(0x2000, 20), raster.scaled(0x2000, 2))
+
+sine = [0x0000, 0x5A82]
+cosine = [0x7FFF, 0x5A82]
+cells = attitude.matrix(sine, cosine, 0, 1)
+print({f"${at:02x}": f"${word:04x}" for at, word in cells.items()})
+```
+
+```
+8192 -32767
+(16384, 6) (-32768, 15) (0, 0)
+4096 32767 1
+{'$5a': '$5a81', '$5b': '$a57e', '$5c': '$0000', '$6a': '$5a81', '$6b': '$5a81', '$6c': '$0000', '$7a': '$0000', '$7b': '$0000', '$7c': '$7ffe'}
+```
+
+`product` multiplies two signed words with fifteen fractional bits. `normalise` shifts left until bits 15 and 14 differ and returns the shift count beside the result. `scaled` applies an exponent and clamps at `$7FFF`. The matrix is built at angle 0 for the fifth argument and at the angle whose sine and cosine are both `$5A82` for the sixth.
+
+```python
+import state02
+
+table = {(2, 1): (10, -1), (1, 5): (20, 30)}
+print(state02.rows(table), state02.stride(table))
+print(state02.packed(table).hex(" "))
+
+try:
+    state02.packed({(1,): (2,), (3, 4): (5,)})
+except state02.Ragged as error:
+    print(error)
+```
+
+```
+2 4
+01 00 05 00 14 00 1e 00 02 00 01 00 0a 00 ff ff
+row (3, 4) is (2, 1), an earlier row is (1, 1)
+```
+
+Rows are sorted by key so the cartridge finds one by halving, and each row is its key words followed by its answer words.
+
+### Tables, the image and the patch
+
+| Module | Call | Returns |
+|:--|:--|:--|
+| [`lutbuild.py`](lutbuild.py) | `rows_of(runs)`, `completed(built, runs)`, `chosen(built, calls, room)`, `gather(where)` | The recorded answers per command, keyed on `CARRIER` where the part keeps state, with `$13` and `$18` completed and the rest chosen by calls per byte |
+| | `encode(tables)`, `sliced(raw)`, `banks(pieces, first)`, `source(pieces, first_bank)` | The table as the cartridge reads it, cut into banks from `$99` that skip `$7E` and `$7F`. `encode` raises `Uneven` when a row would start on an odd byte |
+| | `axes(built)`, `axes_source(found)` | The commands whose keys are every combination of their values, and the code that counts their row instead of searching |
+| | `CARRIER`, `COMPUTED`, `UNSTORABLE` | The carriers, the commands answered by arithmetic, `$00`, `$04`, `$08` and `$80`, and `$0a` |
+| [`lut.py`](lut.py) | `KERNELS`, `expand(table, count)`, `blob(count)`, `cost(count)`, `image_bytes(count)` | The four tables interpolated over a whole input, and their size |
+| | `plan(census, command)`, `planned(census)`, `table(runs, command, carrier)`, `encode(table)` | A table per command indexed on the range or on the recorded set, and its encoding |
+| [`layout.py`](layout.py) | `runs(rom, least=256)`, `free(rom)`, `largest(rom)`, `fits(rom, wanted)`, `spread(rom, wanted)`, `must_grow(rom, wanted)` | Runs of `$FF` or `$00` as `(start, end)`, their total, the longest, and whether a size fits |
+| [`patch.py`](patch.py) | `plan(rom, limit)`, `applied`, `spanned`, `hooked`, `rearmed`, `held`, `hooked_nmi`, `redirected`, `declared`, `checksummed`, `symbols(path)` | Each step the command runs, in that order. `held` raises `ArmGapTaken` when the six bytes it needs at `$07E84` are not empty, and `hooked_nmi` raises `VectorMoved` when the interrupt vector does not name `$F0A0` |
+
+```python
+import layout
+
+image = bytes([0x42]) * 1_000 + bytes([0xFF]) * 600 + bytes([0x42]) * 10 + bytes(300)
+print(layout.runs(image))
+print(layout.free(image), layout.largest(image))
+print(layout.fits(image, 500), layout.fits(image, 700), layout.must_grow(image, 1_000))
+```
+
+```
+((1000, 1600), (1610, 1910))
+900 600
+True False True
+```
 
 ## Status
 
-The replacement answers, and the demo draws its ground. Every one of the sixteen
-commands that return anything comes back with exactly what the part returned, on
-every question the three recordings hold. What is left is speed, named below and
-in [`OPEN-QUESTIONS.md`](OPEN-QUESTIONS.md); nothing that is not built is implied
-to be.
+Every command that returns anything answers exactly what the part answered, on every question the three recordings hold. What is left is speed, tracked in [`OPEN-QUESTIONS.md`](OPEN-QUESTIONS.md).
 
-| part | state |
-|------|-------|
-| dump identification, all three regions | works, against measured digests |
-| where each cartridge reaches the part | works, both forms of the access, checked against a recording |
-| which commands the cartridge can issue | 20 in every image, checked against a recording |
-| what the part answers | works, by running the part's own microcode |
-| whether an answer can be stored instead of computed | measured, per command |
-| how many argument sets each command takes | measured, 73,341 across three runs |
-| which tables the part computes from | measured, four of them, 1,282 bytes, rebuilt exactly |
-| the three tables no formula reproduces | taken from the part, 294,912 bytes, exact |
-| `$02`'s derived state, which is everything `$0a` reads | three tables from the part, 59,686 bytes, no key carrying two answers across all 6,980 argument sets |
-| `$00`, `$08` and `$04` as 65816 arithmetic | exact against the part, 400 random argument sets each |
-| the table of answers | built, 15 commands, 3,014,801 bytes |
-| `$13` and `$18` | complete over their whole domain, driven out of the part, so no key can miss |
-| the lookup, in 65816 | exact on every recorded question, all three regions |
-| the fallback, in 65816 | answers every command, including keys no recording holds, without looping |
-| `$0a` | written in 65816, exact: 43,440 of 43,440 answer words against the part, on 60 argument sets across all three recordings |
-| the three commands the game asks for through its redirected window | routed, so `$02`'s state and `$0a`'s starting line reach the cartridge |
-| the accesses that reach the part through that window | routed. 200 three byte accesses, each replaced with a call that fits in three bytes, plus the five runs replaced whole |
-| the long accesses that read the part and compute with what they read | routed. Seven of them, six `adc` and one `eor`, unreplaced since the first build because the scanner knew only the long load and the long store |
-| the accesses in those runs that are not the part at all | all 31 routed. The window is ROM, so the game's own three byte reads and writes of its work RAM through the bank mirror answered nought and went nowhere; one of them is the counter the demo's next phase waits on. OPEN-QUESTIONS section 30 |
-| why the demo left the retail course at game frame 175 | closed. The counter at `$0130` never counted, so the phase it gates never began |
-| the demo | flies, draws its ground, and tracks the retail cartridge's own flight through game frame 405, which is as far as the comparison has been run. Work RAM differs by 30 to 60 bytes a frame, 22 of them at every frame and twelve of those a patched call the game copies into work RAM |
-| the instrument panel | drawn on every picture. It was there all along on one picture in sixteen: the flight screen is three bands separated by two scanline interrupts, the sequence is armed once per frame of the game's clock, and one frame of that clock is now sixteen pictures. The third interrupt does nothing in the retail cartridge and is the only thing that happens once per picture, so it arms the sequence again. Screen brightness across the demo went from a spread of 31.1 to one of 0.05, at the retail cartridge's own level. OPEN-QUESTIONS section 32 |
-| whether the image has to grow | yes, to 3.75 MB, which is inside what a low cartridge addresses |
-| speed | one call to `$0a` costs 77,044 processor cycles averaged across 149 frames of the demo, against 393,035 when it first drew anything. The average is the figure that counts: a scanline whose distance matches the one above it copies that scanline's answers, 63.6% of them do, and how many do depends on how fast the aircraft is moving. Measured on the model rather than on the console: the console's frame-rate meter is not monotone in work, and adding 25,566 cycles of dead work to the ground made it report a better rate. OPEN-QUESTIONS sections 36 to 39 |
-| the ground drawn from the part's own arithmetic | every one of the ten words `$02` leaves behind is computed or read from a table covering the whole of its key. Driven against the part on 596 frames spanning the demo, all ten are exact. Six of them were wrong on between 3% and 39% of frames before, because they came from tables recorded from playthroughs and the search that read them answered a key it did not hold with the nearest key above it |
-| the band cut through the instrument panel | fixed, 33.7% of frames to 2.2%. Two faults, and neither is the frame rate: overclocking the processor made it worse. The game arms the band sequence once per frame of its clock, which here lands inside the picture on a quarter of frames, so it now waits for the beam to leave first. And this project's own arming rides the maskable interrupt, which the game masks for a median of 14,389 instructions once a frame, so it is also done from the interrupt that cannot be masked. Neither fix moves the number alone. OPEN-QUESTIONS section 48 |
-| where the frame actually goes | measured across a whole game frame rather than one routine on a model, by sampling the program counter and reading the assembler's own line map. The recorded-answer search was 42.5% of the frame and the ground 33.1%, so weeks of work had gone into the second heaviest thing. OPEN-QUESTIONS section 47 |
-| the keys the search could never read | 64 of them, fixed. A bank boundary falls between two words only when the row stream starts on an even offset, and it started on an odd one, so 64 keys had their first word read half from the table and half from the console's memory. The search missed each one and the fallback answered with the row beside it. Sampled against the retail cartridge at every flight clock the two share, over 1,200 samples, the flight model now never differs by more than eight bytes where before it did. OPEN-QUESTIONS section 49 |
-| what one lookup costs | 3,977,534 cycles for 600 keys from a recording, down to 1,566,405. Measured on the processor model rather than on the console, because a change moves where the demo sits when the window opens and the scenery there is different work: the console reported one of these changes as a loss and another as a gain three times its size. OPEN-QUESTIONS section 49 |
-| where the frame goes | the ground 46.8%, the recorded-answer search 20.6%, the port 11.2%, the game's own code 15.4%. The search was 42.5% when it was first measured across a whole frame. Two commands that need no search are written out as code by the build rather than walked as lists, and one of them is asked 9.4 times a game frame and fell by 54%. OPEN-QUESTIONS section 50 |
-| the ground, measured | 130,147 cycles for a call that is not the first, steady to within 3% across 24 states of a flight. 54.7% of it is six table multiplies a scanline, none of them the same from one line to the next, so making it materially faster means asking for fewer products rather than writing the same ones better. Building the four multiply tables costs 62,665 cycles and does not appear in a frame at all, because the constants they are keyed on change rarely. OPEN-QUESTIONS sections 51 and 52 |
+| Part | State |
+|:--|:--|
+| Dump identification, all three regions | By SHA-256 against [`artifacts.manifest.json`](artifacts.manifest.json) |
+| Where each cartridge reaches the part | Both forms of the access, checked against a recording |
+| Which commands the cartridge can issue | 20 in every image, checked against a recording |
+| What the part answers | Its own microcode, run |
+| Argument sets the recordings hold | 73,341 across three runs |
+| The tables the part computes from | Four, 1,280 bytes, rebuilt exactly |
+| The three tables no formula reproduces | Taken from the part, 294,912 bytes |
+| `$02`'s state, which is everything `$0a` reads | Three tables from the part, 59,686 bytes, no key carrying two answers across all 6,980 argument sets |
+| `$00`, `$08` and `$04` | 65816 arithmetic, exact against the part on 400 random argument sets each |
+| The table of recorded answers | 12 commands |
+| `$13` and `$18` | Complete over their whole domain, driven out of the part |
+| The lookup | Exact on every recorded question, all three regions |
+| The fallback | Answers every command, including keys no recording holds, without looping |
+| `$0a` | 65816, exact: 43,440 of 43,440 answer words on 60 argument sets across all three recordings |
+| The accesses through the redirected window | 200 three byte accesses each replaced with a three byte call, plus five runs replaced whole |
+| Long accesses that compute with what they read | Seven routed, six `adc` and one `eor` |
+| The game's own work RAM reads and writes through the window's bank | All 31 routed. [`OPEN-QUESTIONS.md`](OPEN-QUESTIONS.md) section 30 |
+| The demo | Flies, draws its ground, and tracks the retail cartridge's flight through game frame 405, the end of the comparison run. Work RAM differs by 30 to 60 bytes a frame, 22 of them at every frame and twelve of those a patched call the game copies into work RAM |
+| The instrument panel | Drawn on every picture. Screen brightness across the demo has a spread of 0.05, at the retail cartridge's level. Section 32 |
+| The band cut through the instrument panel | On 2.2% of frames. Section 48 |
+| The ten words `$02` leaves behind | Computed or read from a table covering the whole key, all ten exact against the part on 596 frames spanning the demo |
+| Image size | Grows, inside what a low cartridge addresses |
 
-### How much of the game it covers
+### Speed
 
-Answering the questions it was built from is not coverage, so the table is
-measured by holdout: built from part of the recordings and asked the rest.
+| Measurement | Value |
+|:--|:--|
+| One call to `$0a`, averaged across 149 frames of the demo | 77,044 processor cycles |
+| One call to `$0a` that is not the first | 130,147 cycles, steady to within 3% across 24 states of a flight |
+| Scanlines whose distance matches the line above, so their answers are copied | 63.6% |
+| Six table multiplies a scanline, as a share of `$0a` | 54.7% |
+| Building the four multiply tables, outside any frame | 62,665 cycles |
+| One lookup of 600 keys from a recording | 1,566,405 cycles |
+| A frame when a read costs 8 master clocks | 44,671 processor cycles |
+| The part, wall time the game was blocked per call | tens of cycles to about 250, about 2,700 a median frame of 43 calls |
+| The arithmetic for `$00`, `$08` and `$04` | 398, 920 and 833 cycles |
 
-| what was asked | hit rate |
-|---|---:|
-| the questions it was built from | 100% |
-| a different recording of the same attract demo | 93.4% |
-| the second half of a recording whose first half it learned | 11.2% |
+Measured on the processor model, never on the console. A change moves where the demo sits when a measurement window opens, so the console's frame-rate meter is not monotone in work: adding 25,566 cycles of dead work to the ground made it report a better rate. Sections 36 to 39, 49, 51 and 52 carry the runs.
 
-The middle figure is the one to distrust. All three recordings are the same
-attract sequence, so agreement between them measures repetition. The last figure
-is what a player doing something the demo never did would see, and it is the
-honest one.
+Across a whole game frame, sampled by program counter against the assembler's line map:
 
-Per command, on that last figure: `$13` 39.4%, `$10` 10.9%, `$00` 5.4%, `$06`
-0%. `$06` is 31.7% of every call the game makes and cannot be tabulated at any
-size, so its arithmetic is the single highest-value thing left to read.
+| Where | Share |
+|:--|--:|
+| The ground | 46.8% |
+| The recorded-answer search | 20.6% |
+| The game's own code | 15.4% |
+| The port | 11.2% |
 
-Two commands are not measured this way because they no longer can miss. `$13`
-and `$18` have arguments that are quantised rather than continuous: one of
-`$13`'s words spans 32,769 and takes seven values. Sizing by span says 5.48e17
-rows and sizing by the values the word can hold says 1,512. Every combination
-was driven out of the part and stored, and all 248 rows the recordings do hold
-came back identical when driven the same way, which is what says the fill is
-sound rather than assumed.
+Two commands that need no search are emitted by [`lutbuild.py`](lutbuild.py) as code that counts their row. One of them is asked 9.4 times a game frame. Section 50.
 
-`$10` was not completed although its domain is only 4,996 combinations. Driven
-on its key alone it reproduces the recording 83 times in 100, so 17% of any
-filled row would be wrong, and a wrong row is worse than a missing one: the
-missing one falls back and the wrong one does not.
+### How much of the game the table covers
+
+Built from part of the recordings and asked the rest:
+
+| What was asked | Hit rate |
+|:--|--:|
+| The questions it was built from | 100% |
+| A different recording of the same attract demo | 93.4% |
+| The second half of a recording whose first half it learned | 11.2% |
+
+All three recordings are the same attract sequence, so the middle figure measures repetition. The last is what a player doing something the demo never did meets. On that figure `$10` hits 10.9% and `$06` 0%. `$06` is 31.7% of every call the game makes.
+
+`$13` and `$18` are not measured this way because they cannot miss. Their arguments are quantised: one of `$13`'s words spans 32,769 and takes seven values, so sizing by span says 5.48e17 rows and sizing by values says 1,512. Every combination was driven out of the part, and all 248 rows the recordings hold came back identical when driven the same way.
+
+`$10` has a domain of 4,996 combinations and is not completed. Driven on its key alone it reproduces the recording 83 times in 100, so 17% of a filled row would be wrong. A missing row falls back to code and a wrong row does not.
 
 ### What the lookup answers
 
-Driven on the processor model against the three recordings, forty questions per
-command per region:
+Driven on the processor model against the three recordings, forty questions per command per region:
 
-| command | right | wrong |
-|---|---:|---:|
+| Command | Right | Wrong |
+|:--|--:|--:|
 | `$00` `$02` `$03` `$06` `$08` `$0c` `$0d` `$0e` `$10` `$13` `$14` `$1b` `$28` | 120 each | 0 |
 | `$04` | 40 | 0 |
 | `$18` | 10 | 0 |
-| `$0a` | 0 | 120 |
 
-`$04` and `$18` have fewer because the recordings hold fewer distinct questions
-for them, not because fewer were tried. `$0a` answers 764 words of nought, which
-is deliberate: it is bounded, it reads nothing it has not set, and it is
-obviously wrong rather than plausibly wrong.
-
-### How fast it is, against the part it replaces
-
-Counted on the processor model, driving the assembled image. The call rate comes
-from the recordings, which carry a frame number per access.
-
-| | per call | a median frame, 43 calls | of a frame |
-|---|---:|---:|---:|
-| the part, wall time the game was blocked | tens to ~250 | about 2,700 | 6% |
-| this replacement | 7,764 | 333,850 | 750% |
-
-So it is correct and it is far too slow. A frame is 44,671 processor cycles when
-a read costs 8 master clocks, and the game has to do everything else in the same
-frame.
-
-The reason is that the table is the slow path. `$00` costs 6,562 cycles through
-the table and 398 through the arithmetic that was read out of the part and
-checked exact against it, which is sixteen times cheaper and covers the whole
-domain instead of only what was recorded. The same holds for `$08`, 5,696
-against 920, and `$04`, 3,960 against 833.
-
-That points the remaining work at exactly the two commands the coverage figures
-already pointed at. `$06` is 30.8% of calls and `$13` is 26.9%; reading their
-arithmetic is the largest gain in speed and in coverage, and it is one task.
-
-### Where everything sits in the cartridge
-
-A low cartridge carries banks `$00` to `$7D` and nothing above, so the whole
-image is 121 banks, 3,964,928 bytes, with 5 banks still spare:
-
-| what | banks |
-|---|---|
-| the game as it ships | `$00`-`$0F` |
-| the replacement's own code | `$10` |
-| the sine and cosine taken from the part | `$11`-`$18` |
-| the answers | `$19`-`$6F` |
-| the state `$02` leaves behind, which is what `$0a` reads | `$70`-`$72` |
-| the reciprocal taken from the part | `$73` |
-| the window the game's redirected accesses land in | `$7D` |
-
-```bash
-python3 tools/identify.py
-```
-
-It reports what it found, and when a file does not match it says which way it is wrong, prints the
-digest it computed, and gives a command for working the digest out yourself on macOS, Linux or
-Windows.
+The recordings hold fewer distinct questions for `$04` and `$18`.
 
 ## What was measured
 
 ### One replacement covers all three regions
 
-The three images reach the part the same way. Reading the code for stores to the data port, in both
-of the two forms the cartridge uses, gives 208 in the USA image, 218 in the Japanese one and 208 in
-the European one, and the twenty command bytes read out of them are the same twenty in all three.
+Reading the code for stores to the data port, in both forms the cartridge uses, gives 208 in the USA image, 218 in the Japanese one and 208 in the European one. The twenty command bytes read out of them are the same twenty in all three.
 
-The long form of the access, the one that spells its own bank, lands on exactly two addresses in
-every region: 84 instructions at `$3f:8000` and 9 at `$3f:c000`, the same counts in all three. It is
-the same driver three times over, which is the finding the shape of this project follows from: a
-replacement written for one region is a replacement for the other two, and the PAL release is not a
-separate problem.
+The long form lands on two addresses in every region: 84 instructions at `$3f:8000` and 9 at `$3f:c000`, the same counts in all three. It is one driver three times over, so a replacement for one region is a replacement for the other two.
 
 ### Most of the driver is invisible to a search for the long form
 
-The obvious way to find where a cartridge reaches a coprocessor is to search for an absolute long
-access, because it carries its own bank and can be matched exactly on four bytes. That search is
-sound and it is not enough here. The hot paths take the data bank once with `pea $003f` and `plb`
-and then use ordinary absolute stores, which spell two bytes and name no bank.
+The hot paths take the data bank once with `pea $003f` and `plb`, then use absolute stores that spell two bytes and name no bank. Measured against a recording of the Japanese image, which carries the program counter of every access:
 
-Measured against a recording of the Japanese image, which carries the program counter of every
-access:
+| | Instructions | Long form | Absolute | Share of bytes moved by the long form |
+|:--|--:|--:|--:|--:|
+| Writing to the part | 118 | 40 | 78 | 62.2% |
+| Reading from it | 47 | 13 | 34 | 7.9% |
 
-| | instructions | long form | absolute | share of bytes moved by the long form |
-|---|---:|---:|---:|---:|
-| writing to the part | 118 | 40 | 78 | 62.2% |
-| reading from it | 47 | 13 | 34 | 7.9% |
+[`commands.py`](commands.py) reads both. The hottest loop in the game is `sta $8000` after `plb`, followed by 176 passes of poll-and-read.
 
-So a reader that knows only the long form sees a minority of the writes and almost none of the
-reads. [`commands.py`](commands.py) reads both, and the hottest loop in the game is one it would
-otherwise miss entirely: `sta $8000` after `plb`, followed by 176 passes of poll-and-read.
+A search by encoding also reports bytes that are not instructions. In the USA image 29 of the 122 long-form matches sit at 29 different addresses across banks `$30` to `$3e`, one match each. Japan has 28 and Europe 30, and they are the whole of the difference between the three totals.
 
-The same search by encoding also reports bytes that are not instructions. In the USA image 29 of the
-122 long-form matches sit at 29 different addresses scattered across banks `$30` to `$3e`, one match
-each, which is what data that happens to spell an access looks like rather than what a driver looks
-like. Japan has 28 of those and Europe 30, and they are the whole of the difference between the
-three totals.
+### How many words each command reads
 
-### Where a table works, and where it cannot
+Measured through the part's protocol: a command written one word short of what it wants still echoes, and written one word past it falls silent. The count is that silence stepped back one. It is checked against arithmetic: command `$00` answers the signed product of its two words with fifteen fractional bits, `0x1234 x 0x5678 -> 0x0C4C`.
 
-The plan this started from was to compute every answer ahead of time and ship the results, which is
-what a cartridge with room to spare is for. Whether that works for a given command is decided by how
-many argument words it reads, because that is the exponent on the size of the table it would take.
-One word is 65,536 rows and a cartridge holds that. Two words is 4,294,967,296 rows.
+Forty five of the 256 command bytes answer at all.
 
-So it was measured through the part's own protocol. A command written one word short of what it
-wants still echoes; written one word past, it falls silent. The count is that silence, stepped back
-one, and it is checked against arithmetic nobody told it about: command `$00` takes two words and
-answers their product as signed fixed point with fifteen fractional bits, which is what
-`0x1234 x 0x5678 -> 0x0C4C` is. A protocol reading that gets an unprompted calculation right is a
-protocol reading that works.
-
-Forty five of the 256 command bytes answer at all. The rest are not commands.
-
-| words in | words out | commands | a table of every answer |
-|---:|---:|---:|---|
+| Words in | Words out | Commands | A table of every answer |
+|--:|--:|--:|:--|
 | 1 | 1 | 2 | 131,072 bytes, which fits |
-| 2 | 1 | 2 | 8,589,934,592 bytes, 683 times the whole image |
+| 2 | 1 | 2 | 8,589,934,592 bytes, 683 times a 96 Mbit image |
 | 3 | 1 | 14 | 562 TB |
-| 4 | 1 | 7 | larger still |
-| 5 | 1 | 17 | larger still |
-| 6 | 12 | 1 | larger still |
-| 10 | 1 | 2 | larger still |
+| 4 | 1 | 7 | Larger still |
+| 5 | 1 | 17 | Larger still |
+| 6 | 12 | 1 | Larger still |
+| 10 | 1 | 2 | Larger still |
 
-Two commands can have every answer stored. The other forty three cannot, and not by a margin a
-bigger cartridge closes: the smallest of them is already 683 times a 96 Mbit image. The line sits
-between one argument word and two, there is no arithmetic in between, and nothing moves it.
+Two commands can have every answer stored. The smallest of the other forty three is 683 times a 96 Mbit image. The table above sizes the part's input domain. What the game asks for is far smaller, and the sections below size that.
 
-### What the game actually asks for, which is a different question
+### What the game asks for
 
-The table above is about the input domain: what a table would cost if the game
-could send anything. It cannot, and the gap is enormous, so the domain is the wrong
-thing to size against.
+From a run of the Japanese image over 12,000 frames with no input, so the attract demo flies, 257,189 commands were issued from 30 sites. The NTSC images stop reaching the part after frame 10,418 and the PAL one is still flying at 11,999, which is why Europe issues `$04` and the other two never do.
 
-[`emu/`](emu/) records every byte the cartridge exchanges with the part, with the
-program counter of the instruction that moved it. That last field is what makes
-the recording checkable against the code, and it is what the numbers below rest
-on: a command byte is the one thing this cartridge writes eight bits at a time,
-so a program counter that only ever touches the low half of the port issued one.
-
-From a run of the Japanese image over 12,000 frames with no input at all, so the
-attract demo flies rather than sitting on a menu, 257,189 commands were issued
-from 30 sites. The NTSC images stop reaching the part after frame 10,418 and the
-PAL one is still flying at 11,999, which is why Europe issues command `$04` and
-the other two never do. The traffic is not spread evenly:
-
-| command | share | issued | sites | what it is |
-|---|---:|---:|---:|---|
+| Command | Share | Issued | Sites | What it is |
+|:--|--:|--:|--:|:--|
 | `$06` | 28.9% | 74,261 | 2 | |
 | `$13` | 25.4% | 65,332 | 1 | |
-| `$00` | 15.0% | 38,668 | 10 | a signed multiply, so computed rather than stored |
+| `$00` | 15.0% | 38,668 | 10 | A signed multiply, computed |
 | `$11` | 4.7% | 12,136 | 2 | |
-| `$0a` | 2.7% | 6,946 | 1 | answers with a stream read 176 times over |
-| the other 13 | 23.3% | 59,846 | 14 | |
+| `$0a` | 2.7% | 6,946 | 1 | Answers with a stream read 176 times over |
+| The other 13 | 23.3% | 59,846 | 14 | |
 
-Two commands are more than half of everything the cartridge asks for, and the
-multiply is a further sixth of it and needs no table at all, because the console
-has a hardware multiplier.
+### Cutting a recording at the site that issued it
 
-### Where a table works, measured by cutting at the site that issued it
+`$0a` answers with a stream the cartridge reads 176 times over, and the part accepts writes during that stream. A read inside one exchange then looks like the end of it, and cut that way a tenth of the runs hold writes from code more than 32 bytes apart.
 
-An exchange is not a run of writes ended by a read. Command `$0a` answers with a
-stream the cartridge reads 176 times over and the part accepts writes during that
-stream, so a read in the middle of one exchange looks exactly like the end of it.
-Counted that way, a tenth of the runs hold writes from code more than 32 bytes
-apart, which is two routines' traffic joined into one.
+[`exchanges.py`](exchanges.py) cuts at the command site instead. A program counter that only touches the low half of the data port issued a command, and one that touches both halves wrote argument words.
 
-[`exchanges.py`](exchanges.py) cuts at the command site instead, which the byte
-stream cannot blur: a program counter that only ever touches the low half of the
-data port issued commands, one that touches both halves wrote argument words, and
-the recording carries the counter of every access.
+Across all three runs: 73,341 distinct argument sets over 19 commands, 586,728 bytes at one stored answer each.
 
-Across all three runs, 73,341 distinct argument sets over 19 commands. At one
-stored answer each that is 586,728 bytes, 4.66% of a 96 Mbit image. The split
-that decides how to answer each command:
+| | Commands | Rows | Bytes | Share of traffic |
+|:--|--:|--:|--:|--:|
+| An inline compare chain | 5 | 22 | 176 | 30.5% |
+| A table | 13 | 46,832 | 374,656 | 54.3% |
+| Computed, being a multiply | 1 | none | 0 | 15.8% |
 
-| | commands | rows | bytes | share of traffic |
-|---|---:|---:|---:|---:|
-| an inline compare chain | 5 | 22 | **176** | **30.5%** |
-| a table | 13 | 46,832 | 374,656 | 54.3% |
-| computed, being a multiply | 1 | none | 0 | 15.8% |
+### What the part computes from
 
-Twenty two rows and 176 bytes answer three tenths of everything the cartridge
-asks for. `$13` alone is a quarter of the traffic and takes fourteen argument
-sets; `$0e` takes one.
+The uPD77C25 keeps 1024 words of data ROM beside its program. [`tables.py`](tables.py) rebuilds each candidate from its formula and searches for it. Four are there, word for word:
 
-### What the part actually computes from
+| Table | Words | Formula | Bytes |
+|:--|--:|:--|--:|
+| Reciprocal | 128 | `2^22 / (128 + k)`, rounded and clamped | 256 |
+| Sine | 128 | `sin(pi k / 128) x 32768`, fraction cut off | 256 |
+| Cosine | 128 | `cos(pi k / 128) x 32768`, fraction cut off | 256 |
+| Arccosine | 256 | `acos(k / 256) x 32768 / pi` | 512 |
+| | | **Total** | **1,280** |
 
-The list this project expected to tabulate was a sine, a cosine, a reciprocal, a
-square root and an arctangent, and that was what a coprocessor of this kind
-normally carries rather than anything measured. The part settles it itself: the
-uPD77C25 keeps 1024 words of data ROM beside its program, and what a microcode
-interpolates from is written down in there.
-
-[`tables.py`](tables.py) rebuilds each candidate from its formula and searches for
-it. Four are there, each to within one unit, which is rounding:
-
-| table | words | formula | bytes |
-|---|---:|---|---:|
-| reciprocal | 129 | `2^22 / (128 + k)` | 258 |
-| sine | 128 | `sin(pi k / 128) x 32767` | 256 |
-| cosine | 128 | `cos(pi k / 128) x 32767` | 256 |
-| arccosine | 256 | `acos(k / 256) x 32768 / pi` | 512 |
-| | | **total** | **1,282** |
-
-There is no square root and no arctangent, and nothing expected an arccosine.
-Both masks carry the same four byte for byte, the DSP-1B holding three of them
-two words lower, so the correction the DSP-1B made was to the program.
-
-That answers the sizing question by dissolving it. A replacement carrying what
-the part carries needs about a kilobyte, not 131,072 bytes per function, and
-interpolating the way the microcode does is also the only way to be exactly right
-rather than close.
+There is no square root and no arctangent. Both masks carry the same four, the DSP-1B holding three of them two words lower.
 
 ### What range each argument takes
 
-An argument computed at run time still has ends, and the ends decide what shape
-of table is possible. [`exchanges.py`](exchanges.py) reports the lowest, the
-highest and the count of distinct values at every argument position:
+[`exchanges.py`](exchanges.py) reports the lowest, the highest and the count of distinct values at every argument position:
 
-| what the positions look like | commands | what a table indexes on |
-|---|---:|---|
-| one or a handful of values | 5 | the values, in line |
-| a few thousand, filling their range | 2 | the range, 2^18 and 2^20 rows |
-| at least one spanning the whole word | 12 | nothing dense |
+| What the positions look like | Commands | What a table indexes on |
+|:--|--:|:--|
+| One or a handful of values | 5 | The values, inline |
+| A few thousand, filling their range | 2 | The range, 2^18 and 2^20 rows |
+| At least one spanning the whole word | 12 | Nothing dense |
 
-The third row is why a width on its own misleads. Command `$0d` takes about four
-thousand distinct values at each of three positions and each position runs the
-full 0 to 65,535, so the values are scattered rather than dense and a table on the
-range would be 2^48 rows almost all of which answer inputs nobody sends. Both
-figures are reported together for that reason.
+Command `$0d` takes about four thousand distinct values at each of three positions, and each runs the full 0 to 65,535. A table on the range would be 2^48 rows, almost all for inputs nobody sends, so both figures are always reported together.
 
-### What a table built from those ranges costs
+### The part keeps state
 
-[`lut.py`](lut.py) plans one table per command and shares a single cartridge
-budget between them. Each starts on a table over the set that was recorded, which
-is cheap and can miss, and the budget is then spent widening as many as it reaches
-to a table over the range, cheapest widening first. A command answered over its
-range cannot reach the fallback for any argument between the ends the game used.
+Seven of the sixteen answering commands give different answers for identical arguments, because a command reading a matrix another command loaded is not a function of its own arguments. `$0e` takes one argument set in every recording and answers it 6,260 different ways.
 
-| command | rows | bytes | indexed on |
-|---|---:|---:|---|
-| `$04` | 1,048,576 | 2,097,152 | the range, complete |
-| `$10` | 262,144 | 524,288 | the range, complete |
-| `$0e` | 4 | 8 | the range, complete |
-| `$80` | 1 | 2 | the range, complete |
-| the other 15 | 74,020 | 140,878 | the set, so they can miss |
+Six of the seven become deterministic once the key also carries one earlier command's arguments, which is `CARRIER` in [`lutbuild.py`](lutbuild.py):
 
-| | bytes |
-|---|---:|
-| the whole table | 2,762,528 |
-| the game inside it | 524,288 |
-| the image it makes | 3,286,816 |
-| a 96 Mbit cartridge | 12,582,912 |
-| **headroom** | **9,296,096** |
+| Command | Keyed on its arguments and the last |
+|:--|:--|
+| `$03` | `$14` |
+| `$06`, `$0d`, `$0e` | `$02` |
+| `$13`, `$1b` | `$11` |
 
-Four of the nineteen are complete over the range the game used. The other fifteen
-hold a position spanning the whole sixteen bit word, so a table over their range
-is 2^32 rows or more and nothing holds it; those are answered from the recorded
-set and are where the fallback can be reached.
+`$0a` is the seventh. No earlier command settles it, alone or in any pair or triple. Storing each distinct whole answer costs 16,762,160 bytes, and storing the four word steps costs 538,583 distinct steps before any index. It is computed instead: one normalise, one reciprocal, two multiplies and two shifts per scanline, read out of the part's program stage by stage and checked against its registers. Section 22.
 
-Widening those fifteen is not a budget problem and more cartridge does not fix
-it. It needs either the scalar decomposition, where each function takes one
-argument and 65,536 rows covers it outright, or a recording that covers more of
-the game.
+### What the table encodes to
 
-### The part keeps state, so arguments alone are not the key
+[`lutbuild.py`](lutbuild.py) sorts each command's rows by key, so the cartridge finds a row by halving. From the three recordings, before `$13` and `$18` are completed:
 
-Seven of the sixteen commands that answer give different answers for identical
-arguments, because the part keeps state and a command reading a matrix another
-command loaded is not a function of its own arguments. Command `$0e` takes one
-argument set in every recording and answers it 6,260 different ways, which had
-made it look like the cheapest table here at eight bytes.
+| Command | Keyed on | Rows | Key words | Answer words | Bytes |
+|:--|:--|--:|--:|--:|--:|
+| `$06` | Arguments and last `$02` | 75,278 | 10 | 3 | 1,957,228 |
+| `$0d` | Arguments and last `$02` | 6,557 | 10 | 3 | 170,482 |
+| `$02` | Arguments | 6,980 | 7 | 4 | 153,560 |
+| `$0e` | Arguments and last `$02` | 6,980 | 9 | 2 | 153,560 |
+| `$03` | Arguments and last `$14` | 5,268 | 9 | 3 | 126,432 |
+| `$14` | Arguments | 4,406 | 6 | 3 | 79,308 |
+| `$28` | Arguments | 6,182 | 3 | 1 | 49,456 |
+| `$1b` | Arguments and last `$11` | 2,986 | 7 | 1 | 47,776 |
+| `$0c` | Arguments | 3,480 | 3 | 2 | 34,800 |
+| `$10` | Arguments | 2,498 | 2 | 2 | 19,984 |
+| `$13` | Arguments and last `$11` | 244 | 7 | 3 | 4,880 |
+| `$18` | Arguments | 4 | 4 | 1 | 40 |
+| | | | | **Total** | **2,797,956** |
 
-Six of the seven become deterministic once the key carries one earlier command's
-arguments as well: `$03` on the last `$14`, `$06`, `$0d` and `$0e` on the last
-`$02`, `$13` and `$1b` on the last `$11`. Keyed that way nothing is ambiguous,
-the whole table is 301,308 bytes and the image 825,596.
-
-`$0a` is not tabulatable from these runs on any key tried, and that is measured
-three ways rather than asserted once. No earlier command settles it, alone or in
-any pair or triple. Storing each distinct whole answer costs 16,762,160 bytes,
-which is more than a 96 Mbit cartridge holds. Storing the four word steps and
-indexing them costs 538,583 distinct steps before any index array.
-
-It writes one word, reads its answer through four instructions that each fire 176
-or 191 times, then writes four words more. The answer is a per scanline stream
-rather than a row.
-
-None of that matters any more, because `$0a` no longer has to be stored. Reading
-the part's own program stage by stage, and checking each stage against its
-registers rather than against its answers, gives the arithmetic outright: one
-normalise, one reciprocal, two multiplies and two shifts per scanline. The output
-stage reproduces every recorded scanline exactly and the scale stage 175 of 176.
-The chain is in OPEN-QUESTIONS section 22, and the sizes above are kept only to
-record what the storage route would have cost.
-
-### What the table actually encodes to
-
-[`lut.py`](lut.py) emits each command's rows as a cartridge would hold them: a
-row count, the key and answer widths, then the keys sorted so a replacement finds
-a row by halving the range rather than walking it. Seventeen compares reach any
-row of the largest table here.
-
-| command | keyed on | rows | key words | answer words | bytes |
-|---|---|---:|---:|---:|---:|
-| `$06` | arguments and last `$02` | 75,278 | 10 | 3 | 1,957,236 |
-| `$0d` | arguments and last `$02` | 6,557 | 10 | 3 | 170,490 |
-| `$00` | arguments | 26,487 | 2 | 1 | 158,930 |
-| `$02` | arguments | 6,980 | 7 | 4 | 153,568 |
-| `$0e` | arguments and last `$02` | 6,980 | 9 | 2 | 153,568 |
-| `$03` | arguments and last `$14` | 5,268 | 9 | 3 | 126,440 |
-| the other 9 | | 22,904 | | | 268,708 |
-
-| | bytes |
-|---|---:|
-| the table, settled commands only | 2,988,940 |
-| the game inside it | 524,288 |
-| the image it makes | 3,513,228 |
-| a 96 Mbit cartridge | 12,582,912 |
-| **headroom** | **9,069,684** |
-| what plain low addressing reaches | 4,194,304 |
-
-Only `$0a` is left to the fallback. The image stays inside plain low addressing,
-so none of the windowed layout is needed.
-
-### Where each row's answer came from
-
-The keys come from the recordings, because only the game says what it asks. The
-answers come from the part wherever the part could be driven to the same state,
-because the recordings were made against snes9x and the two do not always agree.
-
-| | rows |
-|---|---:|
-| answer driven from the part's own program | 108,311 |
-| answer still the one the recording held | 42,345 |
-
-Seventy percent by row. The rest are keys the game asks only after exchange
-200,000, which is where a replay stops staying in step with the part, so they
-keep the recorded answer and are marked as unconfirmed rather than dropped.
-`$04` is the one command at zero percent: all 324 of its rows sit past that point.
-
-A row carries its key as well as its answer, which is what a table keyed on a set
-costs over one keyed on a range: a range table finds its row by arithmetic and
-stores no key at all. Several of these keys are wider than the answer they lead
-to, `$06` at ten words of key for three of answer, and that is the price of a
-part that keeps state.
+That is 86 banks of 32,768 bytes. A row carries its key as well as its answer, and `$06` spends ten words of key on three of answer because the part keeps state.
 
 ### What a recording can and cannot say
 
-A recording says what the game did. It cannot say what the game can do. Most of
-these commands take arguments that come from the aircraft's attitude and take a
-new value on almost every frame, so no recording will ever show their input set
-closing, and a lookup with no entry for an unseen argument has no answer at all.
-The design is therefore a table where the set closes and computation where it
-does not, and never a table alone. Which commands fall on which side is measured
-above, and the answer does not close: it is what three runs of the demo produced,
-and a player working the controls produces sets the demo never will.
+A recording says what the game did, never what it can do. Most arguments come from the aircraft's attitude and take a new value on almost every frame, so no recording shows their input set closing. Every command therefore has a fallback in code behind the table.
 
-Reading the cartridge's code rather than running it answers the other half.
-[`commands.py`](commands.py) reads 20 command bytes out of every one of the three
-images, and Europe reads one more, `$80`. Against the Japanese recording it
-agrees on 27 of the 30 sites that were actually executed, contradicts none, and
-is silent on three, each for a stated reason. Against the European one it agrees
-on 33 of 36 and again contradicts none, and every command that recording issued
-is one the code reading also finds.
+Reading the code answers the other half. [`commands.py`](commands.py) reads 20 command bytes out of every image, and Europe reads one more, `$80`. Against the Japanese recording it agrees on 27 of the 30 sites that ran, contradicts none, and is silent on three. Against the European one it agrees on 33 of 36 and contradicts none.
 
-| | commands |
-|---|---:|
-| read out of the code, all three images | 20 |
+| | Commands |
+|:--|--:|
+| Read out of the code, all three images | 20 |
 | Europe also reads | `$80` |
-| the Japanese recording issued | 18 |
-| the European recording issued | 19 |
-| read but never seen to run | `$21`, `$23` |
+| The Japanese recording issued | 18 |
+| The European recording issued | 19 |
+| Read but never seen to run | `$21`, `$23` |
 
-`$80` is not a computation. It sends the part back to waiting for a command, and
-the cartridge writes it 128 times in a row at `$0702a` to flush the part.
+`$80` sends the part back to waiting for a command. The cartridge writes it 128 times in a row at `$0702a` to flush the part.
 
-### Whether the image has to grow at all
+### Room in the retail image
 
-Probably nothing, and that is the answer to a question this project was built
-around. The tables are 1,282 bytes and the retail image already has room for
-them, which [`layout.py`](layout.py) measures rather than assumes:
+[`layout.py`](layout.py) measures runs of one repeated byte, 256 bytes or longer:
 
-| region | free in runs of 256 bytes or more | largest single run |
-|---|---:|---:|
+| Region | Free in those runs | Largest single run |
+|:--|--:|--:|
 | USA | 63,122 | 4,249 |
 | Japan | 74,207 | 8,395 |
 | Europe | 63,122 | 4,249 |
 
-Every one of them holds all four tables in one piece with tens of kilobytes to
-spare. A run of one repeated byte is evidence that nothing uses it rather than
-proof, so a candidate run is checked against the driver census before anything
-goes in it, but the shape of the answer is not in doubt: this does not look like
-a cartridge that has to grow.
-
-That matters because growing is not free. An image past the address space needs
-the windowed layout the sibling project uses, which is a substantial piece of work
-and changes which emulators load the result. On the current evidence none of that
-is needed here.
-
-What remains unmeasured is the replacement code itself, which is not written.
-
-Products need no table at all: command `$00` is a signed multiply, it is a sixth
-of everything the cartridge asks for, and the console's hardware multiplier
-computes it faster than any lookup.
+Each holds the four 1,280 byte tables in one piece. The table of recorded answers does not fit, so the image grows. A run of one repeated byte is evidence that nothing uses it, so a candidate run is checked against the driver census before anything goes in it.
 
 ## The dumps
 
-Named as No-Intro names them. Every digest is of the whole file with no copier header. SHA-256 is
-the one that decides; the others are there to cross-check against databases that still key on them.
+Named as No-Intro names them. Every digest is of the whole file with no copier header. SHA-256 decides, and CRC32 is there to cross-check against databases that still key on it.
 
-| file | read as | size |
-|---|---|---|
+| File | Read as | Size |
+|:--|:--|--:|
 | Pilotwings, USA | `roms/pilotwings-usa.sfc` | 524,288 |
 | Pilotwings, Japan | `roms/pilotwings-jp.sfc` | 524,288 |
 | Pilotwings, Europe | `roms/pilotwings-eur.sfc` | 524,288 |
 
-| region | SHA-256 | CRC32 |
-|---|---|---|
+| Region | SHA-256 | CRC32 |
+|:--|:--|:--|
 | USA | `03d0127f5de3237e22ad00de0c20763274da7b71142dde693240ac96d10983a3` | `266C44ED` |
 | Japan | `d1845de22c3c7f2606bda20e09c8f7a78f92f5cbbb6bfe01f96a1d1e84b30394` | `77871727` |
 | Europe | `f70a72f3d3a65497cdc4d849877a29cf4f7bd10439bb7f5cb8675cdfc0e706d4` | `DEF45776` |
 
-All three declare version `0x00` in their headers, and no later revision of any of them appears in
-the set these were measured from.
+All three declare version `0x00`. A Nintendo Campus Challenge cartridge built on this game is the same 524,288 bytes, declares the same chipset `0x03`, and carries the same internal title `PILOTWINGS`. Its map byte and its digests are the only things that tell it apart, which is why identification is by digest alone.
 
-Identification is by digest and by nothing else, and this project has a concrete reason rather than
-a general preference. A Nintendo Campus Challenge cartridge built on this game is the same 524,288
-bytes, declares the same chipset `0x03`, and carries the same internal title `PILOTWINGS`. A check
-on the length, the chipset or the title accepts it as a retail dump. Its map byte and its digests
-are the only things that say otherwise.
+## The models underneath
 
-## Prerequisites
+| Model | Submodule | Held to |
+|:--|:--|:--|
+| 65816 | [mos65xx-python](https://github.com/gufranco/mos65xx-python) | A per-opcode suite, 5,120,000 cases |
+| DSP-1 | [snes-dsp-python](https://github.com/gufranco/snes-dsp-python) | The part's own microcode, run |
+| Cartridge map | [snes-mapper-python](https://github.com/gufranco/snes-mapper-python) | Every header combination in a library of real cartridges |
+| ROM image | [snes-rom-image-python](https://github.com/gufranco/snes-rom-image-python) | The same library, rewritten and checked |
+| Driver | [snes-driver-python](https://github.com/gufranco/snes-driver-python) | Where a cartridge's code reaches its coprocessor |
 
-| Tool | Version | Why |
-|:-----|:--------|:----|
-| [Python 3](https://www.python.org/) | 3.12 | every analysis module |
-| Your own cartridge dumps | 524,288 bytes each | placed in `roms/` under the names above |
-| Your own copy of the microcode | 8,192 bytes | placed in `firmware/`, for the checks that drive the part |
+There is no graphics model. This part computes numbers and never touches a tile.
 
-Nothing is installed from a package index. Nothing is downloaded.
+The 65816 model is the instrument every cycle count above comes from: it drives the bus cycle by cycle, so a routine costs the cycles it took. It starts with memory and registers holding reproducible scrambled values rather than zeroes, so a read of something never written shows up as a wrong answer.
 
-## The hardware this is checked against
+## Where everything sits in the cartridge
+
+A low cartridge carries banks `$00` to `$7D`. Everything this project adds is read through the mirror at `$80` and up, which answers a read in six master clocks against eight once `$420D` is set.
+
+| What | Banks | Read through |
+|:--|:--|:--|
+| The game as it ships | `$00`-`$0F` | |
+| The replacement's code | `$10` | `$90` |
+| The sine and cosine taken from the part | `$11`-`$18` | `$91`-`$98` |
+| The recorded answers | `$19`-`$6F` | `$99`-`$EF` |
+| `$02`'s state, which `$0a` reads | `$70`-`$72` | `$F0`-`$F2` |
+| The reciprocal taken from the part | `$73` | `$F3` |
+| The window the game's redirected accesses land in | `$7D` | `$7D` |
+
+Answering all twelve recorded commands takes 87 banks, 60 of them for `$06`. The image may grow to 96 Mbit whenever that buys fidelity, stability or speed. Every bank above `$7D` needs a windowed layout, so the image stays below it while it can. Images of 2 MiB and 4 MiB boot and run the demo identically once the header's size byte matches, and [`patch.py`](patch.py) sets that byte from the image's length.
+
+## Is it right
+
+Two oracles, and nothing here computes a DSP-1 result of its own. The retail cartridges decide what is asked: a command and an argument set are a question because a retail cartridge sends them. The part's microcode decides the answer, run through [snes-dsp-python](https://github.com/gufranco/snes-dsp-python).
+
+| Claim | Held to | Where |
+|:--|:--|:--|
+| A dump is the dump | SHA-256 in [`artifacts.manifest.json`](artifacts.manifest.json) | [`tools/identify.py`](tools/identify.py) |
+| Where the cartridge reaches the part | A reading of the code checked against a recording of a run, both ways | [`commands.retail.test.py`](commands.retail.test.py), [`sites.retail.test.py`](sites.retail.test.py) |
+| What a routine answers | The same question asked of the part | [`routines.retail.test.py`](routines.retail.test.py), [`raster.retail.test.py`](raster.retail.test.py), [`attitude.retail.test.py`](attitude.retail.test.py) |
+| The four tables | The microcode's data ROM, word for word | [`tables.retail.test.py`](tables.retail.test.py) |
+| The patch | The retail images | [`patch.retail.test.py`](patch.retail.test.py) |
+
+The checks that need a dump or the microcode live in the ten `*.retail.test.py` files, 87 tests that report themselves skipped when either is absent. They are kept out of the coverage measurement, because a machine with the artifacts runs one set of paths and a machine without them runs the other.
+
+This project reproduces the DSP-1 and never the DSP-1B. The attract demo is a recording of button presses, and on the DSP-1B's corrected arithmetic the plane flies the same inputs into the ground. Which mask a retail board carries cannot be read from a dump. That question and every other claim narrower than it looks are in [`OPEN-QUESTIONS.md`](OPEN-QUESTIONS.md), each with the measurement that would settle it.
+
+## Working on it
+
+| Need | Where |
+|:--|:--|
+| Every gate and the order to run them | [CONTRIBUTING.md](CONTRIBUTING.md) |
+| The same material for a coding agent | [AGENTS.md](AGENTS.md) |
+| The standard this repository shares with the rest of the family | [FAMILY.md](FAMILY.md) |
+| Bug reports | [GitHub Issues](https://github.com/gufranco/snes-pilotwings-nochip/issues) |
+| Security reports | [SECURITY.md](SECURITY.md) |
 
 ```bash
-git clone --recurse-submodules https://github.com/gufranco/snes-pilotwings-nochip.git
+uvx ruff@0.16.3 format --check .
+uvx ruff@0.16.3 check .
+uvx --python 3.12 mypy .
+for t in *.test.py tools/*.test.py; do python3 "$t" || break; done
+python3 -m coverage erase
+for t in *.test.py tools/*.test.py; do python3 -m coverage run -a "$t"; done
+python3 -m coverage report
 ```
 
-The models this project measures itself against are not written here. Each is its own repository,
-pinned as a submodule at the root of this one under the name of the repository it is, and each is
-held to something outside itself rather than to its author's confidence. They sit at the root rather
-than under a folder because anybody opening this should see what it is built on without going
-looking.
+1,021 tests across 37 files, one `<module>.test.py` beside each module. Coverage is a hard gate at 100% of statements and branches, set in [`pyproject.toml`](pyproject.toml). Commits follow Conventional Commits, and semantic-release cuts the version from them.
 
-| model | what proves it |
-|---|---|
-| [65816](https://github.com/gufranco/mos65xx-python) | a per-opcode suite, 5,120,000 cases |
-| [DSP-1](https://github.com/gufranco/snes-dsp-python) | the part's own microcode, run rather than described |
-| [cartridge map](https://github.com/gufranco/snes-mapper-python) | every header combination in a real cartridge library |
-| [ROM image](https://github.com/gufranco/snes-rom-image-python) | the whole of that same library, rewritten and checked |
-| [driver](https://github.com/gufranco/snes-driver-python) | where in the cartridge's code it reaches the part |
+Comments appear in the assembly and only there: entry and exit state, register widths, and where each address came from. Python source carries none.
 
-There is no graphics model here, unlike the sibling project that converts bitmaps. This part computes
-numbers and returns numbers; it never touches a tile, so a model of the console's tile format would
-be a dependency with nothing to answer.
+Never attach a cartridge or a microcode image to an issue, and never link to somewhere either can be downloaded. A digest identifies a file without carrying it.
 
-The 65816 model is also the instrument the replacement will be measured with. It drives a bus cycle
-by cycle, so what a routine costs is the cycles it actually took rather than a sum from a table.
+## References
 
-They also start dirty. Memory and registers hold arbitrary but reproducible values rather than
-zeroes, because real hardware does, and anything here that wants a cleared machine has to ask for
-one. That turns a read of something never written from an accident into a question.
-
-## When something is wrong
-
-```bash
-python3 doctor.py
-```
-
-It looks at this machine and prints what is actually there: the Python, every model this project is
-pinned to and its version, whether the coprocessor can run at all, which of its two masks are
-present, and which cartridge dumps are here. It then asks every model for its own report and files
-what comes back under that model's name, so the whole chain is in one place rather than one layer of
-it.
-
-A check that fails says what it saw, and a check that itself throws is reported as what it threw
-rather than taking the report down with it. Paste all of it into an issue.
-
-## Repository guide
-
-Analysis modules in Python, each with its tests beside it.
-
-| file | role |
-|------|------|
-| [`hardware.py`](hardware.py) | puts the pinned hardware models on the import path, and says where the microcode is |
-| [`dumps.py`](dumps.py) | which dumps this project reads, and what makes each one itself |
-| [`sites.py`](sites.py) | where each cartridge reaches the part through the long form of the access |
-| [`commands.py`](commands.py) | every instruction that reaches the part, and which command bytes the code can issue |
-| [`exchanges.py`](exchanges.py) | what a recorded run asked for, cut at the site that issued it |
-| [`census.py`](census.py) | the same question cut at the byte stream, which command `$0a` breaks |
-| [`tables.py`](tables.py) | which tables the part carries, read out of its own data ROM |
-| [`layout.py`](layout.py) | whether the replacement fits in the image the cartridge already is |
-| [`tabulate.py`](tabulate.py) | whether a command's answers can be stored instead of computed |
-| [`microcode.py`](microcode.py) | the part's own dispatch tree, walked for all 256 command bytes |
-| [`derived.py`](derived.py) | drives the part to produce the three tables no formula reproduces, and counts the doublings the ground's scaling used to work out in a loop |
-| [`attitude.py`](attitude.py) | the three by three matrix `$02` builds, as formulas over the part's own sine and cosine. Nine of the seventeen cells `$06` reads |
-| [`raster.py`](raster.py) | what `$0a` computes, read out of the part stage by stage. The reference the assembly mirrors |
-| [`parameter.py`](parameter.py) | which of `$02`'s arguments each word of its state answers to |
-| [`state02.py`](state02.py) | packs a keyed table the way a cartridge search would read it |
-| [`state02build.py`](state02build.py) | drives the part for the one value `$02`'s horizon and second scale come from, at every angle |
-| [`routines.py`](routines.py) | runs the assembled 65816 against the part, and fails when they disagree |
-| [`lutbuild.py`](lutbuild.py) | builds the table of recorded answers, and says what it left out |
-| [`doctor.py`](doctor.py) | what is actually on this machine, the whole chain, printed for a bug report |
-| [`version.py`](version.py) | the release number, rewritten by [`scripts/set-version.sh`](scripts/set-version.sh) |
-| [`artifacts.manifest.json`](artifacts.manifest.json) | every dump this project reads, and what makes each one itself |
-| [`tools/identify.py`](tools/identify.py) | checks a dump, and says what is wrong when it is |
-| [`tools/cycles.py`](tools/cycles.py) | what one call to a routine costs, on the processor model, which is the only instrument fine enough to compare two builds |
-| [`asm/nochip.asm`](asm/nochip.asm) | the whole replacement, and where each piece sits in the cartridge |
-| [`asm/dsp1-answer.asm`](asm/dsp1-answer.asm) | the lookup: the index, the bit walk that finds a row without a multiply, the answer copy, and the commands routed straight to their arithmetic |
-| [`asm/dsp1-fallback.asm`](asm/dsp1-fallback.asm) | what answers when the lookup finds no row |
-| [`asm/dsp1-port.asm`](asm/dsp1-port.asm) | the stubs the game's own accesses become, and the runs replaced whole |
-| [`asm/dsp1-ground.asm`](asm/dsp1-ground.asm) | `$0a`, the command that draws the ground, and the three tables it reads |
-| [`asm/dsp1-window.asm`](asm/dsp1-window.asm) | the bank the game's redirected accesses land in |
-| [`asm/dsp1-raster.asm`](asm/dsp1-raster.asm) | starting the flight screen's three band sequence again: once per picture from the maskable interrupt, once per frame of the game's clock from the one that cannot be masked, and holding the game's own arming until the beam is clear |
-| [`asm/dsp1-ops.asm`](asm/dsp1-ops.asm) | the three commands whose arithmetic is known exactly |
-| [`asm/dsp1-tables.asm`](asm/dsp1-tables.asm) | the four tables the part's own formulas rebuild, entry for entry |
-| [`asm/dsp1-derived.asm`](asm/dsp1-derived.asm) | where the three tables taken from the part are placed |
-| [`mos65xx-python/`](mos65xx-python/) | the 65816, held to a per-opcode suite |
-| [`snes-dsp-python/`](snes-dsp-python/) | the DSP-1, running the part's own microcode |
-| [`snes-mapper-python/`](snes-mapper-python/) | the cartridge map, held to a library of real cartridges |
-| [`snes-rom-image-python/`](snes-rom-image-python/) | image handling, held to that same library |
-| [`snes-driver-python/`](snes-driver-python/) | where the cartridge's own code reaches the part |
-
-## Working on this
-
-| What | Command |
-|:-----|:--------|
-| Every test | `for t in *.test.py tools/*.test.py; do python3 "$t" \|\| break; done` |
-| Coverage, which fails below 100% | `python3 -m coverage erase && for t in *.test.py tools/*.test.py; do python3 -m coverage run -a "$t"; done && python3 -m coverage report` |
-| What is on this machine | `python3 doctor.py` |
-| Lint | `ruff check .` |
-| Types | `mypy .` |
-| Format | `ruff format --check .` |
-| Which dumps are here | `python3 tools/identify.py` |
-
-332 tests across 14 files. 298 need nothing but a checkout; 34 need a dump or the microcode and
-report themselves as skipped without one, so a fresh clone runs the suite green.
-
-The checks that need an artifact live in `*.retail.test.py` files kept out of the coverage
-measurement. A machine with the dump runs one set of paths and a machine without it runs the other,
-so no single build can exercise both, and a gate that demands the impossible gets switched off
-rather than met.
-
-### Conventions
-
-| Convention | Where |
-|:-----------|:------|
-| Commit messages | [Conventional Commits](https://www.conventionalcommits.org/), which drives the version number |
-| Python style | [`pyproject.toml`](pyproject.toml), ruff at line length 100, targeting 3.12 |
-| Tests | one `<module>.test.py` beside each module, standard library `unittest` |
-| Coverage | 100% of statements and branches, enforced by [`pyproject.toml`](pyproject.toml). A branch with no test fails the build rather than lowering the number |
-| Comments | required in the assembly and only there: entry and exit state, register widths, and where each recovered address came from |
-| Releases | semantic versioning cut by the pipeline. Each image carries its version in the filename |
-
-### Decisions worth knowing
-
-- **No ROM data enters this repository.** Not dumps, not intermediates, not test fixtures. It is why
-  parts of the suite skip rather than fail without a dump.
-- **The part's own microcode answers for the part.** Nothing here computes a DSP-1 result. What a
-  command answers is whatever the program the chip carries answers, and a check that needs that
-  program reports it had nothing to run rather than passing without it.
-- **The cartridge is the only oracle for what is asked.** A command and an argument set are a
-  request because a retail cartridge sends them. Producing a plausible answer for a pair nobody
-  asked for proves nothing.
-- **Whether to store or to compute is a measurement, never a preference.** The table above comes
-  from [`tabulate.py`](tabulate.py), which drives the part and counts. Both sides of the line are
-  printed, because a single total would hide which commands moved.
-- **A reading of the code is checked against a run of it, and the other way round.** Neither is
-  trusted alone. A search by encoding cannot tell an instruction from data that spells one, and a
-  recording cannot see a routine the run never entered. Where the two disagree the disagreement is
-  the finding.
-- **What is not known is written down, and so is what turned out to be wrong.**
-  [`OPEN-QUESTIONS.md`](OPEN-QUESTIONS.md) carries every place a claim here is narrower than it
-  looks, with the measurement that would settle it, and a withdrawn claim stays there with the fault
-  that produced it rather than being quietly deleted.
-
-## Contributing
-
-Measurements first. [CONTRIBUTING.md](CONTRIBUTING.md) has the gates a change is expected to pass,
-[SECURITY.md](SECURITY.md) says what belongs in a private report, and the
-[Code of Conduct](CODE_OF_CONDUCT.md) applies wherever this project is discussed.
-
-Never attach a cartridge or a microcode image, and never link to somewhere either can be downloaded.
-A digest identifies a file without carrying it.
+- No-Intro, for the names and digests of the three retail dumps.
+- snes9x at commit `2971061cf07fdc6fc7d18883edf4e648eb16a6d2`, https://github.com/snes9xgit/snes9x, built by [`emu/Dockerfile`](emu/Dockerfile) to record every port access. The recordings are evidence about that emulator's DSP-1, which is why the lookup is checked against the part's own microcode rather than against them.
+- asar v1.81, https://github.com/RPGHacker/asar, built by [`asm/Dockerfile`](asm/Dockerfile).
+- neviksti's chip-free Star Ocean conversion, for the addressing rule for images larger than a low cartridge's address space.
+- Nintendo EAD and Argonaut, for the game.
 
 ## Citing this
 
-[CITATION.cff](CITATION.cff) is kept in step with the released version by the same script that
-stamps the release, so the version it names is the version that shipped.
+[CITATION.cff](CITATION.cff) is updated with each release by [`scripts/set-version.sh`](scripts/set-version.sh), the script that stamps [`version.py`](version.py).
 
-## Acknowledgements
+## License
 
-**Nintendo EAD and Argonaut**, for the game.
-
-**The snes9x and ares teams**, for the emulators these images will be checked against.
-
-**neviksti and the Star Ocean chip-free conversion**, which is where the addressing rule for images
-too large for the address space comes from.
-
-**The Zeldix community**, where most of the SNES romhacking knowledge this leans on is written down.
-
-## Legal
-
-No ROM data is distributed here. Everything in this repository operates on files you must already
-own, and the analysis is derived from retail cartridges you supply.
-
-The tooling, the assembly and this document are released under the [MIT licence](LICENSE). That
-covers my own work and nothing else. It grants no rights in the game.
-
-## Image size is not a constraint to optimise against
-
-The cartridge may grow to **96 Mbit** whenever that buys fidelity, stability or
-speed. This is a standing decision by the project owner, recorded here so no
-later session re-derives the opposite from an old measurement.
-
-What that means in practice:
-
-- Never drop a command from the answer table for space. Grow the image instead.
-- Never approximate arithmetic to avoid carrying a table. Carry the table.
-- Never treat "it does not fit" as a reason to stop. It fits; make it bigger.
-
-The numbers, so the trade is visible rather than assumed. A LoROM cartridge
-addresses banks `$00` to `$7d`, which is 126 banks of 32 KiB, or just under 4
-MiB, and every bank above that needs the windowed layout the sibling project
-uses. Answering all twelve of the commands the game asks for takes 87 banks:
-`$06` alone is 1,957,228 bytes, because it has 75,278 distinct keys and answers
-three words to each. That is 60 banks for one command, and it is the command the
-game asks for most.
-
-An earlier note in this file put a ceiling at 1 MiB on the strength of one
-measurement. That measurement does not hold: images of 2 MiB and 4 MiB both boot
-and run the demo identically, once the header's size byte is set to match. The
-header byte is what an emulator maps from, so an image that grows without it
-maps only the part the old byte described, and the tables that answer the
-commands live in the part it leaves out.
+MIT. See [LICENSE](LICENSE). It covers the tooling, the assembly and this document, and grants no rights in the game. No ROM data is distributed here: everything operates on dumps you supply.
