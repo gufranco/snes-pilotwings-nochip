@@ -1,8 +1,8 @@
-[English](README.md) | [日本語](README.ja.md) | 简体中文 | [繁體中文（香港）](README.zh-HK.md)
-
 # 没有 DSP-1 的 Pilotwings
 
 一套工具，为全部三个地区版本构建 Pilotwings 镜像，其中 DSP-1 协处理器被卡带内的表和 65816 代码取代。游戏提出什么问题以零售版卡带为准，每个答案以芯片自身的微码为准。
+
+[English](README.md) &nbsp;|&nbsp; [日本語](README.ja.md) &nbsp;|&nbsp; 简体中文 &nbsp;|&nbsp; [繁體中文（香港）](README.zh-HK.md)
 
 [![CI](https://github.com/gufranco/snes-pilotwings-nochip/actions/workflows/ci.yml/badge.svg)](https://github.com/gufranco/snes-pilotwings-nochip/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
