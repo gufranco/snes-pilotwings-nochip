@@ -3,6 +3,7 @@ import unittest
 from pathlib import Path
 from typing import Any
 
+import hardware
 import lutbuild
 
 ROOT = Path(__file__).resolve().parent
@@ -354,15 +355,25 @@ class BuildTest(unittest.TestCase):
         self.assertTrue((into / "lut-axes.asm").exists())
 
 
+class _Loaded:
+    def Chip(self, _mask: str) -> object:
+        return object()
+
+
 class GatherTest(unittest.TestCase):
     def test_it_reads_every_region_from_disk(self) -> None:
+        # Arrange
         into = ROOT / "build" / "gather-test"
         into.mkdir(parents=True, exist_ok=True)
         for region in lutbuild.REGIONS:
             (into / f"trace-{region}.bin").write_bytes(_trace())
+        self.addCleanup(setattr, hardware, "load", hardware.load)
+        hardware.load = lambda package: _Loaded()
 
+        # Act
         found = lutbuild.gather(into)
 
+        # Assert
         self.assertIn(0x13, found)
 
 
