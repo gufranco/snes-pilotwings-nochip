@@ -7,7 +7,7 @@
 [![CI](https://github.com/gufranco/snes-pilotwings-nochip/actions/workflows/ci.yml/badge.svg)](https://github.com/gufranco/snes-pilotwings-nochip/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-**16** 条命令对照芯片回答了 **3** 份地区录制所含的每个问题，**0** 个错误答案，`$0a` 地面字 **43,440** 个中 **43,440** 个完全一致，**1,021** 个测试，每个模块的语句和分支覆盖率均为 **100%**，除标准库外没有依赖，另有 **5** 个固定版本的子模块
+**16** 条命令对照芯片回答了 **3** 份地区录制所含的每个问题，**0** 个错误答案，`$0a` 地面字 **43,440** 个中 **43,440** 个完全一致，**1,023** 个测试，每个模块的语句和分支覆盖率均为 **100%**，除标准库外没有依赖，另有 **5** 个固定版本的子模块
 
 ```python
 import tables
@@ -679,7 +679,7 @@ for t in *.test.py tools/*.test.py; do python3 -m coverage run -a "$t"; done
 python3 -m coverage report
 ```
 
-37 个文件共 1,021 个测试，每个模块旁边有一个 `<module>.test.py`。覆盖率是一项硬性门禁检查，要求语句和分支均为 100%，在 [`pyproject.toml`](pyproject.toml) 中设置。提交遵循 Conventional Commits，semantic-release 据此确定版本。
+37 个文件共 1,023 个测试，每个模块旁边有一个 `<module>.test.py`。覆盖率是一项硬性门禁检查，要求语句和分支均为 100%，在 [`pyproject.toml`](pyproject.toml) 中设置。提交遵循 Conventional Commits，semantic-release 据此确定版本。
 
 注释只出现在汇编代码中：入口和出口状态、寄存器宽度，以及每个地址的来源。Python 源码中没有注释。
 

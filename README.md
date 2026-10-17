@@ -7,7 +7,7 @@ English &nbsp;|&nbsp; [日本語](README.ja.md) &nbsp;|&nbsp; [简体中文](REA
 [![CI](https://github.com/gufranco/snes-pilotwings-nochip/actions/workflows/ci.yml/badge.svg)](https://github.com/gufranco/snes-pilotwings-nochip/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-**16** commands answered against the part on every question **3** regional recordings hold, **0** wrong answers, **43,440** of **43,440** `$0a` ground words exact, **1,021** tests, **100%** statement and branch coverage of every module, no dependencies outside the standard library and **5** pinned submodules
+**16** commands answered against the part on every question **3** regional recordings hold, **0** wrong answers, **43,440** of **43,440** `$0a` ground words exact, **1,023** tests, **100%** statement and branch coverage of every module, no dependencies outside the standard library and **5** pinned submodules
 
 ```python
 import tables
@@ -677,7 +677,7 @@ for t in *.test.py tools/*.test.py; do python3 -m coverage run -a "$t"; done
 python3 -m coverage report
 ```
 
-1,021 tests across 37 files, one `<module>.test.py` beside each module. Coverage is a hard gate at 100% of statements and branches, set in [`pyproject.toml`](pyproject.toml). Commits follow Conventional Commits, and semantic-release cuts the version from them.
+1,023 tests across 37 files, one `<module>.test.py` beside each module. Coverage is a hard gate at 100% of statements and branches, set in [`pyproject.toml`](pyproject.toml). Commits follow Conventional Commits, and semantic-release cuts the version from them.
 
 Comments appear in the assembly and only there: entry and exit state, register widths, and where each address came from. Python source carries none.
 

@@ -7,7 +7,7 @@
 [![CI](https://github.com/gufranco/snes-pilotwings-nochip/actions/workflows/ci.yml/badge.svg)](https://github.com/gufranco/snes-pilotwings-nochip/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-**16** 個指令在 **3** 份地區錄製記錄所含的每個問題上與晶片對照作答，**0** 個錯誤答案，**43,440** 個 `$0a` 地面字中 **43,440** 個完全正確，**1,021** 個測試，每個模組的陳述式和分支覆蓋率均為 **100%**，除標準函式庫外沒有任何依賴，另有 **5** 個固定版本的子模組
+**16** 個指令在 **3** 份地區錄製記錄所含的每個問題上與晶片對照作答，**0** 個錯誤答案，**43,440** 個 `$0a` 地面字中 **43,440** 個完全正確，**1,023** 個測試，每個模組的陳述式和分支覆蓋率均為 **100%**，除標準函式庫外沒有任何依賴，另有 **5** 個固定版本的子模組
 
 ```python
 import tables
@@ -679,7 +679,7 @@ for t in *.test.py tools/*.test.py; do python3 -m coverage run -a "$t"; done
 python3 -m coverage report
 ```
 
-37 個檔案共 1,021 個測試，每個模組旁邊有一個 `<module>.test.py`。覆蓋率是硬性關卡，陳述式和分支須達 100%，在 [`pyproject.toml`](pyproject.toml) 中設定。提交遵循 Conventional Commits，semantic-release 據此決定版本。
+37 個檔案共 1,023 個測試，每個模組旁邊有一個 `<module>.test.py`。覆蓋率是硬性關卡，陳述式和分支須達 100%，在 [`pyproject.toml`](pyproject.toml) 中設定。提交遵循 Conventional Commits，semantic-release 據此決定版本。
 
 註解只出現在組合語言中：入口和出口狀態、暫存器寬度，以及每個位址的來源。Python 原始碼不帶任何註解。
 

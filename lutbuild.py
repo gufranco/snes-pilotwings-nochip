@@ -5,6 +5,7 @@ from typing import Any
 
 import complete
 import exchanges
+import microcode
 
 BANK_BYTES = 0x8000
 
@@ -235,18 +236,23 @@ def chosen(built: Mapping[int, Any], calls: Mapping[int, int], room: int) -> dic
     return kept
 
 
-def gather(where: Path = Path("build"), say: Any = None) -> dict[int, Any]:
+def gather(
+    where: Path = Path("build"), say: Any = None, mask: str = microcode.MASK
+) -> dict[int, Any]:
     runs = tuple(exchanges.taken((where / f"trace-{one}.bin").read_bytes()) for one in REGIONS)
-    return chosen(completed(rows_of(runs), runs, say=say), weighed(runs), ROOM)
+    return chosen(completed(rows_of(runs), runs, say=say, mask=mask), weighed(runs), ROOM)
 
 
 def completed(
-    built: dict[int, Any], runs: Sequence[Sequence[Any]], say: Any = None
+    built: dict[int, Any],
+    runs: Sequence[Sequence[Any]],
+    say: Any = None,
+    mask: str = microcode.MASK,
 ) -> dict[int, Any]:
     for command, values in complete.domains(runs).items():
         rows, key_words, answer_words = built[command]
         keys = complete.wanted(values)
-        whole = complete.filled(command, keys, answer_words, dict(rows), say=say)
+        whole = complete.filled(command, keys, answer_words, dict(rows), mask=mask, say=say)
         built[command] = (tuple(whole.items()), key_words, answer_words)
     return built
 
@@ -269,7 +275,7 @@ def main(argv: tuple[str, ...] | list[str] = (), say: Any = print) -> int:
         return 2
     into = Path(argv[1]) if len(argv) > 1 else Path("build")
     into.mkdir(exist_ok=True)
-    built = gather(say=say)
+    built = gather(say=say, mask=argv[0])
     raw = encode(built)
     pieces = sliced(raw)
     for at, piece in enumerate(pieces):

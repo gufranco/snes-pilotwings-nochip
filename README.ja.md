@@ -7,7 +7,7 @@
 [![CI](https://github.com/gufranco/snes-pilotwings-nochip/actions/workflows/ci.yml/badge.svg)](https://github.com/gufranco/snes-pilotwings-nochip/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-**16**個のコマンドを、**3**つの地域版の記録に含まれるすべての質問でチップと照合して回答、誤答**0**件、`$0a`の地面ワードは**43,440**個中**43,440**個が完全一致、テスト**1,021**件、全モジュールで命令と分岐のカバレッジ**100%**、標準ライブラリ以外の依存はなく、固定されたサブモジュールが**5**個です。
+**16**個のコマンドを、**3**つの地域版の記録に含まれるすべての質問でチップと照合して回答、誤答**0**件、`$0a`の地面ワードは**43,440**個中**43,440**個が完全一致、テスト**1,023**件、全モジュールで命令と分岐のカバレッジ**100%**、標準ライブラリ以外の依存はなく、固定されたサブモジュールが**5**個です。
 
 ```python
 import tables
@@ -679,7 +679,7 @@ for t in *.test.py tools/*.test.py; do python3 -m coverage run -a "$t"; done
 python3 -m coverage report
 ```
 
-37ファイルにわたる1,021件のテストがあり、各モジュールの横に`<module>.test.py`が1つずつあります。カバレッジは命令と分岐の100%を必須のゲートとし、[`pyproject.toml`](pyproject.toml)で設定しています。コミットはConventional Commitsに従い、semantic-releaseがそこからバージョンを決定します。
+37ファイルにわたる1,023件のテストがあり、各モジュールの横に`<module>.test.py`が1つずつあります。カバレッジは命令と分岐の100%を必須のゲートとし、[`pyproject.toml`](pyproject.toml)で設定しています。コミットはConventional Commitsに従い、semantic-releaseがそこからバージョンを決定します。
 
 コメントはアセンブリにのみ書きます。内容は入口と出口の状態、レジスタ幅、各アドレスの由来です。Pythonのソースにはコメントがありません。
 

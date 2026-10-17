@@ -3,6 +3,8 @@ import unittest
 from pathlib import Path
 from typing import Any
 
+import complete
+import exchanges
 import hardware
 import lutbuild
 
@@ -340,7 +342,7 @@ class BuildTest(unittest.TestCase):
         into = ROOT / "build" / "lutbuild-test"
         real = lutbuild.gather
 
-        def one_row(where: Path = ROOT, say: Any = None) -> dict[int, Any]:
+        def one_row(where: Path = ROOT, say: Any = None, mask: str = "") -> dict[int, Any]:
             return {0x13: ((((1,), (9,)),), 1, 1)}
 
         lutbuild.gather = one_row
@@ -353,6 +355,50 @@ class BuildTest(unittest.TestCase):
         self.assertTrue((into / "lut-0.bin").exists())
         self.assertTrue((into / "lut-map.asm").exists())
         self.assertTrue((into / "lut-axes.asm").exists())
+
+
+class MaskTest(unittest.TestCase):
+    def test_the_mask_named_on_the_command_line_is_the_one_the_table_is_completed_with(
+        self,
+    ) -> None:
+        # Arrange
+        into = ROOT / "build" / "lutbuild-mask-test"
+        asked: list[str] = []
+
+        def one_row(where: Path = ROOT, say: Any = None, mask: str = "") -> dict[int, Any]:
+            asked.append(mask)
+            return {0x13: ((((1,), (9,)),), 1, 1)}
+
+        self.addCleanup(setattr, lutbuild, "gather", lutbuild.gather)
+        lutbuild.gather = one_row
+
+        # Act
+        lutbuild.main(("dsp1b", str(into)), say=lambda _: None)
+
+        # Assert
+        self.assertEqual(asked, ["dsp1b"])
+
+    def test_completing_a_table_asks_the_part_for_that_mask(self) -> None:
+        # Arrange
+        named: list[str] = []
+        real = complete.filled
+
+        def record(
+            command: int, keys: Any, answers: int, have: Any, mask: str = "", say: Any = None
+        ) -> Any:
+            named.append(mask)
+            return dict(have)
+
+        self.addCleanup(setattr, complete, "filled", real)
+        complete.filled = record
+        runs = (exchanges.taken(_trace()),)
+        built = lutbuild.rows_of(runs)
+
+        # Act
+        lutbuild.completed(built, runs, mask="dsp1b")
+
+        # Assert
+        self.assertEqual(named, ["dsp1b"])
 
 
 class _Loaded:
