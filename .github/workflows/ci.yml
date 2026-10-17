@@ -1,3 +1,4 @@
+---
 name: ci
 
 on:
@@ -128,6 +129,11 @@ jobs:
 
       - name: actionlint
         uses: raven-actions/actionlint@v2
+
+      - name: Lint every YAML file
+        run: |
+          pipx install yamllint==1.38.0
+          yamllint --strict .
 
       - name: shellcheck
         run: shellcheck --severity=style --shell=bash scripts/*.sh

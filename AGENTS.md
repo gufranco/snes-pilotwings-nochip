@@ -225,6 +225,7 @@ Every one of these passes before a change is done. A gate that was not run is a 
 | types | `mypy .` |
 | lint | `ruff check .` |
 | format | `ruff format --check .` |
+| yaml | `uvx yamllint==1.38.0 --strict .` |
 | this machine | `python3 doctor.py` |
 
 The checks needing a dump or the microcode live in `*.retail.test.py` and are kept out of the
