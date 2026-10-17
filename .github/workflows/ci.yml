@@ -30,7 +30,7 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
 
       - name: install the checkers
-        run: pip install ruff mypy
+        run: python -m pip install --disable-pip-version-check ruff==0.16.3 mypy==1.14.1
 
       - name: lint
         run: ruff check .
@@ -54,7 +54,7 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
 
       - name: install coverage
-        run: pip install coverage
+        run: python -m pip install --disable-pip-version-check coverage==7.6.10
 
       - name: every test
         run: |
