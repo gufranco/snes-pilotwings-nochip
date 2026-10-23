@@ -137,3 +137,36 @@ jobs:
 
       - name: shellcheck
         run: shellcheck --severity=style --shell=bash scripts/*.sh
+
+  release:
+    name: release
+    runs-on: ubuntu-26.04
+    needs: [lint, test, doctor, formatting, workflows]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
+
+      - name: Install release tooling
+        run: pnpm install --frozen-lockfile
+
+      - name: Check the release tooling against known advisories, since npm signatures cannot be
+        run: pnpm audit --audit-level=high
+
+      - name: Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: pnpm exec semantic-release
