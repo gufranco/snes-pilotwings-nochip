@@ -679,7 +679,7 @@ for t in *.test.py tools/*.test.py; do python3 -m coverage run -a "$t"; done
 python3 -m coverage report
 ```
 
-37 个文件共 1,023 个测试，每个模块旁边有一个 `<module>.test.py`。覆盖率是一项硬性门禁检查，要求语句和分支均为 100%，在 [`pyproject.toml`](pyproject.toml) 中设置。提交遵循 Conventional Commits，semantic-release 据此确定版本。
+40 个文件共 1,023 个测试，每个模块旁边有一个 `<module>.test.py`。覆盖率是一项硬性门禁检查，要求语句和分支均为 100%，在 [`pyproject.toml`](pyproject.toml) 中设置。提交遵循 Conventional Commits，semantic-release 据此确定版本。
 
 注释只出现在汇编代码中：入口和出口状态、寄存器宽度，以及每个地址的来源。Python 源码中没有注释。
 

@@ -679,7 +679,7 @@ for t in *.test.py tools/*.test.py; do python3 -m coverage run -a "$t"; done
 python3 -m coverage report
 ```
 
-37 個檔案共 1,023 個測試，每個模組旁邊有一個 `<module>.test.py`。覆蓋率是硬性關卡，陳述式和分支須達 100%，在 [`pyproject.toml`](pyproject.toml) 中設定。提交遵循 Conventional Commits，semantic-release 據此決定版本。
+40 個檔案共 1,023 個測試，每個模組旁邊有一個 `<module>.test.py`。覆蓋率是硬性關卡，陳述式和分支須達 100%，在 [`pyproject.toml`](pyproject.toml) 中設定。提交遵循 Conventional Commits，semantic-release 據此決定版本。
 
 註解只出現在組合語言中：入口和出口狀態、暫存器寬度，以及每個位址的來源。Python 原始碼不帶任何註解。
 

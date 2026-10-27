@@ -677,7 +677,7 @@ for t in *.test.py tools/*.test.py; do python3 -m coverage run -a "$t"; done
 python3 -m coverage report
 ```
 
-1,023 tests across 37 files, one `<module>.test.py` beside each module. Coverage is a hard gate at 100% of statements and branches, set in [`pyproject.toml`](pyproject.toml). Commits follow Conventional Commits, and semantic-release cuts the version from them.
+1,023 tests across 40 files, one `<module>.test.py` beside each module. Coverage is a hard gate at 100% of statements and branches, set in [`pyproject.toml`](pyproject.toml). Commits follow Conventional Commits, and semantic-release cuts the version from them.
 
 Comments appear in the assembly and only there: entry and exit state, register widths, and where each address came from. Python source carries none.
 

@@ -679,7 +679,7 @@ for t in *.test.py tools/*.test.py; do python3 -m coverage run -a "$t"; done
 python3 -m coverage report
 ```
 
-37ファイルにわたる1,023件のテストがあり、各モジュールの横に`<module>.test.py`が1つずつあります。カバレッジは命令と分岐の100%を必須のゲートとし、[`pyproject.toml`](pyproject.toml)で設定しています。コミットはConventional Commitsに従い、semantic-releaseがそこからバージョンを決定します。
+40ファイルにわたる1,023件のテストがあり、各モジュールの横に`<module>.test.py`が1つずつあります。カバレッジは命令と分岐の100%を必須のゲートとし、[`pyproject.toml`](pyproject.toml)で設定しています。コミットはConventional Commitsに従い、semantic-releaseがそこからバージョンを決定します。
 
 コメントはアセンブリにのみ書きます。内容は入口と出口の状態、レジスタ幅、各アドレスの由来です。Pythonのソースにはコメントがありません。
 
