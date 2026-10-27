@@ -21,6 +21,7 @@ jobs:
   lint:
     name: lint, format and types
     runs-on: ubuntu-26.04
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
         with:
@@ -45,6 +46,7 @@ jobs:
   test:
     name: tests and coverage
     runs-on: ubuntu-26.04
+    timeout-minutes: 36
     steps:
       - uses: actions/checkout@v7
         with:
@@ -76,6 +78,7 @@ jobs:
   doctor:
     name: the doctor runs on a machine with nothing
     runs-on: ubuntu-26.04
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
         with:
@@ -106,6 +109,7 @@ jobs:
   formatting:
     name: json and yaml formatting
     runs-on: ubuntu-26.04
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
 
@@ -124,6 +128,7 @@ jobs:
   workflows:
     name: workflow files
     runs-on: ubuntu-26.04
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
 
@@ -141,6 +146,7 @@ jobs:
   release:
     name: release
     runs-on: ubuntu-26.04
+    timeout-minutes: 10
     needs: [lint, test, doctor, formatting, workflows]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     permissions:
