@@ -7,7 +7,7 @@
 [![CI](https://github.com/gufranco/snes-pilotwings-nochip/actions/workflows/ci.yml/badge.svg)](https://github.com/gufranco/snes-pilotwings-nochip/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-**16**個のコマンドを、**3**つの地域版の記録に含まれるすべての質問でチップと照合して回答、誤答**0**件、`$0a`の地面ワードは**43,440**個中**43,440**個が完全一致、テスト**1,023**件、全モジュールで命令と分岐のカバレッジ**100%**、標準ライブラリ以外の依存はなく、固定されたサブモジュールが**5**個です。
+**16**個のコマンドを、**3**つの地域版の記録に含まれるすべての質問でチップと照合して回答、誤答**0**件、`$0a`の地面ワードは**43,440**個中**43,440**個が完全一致、テスト**1,055**件、全モジュールで命令と分岐のカバレッジ**100%**、標準ライブラリ以外の依存はなく、固定されたサブモジュールが**5**個です。
 
 ```python
 import tables
@@ -36,6 +36,59 @@ arccosine  256 words  first (16384, 16343, 16303)
 
 ## インストール
 
+### 手順
+
+何もない状態から動くチェックアウトまで5つの手順です。手順4のドクターが最初の3つを確認します。
+
+1. **Python、git、アセンブルするならDockerをインストールします。**
+
+   | | Windows | macOS | Linux |
+   |:--|:--|:--|:--|
+   | Python 3.12以降 | `winget install Python.Python.3.12` | `brew install python@3.12` | ディストリビューションの`python3`パッケージ |
+   | git | `winget install Git.Git` | `xcode-select --install` | ディストリビューションの`git`パッケージ |
+   | Docker（アセンブラと記録用エミュレーターだけに必要） | `winget install Docker.DockerDesktop`を実行し、Docker Desktopを起動 | Docker Desktop、または`brew install colima docker`の後に`colima start` | Docker Engineを入れ、`sudo systemctl start docker` |
+
+   Windowsでは、このページの`python3`を`py -3.12`に置き換えてください。
+
+2. **リポジトリをクローンします。ダウンロードはしないでください。**
+
+   ```bash
+   git clone --recurse-submodules https://github.com/gufranco/snes-pilotwings-nochip.git
+   cd snes-pilotwings-nochip
+   ```
+
+   > [!CAUTION]
+   > 動くコピーを得る方法はクローンだけです。GitHubの緑の**Code**ボタンには**Download ZIP**もありますが、ZIPはここでは決して動きません。このプロジェクトが使う5個のモデルはgitのサブモジュールとして固定された別のリポジトリで、ZIPにはどれも含まれず、後から追加することもできません。ドクターはそのようなコピーをダウンロードしたアーカイブとして報告します。削除してクローンしてください。`--recurse-submodules`なしでクローンした場合は、`git submodule update --init --recursive`でその場で直せます。
+
+3. **ダンプを`external/roms/`に置きます。** 名前は[ダンプの一覧](#the-dumps)のとおり`pilotwings-usa.sfc`, `pilotwings-jp.sfc`, `pilotwings-eur.sfc`です。マイクロコードは`external/firmware/`に置きます。その後で確認します。用意した各ダンプが`ok`と表示されるはずです。
+
+   ```bash
+   python3 tools/identify.py
+   ```
+
+4. **ドクターを実行します。** チェックアウト、各モデル、各ダンプを確認し、最後に次に実行するものを示します。
+
+   ```bash
+   python3 doctor.py
+   ```
+
+   ```
+     N checks, nothing to report
+     next: python3 tools/identify.py
+   ```
+
+   `!`の付いた行は、その下の行にすべきことを書いています。ドクターが見つける設定の誤りは次のとおりです。
+
+   | ドクターの表示 | すること |
+   |:--|:--|
+   | `checkout: no git metadata` | フォルダーを削除してクローンする（手順2） |
+   | `... is not checked out` | `git submodule update --init --recursive` |
+   | `cartridge ...: missing` | 手順3 |
+
+5. **ひとつのビルドコマンドはまだありません。** このプロジェクトは非常に実験的で、インターフェースのコマンドでゲームを記録し、表を作り、イメージにパッチを当てます。多くの問題が予想されます。報告を歓迎します。
+
+### 必要なものとドクター
+
 | 必要なもの | バージョン |
 |:--|:--|
 | Python | 3.12以降 |
@@ -44,20 +97,15 @@ arccosine  256 words  first (16384, 16343, 16303)
 | ご自身が持つDSP-1マイクロコードのコピー | 8,192バイト、`external/firmware/dsp1.bin`および`external/firmware/dsp1b.bin`として配置 |
 | Docker | 任意、[`asm/`](asm/)のアセンブラと[`emu/`](emu/)の記録用エミュレータのビルドにのみ使用 |
 
-```bash
-git clone --recurse-submodules https://github.com/gufranco/snes-pilotwings-nochip.git
-cd snes-pilotwings-nochip
-python3 doctor.py
-```
-
-パッケージインデックスからは何もインストールせず、何もダウンロードしません。このプロジェクトが自身を照合する5つのモデルは、リポジトリのルートにあるgitサブモジュールです。download-zipリンクから得たソースアーカイブにはそのどれも含まれないため、ドクターはそれぞれをチェックアウトされていないと報告し、モデルを動かすチェックはすべて失敗します。
+パッケージインデックスからは何もインストールせず、何もダウンロードしません。このプロジェクトが自身を照合する5つのモデルは、リポジトリのルートにあるgitサブモジュールです。download-zipリンクから得たソースアーカイブにはそのどれも含まれず、ドクターはそのようなフォルダーをアーカイブとして報告します。
 
 マイクロコードは`external/firmware/`の代わりに`UPD7725_FIRMWARE_DIR`が指す任意の場所に置けます。マイクロコードがないと、チップを動かすチェックはすべて実行対象がなかったと報告します。
 
-ドクターは、マシン、このプロジェクトのバージョン、各モデルとそのバージョン、マイクロコードが動くかどうか、2つのマスクのうちどちらがあるか、各ダンプの状態、そして各モデル自身のドクターの報告をそのモデル名の下に出力します。すべてのチェックが通れば0で、そうでなければ1で終了します。バグ報告には出力全体を貼り付けてください。ダンプもマイクロコードもない再帰クローンの直後では、次の行で終わります。
+ドクターは、マシン、このプロジェクトのバージョン、フォルダーがgitのクローンかどうか、各モデルとそのバージョン、マイクロコードが動くかどうか、2つのマスクのうちどちらがあるか、各ダンプの状態、そして各モデル自身のドクターの報告をそのモデル名の下に出力します。すべてのチェックが通れば0で、そうでなければ1で終了します。バグ報告には出力全体を貼り付けてください。ダンプもマイクロコードもない再帰クローンの直後では、次の行で終わります。
 
 ```
-  5 of 92 checks did not pass
+  5 of 93 checks did not pass
+  next: fix the first line marked ! above, then run python3 doctor.py again
 ```
 
 この5つは、マイクロコードの欠如、DSPモデルがイメージを持たない2つのマスク、そして2つのサブモジュールがそれぞれ同梱する空の`cartridges`ディレクトリです。
@@ -679,7 +727,7 @@ for t in *.test.py tools/*.test.py; do python3 -m coverage run -a "$t"; done
 python3 -m coverage report
 ```
 
-40ファイルにわたる1,023件のテストがあり、各モジュールの横に`<module>.test.py`が1つずつあります。カバレッジは命令と分岐の100%を必須のゲートとし、[`pyproject.toml`](pyproject.toml)で設定しています。コミットはConventional Commitsに従い、semantic-releaseがそこからバージョンを決定します。
+41ファイルにわたる1,055件のテストがあり、各モジュールの横に`<module>.test.py`が1つずつあります。カバレッジは命令と分岐の100%を必須のゲートとし、[`pyproject.toml`](pyproject.toml)で設定しています。コミットはConventional Commitsに従い、semantic-releaseがそこからバージョンを決定します。
 
 コメントはアセンブリにのみ書きます。内容は入口と出口の状態、レジスタ幅、各アドレスの由来です。Pythonのソースにはコメントがありません。
 

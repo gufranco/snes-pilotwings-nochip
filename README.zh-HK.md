@@ -7,7 +7,7 @@
 [![CI](https://github.com/gufranco/snes-pilotwings-nochip/actions/workflows/ci.yml/badge.svg)](https://github.com/gufranco/snes-pilotwings-nochip/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-**16** 個指令在 **3** 份地區錄製記錄所含的每個問題上與晶片對照作答，**0** 個錯誤答案，**43,440** 個 `$0a` 地面字中 **43,440** 個完全正確，**1,023** 個測試，每個模組的陳述式和分支覆蓋率均為 **100%**，除標準函式庫外沒有任何依賴，另有 **5** 個固定版本的子模組
+**16** 個指令在 **3** 份地區錄製記錄所含的每個問題上與晶片對照作答，**0** 個錯誤答案，**43,440** 個 `$0a` 地面字中 **43,440** 個完全正確，**1,055** 個測試，每個模組的陳述式和分支覆蓋率均為 **100%**，除標準函式庫外沒有任何依賴，另有 **5** 個固定版本的子模組
 
 ```python
 import tables
@@ -36,6 +36,59 @@ arccosine  256 words  first (16384, 16343, 16303)
 
 ## 安裝
 
+### 逐步操作
+
+由零開始到可用的副本共五步。第 4 步的 doctor 會確認前三步。
+
+1. **安裝 Python、git，要組譯時再裝 Docker。**
+
+   | | Windows | macOS | Linux |
+   |:--|:--|:--|:--|
+   | Python 3.12 或更新版本 | `winget install Python.Python.3.12` | `brew install python@3.12` | 發行版的 `python3` 套件 |
+   | git | `winget install Git.Git` | `xcode-select --install` | 發行版的 `git` 套件 |
+   | Docker（只有組譯器和錄製用模擬器需要） | `winget install Docker.DockerDesktop`，然後啟動 Docker Desktop | Docker Desktop，或 `brew install colima docker` 後執行 `colima start` | Docker Engine，然後 `sudo systemctl start docker` |
+
+   在 Windows 上，本頁寫 `python3` 的地方請輸入 `py -3.12`。
+
+2. **複製儲存庫，不要下載。**
+
+   ```bash
+   git clone --recurse-submodules https://github.com/gufranco/snes-pilotwings-nochip.git
+   cd snes-pilotwings-nochip
+   ```
+
+   > [!CAUTION]
+   > 只有複製才能得到可用的副本。GitHub 上綠色的 **Code** 按鈕亦提供 **Download ZIP**，但 ZIP 在這裏永遠無法使用：本專案依賴的 5 個模型是以 git 子模組固定的獨立倉庫，ZIP 一個都不包含，之後亦無法補上。doctor 會把這樣的副本報告為下載的封存檔；請刪除它並複製。沒有加 `--recurse-submodules` 的複製，可以用 `git submodule update --init --recursive` 就地修復。
+
+3. **把傾印檔放進 `external/roms/`**，檔名按[傾印檔清單](#the-dumps)：`pilotwings-usa.sfc`, `pilotwings-jp.sfc`, `pilotwings-eur.sfc`。微碼放在 `external/firmware/`。然後檢查，你提供的每個傾印檔都應顯示 `ok`：
+
+   ```bash
+   python3 tools/identify.py
+   ```
+
+4. **執行 doctor。** 它檢查副本、每個模型、每個傾印檔，最後說明下一步執行甚麼：
+
+   ```bash
+   python3 doctor.py
+   ```
+
+   ```
+     N checks, nothing to report
+     next: python3 tools/identify.py
+   ```
+
+   標有 `!` 的行，下一行寫着該怎麼做。它能發現的設定錯誤：
+
+   | doctor 顯示 | 怎樣做 |
+   |:--|:--|
+   | `checkout: no git metadata` | 刪除資料夾並複製，第 2 步 |
+   | `... is not checked out` | `git submodule update --init --recursive` |
+   | `cartridge ...: missing` | 第 3 步 |
+
+5. **目前還沒有單一的建構指令。** 本專案高度實驗性：它透過「介面」中的指令錄製遊戲、建構表並為映像檔打修補，預計會有很多問題。歡迎報告。
+
+### 所需項目與 doctor
+
 | 需求 | 版本 |
 |:--|:--|
 | Python | 3.12 或更新 |
@@ -44,20 +97,15 @@ arccosine  256 words  first (16384, 16343, 16303)
 | 你自己的 DSP-1 微碼副本 | 8,192 位元組，存為 `external/firmware/dsp1.bin` 和 `external/firmware/dsp1b.bin` |
 | Docker | 任何版本，只用於建置 [`asm/`](asm/) 中的組譯器和 [`emu/`](emu/) 中的錄製模擬器 |
 
-```bash
-git clone --recurse-submodules https://github.com/gufranco/snes-pilotwings-nochip.git
-cd snes-pilotwings-nochip
-python3 doctor.py
-```
-
-不會從套件索引安裝任何東西，也不會下載任何東西。本專案用作對照的五個模型是位於儲存庫根目錄的 git 子模組。從 download-zip 連結取得的原始碼封存檔不包含任何一個，因此診斷腳本會把每個都報告為未簽出，而每個驅動模型的檢查都會失敗。
+不會從套件索引安裝任何東西，也不會下載任何東西。本專案用作對照的五個模型是位於儲存庫根目錄的 git 子模組。從 download-zip 連結取得的原始碼封存檔不包含任何一個，診斷腳本會把這樣的資料夾報告為封存檔。
 
 微碼可以放在 `UPD7725_FIRMWARE_DIR` 指定的任何位置，而不是 `external/firmware/`。沒有微碼的話，每個驅動晶片的檢查都會報告沒有東西可執行。
 
-診斷腳本會印出機器資訊、本專案的版本、每個模型及其版本、微碼能否執行、兩個掩膜版本中哪些存在、每個傾印檔的狀態，以及每個模型本身的診斷腳本的報告，按該模型的名稱歸檔。所有檢查都通過時以 0 結束，否則以 1 結束。提交任何錯誤報告時請貼上完整輸出。在全新的遞迴複製中，沒有傾印檔也沒有微碼時，輸出以下列內容結尾：
+診斷腳本會印出機器資訊、本專案的版本、該資料夾是否為 git 複製、每個模型及其版本、微碼能否執行、兩個掩膜版本中哪些存在、每個傾印檔的狀態，以及每個模型本身的診斷腳本的報告，按該模型的名稱歸檔。所有檢查都通過時以 0 結束，否則以 1 結束。提交任何錯誤報告時請貼上完整輸出。在全新的遞迴複製中，沒有傾印檔也沒有微碼時，輸出以下列內容結尾：
 
 ```
-  5 of 92 checks did not pass
+  5 of 93 checks did not pass
+  next: fix the first line marked ! above, then run python3 doctor.py again
 ```
 
 這五個是：缺少的微碼、DSP 模型沒有映像檔的兩個掩膜版本，以及兩個子模組各自附帶的空 `cartridges` 目錄。
@@ -679,7 +727,7 @@ for t in *.test.py tools/*.test.py; do python3 -m coverage run -a "$t"; done
 python3 -m coverage report
 ```
 
-40 個檔案共 1,023 個測試，每個模組旁邊有一個 `<module>.test.py`。覆蓋率是硬性關卡，陳述式和分支須達 100%，在 [`pyproject.toml`](pyproject.toml) 中設定。提交遵循 Conventional Commits，semantic-release 據此決定版本。
+41 個檔案共 1,055 個測試，每個模組旁邊有一個 `<module>.test.py`。覆蓋率是硬性關卡，陳述式和分支須達 100%，在 [`pyproject.toml`](pyproject.toml) 中設定。提交遵循 Conventional Commits，semantic-release 據此決定版本。
 
 註解只出現在組合語言中：入口和出口狀態、暫存器寬度，以及每個位址的來源。Python 原始碼不帶任何註解。
 

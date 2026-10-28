@@ -20,6 +20,12 @@ OLDEST_PYTHON = (3, 12)
 
 PROJECT = "snes-pilotwings-nochip"
 
+ORIGIN = "https://github.com/gufranco/snes-pilotwings-nochip.git"
+
+NEXT_WHEN_CLEAN = "python3 tools/identify.py"
+
+NEXT_WHEN_NOT = "fix the first line marked ! above, then run python3 doctor.py again"
+
 PART = "dsp1"
 
 MASKS = ("dsp1", "dsp1b")
@@ -58,6 +64,23 @@ def _python() -> Any:
 
 def _project() -> Any:
     return Finding(PROJECT, True, f"version {VERSION}")
+
+
+def is_git_checkout(root: Path = ROOT) -> bool:
+    return any((folder / ".git").exists() for folder in (root, *root.parents))
+
+
+def _checkout(cloned: Callable[[], bool] = is_git_checkout) -> Any:
+    if cloned():
+        return Finding("checkout", True, "a git clone, so the submodules can be fetched")
+    return Finding(
+        "checkout",
+        False,
+        "no git metadata, so this came from a downloaded archive",
+        "a downloaded ZIP never carries the submodules and nothing can add them"
+        " afterwards; delete this folder and clone instead:"
+        f" git clone --recurse-submodules {ORIGIN}",
+    )
 
 
 def _default_import(package: str) -> Any:
@@ -236,7 +259,7 @@ def examine(
     load: Callable[[str], Any] = _default_import,
     beneath: Callable[[], Any] = _default_beneath,
 ) -> list[Any]:
-    found = [_python(), _project()]
+    found = [_python(), _project(), _checkout()]
     found.extend(
         _model(package, hardware.root_of(package), load) for package in sorted(hardware.PACKAGES)
     )
@@ -258,8 +281,10 @@ def report(found: Any) -> list[str]:
     lines.append("")
     if unwell:
         lines.append(f"  {len(unwell)} of {len(found)} checks did not pass")
+        lines.append(f"  next: {NEXT_WHEN_NOT}")
     else:
         lines.append(f"  {len(found)} checks, nothing to report")
+        lines.append(f"  next: {NEXT_WHEN_CLEAN}")
     return lines
 
 

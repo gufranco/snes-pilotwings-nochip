@@ -379,5 +379,65 @@ class DefaultBeneathTest(unittest.TestCase):
             self.assertIn(str(where), sys.path)
 
 
+def a_finding(ok: bool = True, advice: str | None = None) -> Any:
+    return doctor.Finding("thing", ok, "fine" if ok else "broken", advice)
+
+
+class CheckoutTest(unittest.TestCase):
+    def test_a_clone_passes(self) -> None:
+        # Arrange
+        cloned = lambda: True  # noqa: E731
+
+        # Act
+        found = doctor._checkout(cloned)
+
+        # Assert
+        self.assertEqual((found.name, found.ok), ("checkout", True))
+
+    def test_a_downloaded_archive_fails_and_says_to_clone(self) -> None:
+        # Arrange
+        cloned = lambda: False  # noqa: E731
+
+        # Act
+        found = doctor._checkout(cloned)
+
+        # Assert
+        self.assertFalse(found.ok)
+        self.assertIn("downloaded archive", found.detail)
+        self.assertIn(f"git clone --recurse-submodules {doctor.ORIGIN}", found.advice or "")
+
+
+class NextStepTest(unittest.TestCase):
+    def test_a_clean_report_ends_with_the_command_to_run_next(self) -> None:
+        # Arrange
+        found = [a_finding(ok=True)]
+
+        # Act
+        said = doctor.report(found)
+
+        # Assert
+        self.assertEqual(said[-1], f"  next: {doctor.NEXT_WHEN_CLEAN}")
+
+    def test_an_unwell_report_ends_by_pointing_at_the_first_failure(self) -> None:
+        # Arrange
+        found = [a_finding(ok=True), a_finding(ok=False, advice="do this")]
+
+        # Act
+        said = doctor.report(found)
+
+        # Assert
+        self.assertEqual(said[-1], f"  next: {doctor.NEXT_WHEN_NOT}")
+
+    def test_the_examination_reports_the_checkout_and_the_engine(self) -> None:
+        # Arrange
+        wanted = {"checkout"}
+
+        # Act
+        names = {one.name for one in doctor.examine()}
+
+        # Assert
+        self.assertLessEqual(wanted, names)
+
+
 if __name__ == "__main__":
     unittest.main()

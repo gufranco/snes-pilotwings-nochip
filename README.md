@@ -7,7 +7,7 @@ English | [日本語](README.ja.md) | [简体中文](README.zh-Hans.md) | [繁�
 [![CI](https://github.com/gufranco/snes-pilotwings-nochip/actions/workflows/ci.yml/badge.svg)](https://github.com/gufranco/snes-pilotwings-nochip/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-**16** commands answered against the part on every question **3** regional recordings hold, **0** wrong answers, **43,440** of **43,440** `$0a` ground words exact, **1,023** tests, **100%** statement and branch coverage of every module, no dependencies outside the standard library and **5** pinned submodules
+**16** commands answered against the part on every question **3** regional recordings hold, **0** wrong answers, **43,440** of **43,440** `$0a` ground words exact, **1,055** tests, **100%** statement and branch coverage of every module, no dependencies outside the standard library and **5** pinned submodules
 
 ```python
 import tables
@@ -36,6 +36,59 @@ The first loop rebuilds the four tables the DSP-1 carries in its data ROM from t
 
 ## Install
 
+### Step by step
+
+Five steps from nothing to a working checkout. The doctor in step 4 confirms the first three.
+
+1. **Install Python, git, and Docker if you will assemble.**
+
+   | | Windows | macOS | Linux |
+   |:--|:--|:--|:--|
+   | Python 3.12 or newer | `winget install Python.Python.3.12` | `brew install python@3.12` | your distribution's `python3` package |
+   | git | `winget install Git.Git` | `xcode-select --install` | your distribution's `git` package |
+   | Docker, only for the assembler and the recording emulator | `winget install Docker.DockerDesktop`, then start Docker Desktop | Docker Desktop, or `brew install colima docker` then `colima start` | Docker Engine, then `sudo systemctl start docker` |
+
+   On Windows, type `py -3.12` wherever this page says `python3`.
+
+2. **Clone the repository. Do not download it.**
+
+   ```bash
+   git clone --recurse-submodules https://github.com/gufranco/snes-pilotwings-nochip.git
+   cd snes-pilotwings-nochip
+   ```
+
+   > [!CAUTION]
+   > Cloning is the only way to get a copy that works. The green **Code** button on GitHub also offers **Download ZIP**, and a ZIP never works here: the 5 models this project runs on are separate repositories pinned as git submodules, a ZIP carries none of them, and nothing can add them afterwards. The doctor names such a copy a downloaded archive; delete it and clone. A clone made without `--recurse-submodules` is repaired in place with `git submodule update --init --recursive`.
+
+3. **Put your dump in `external/roms/`** under its name in [the dump list](#the-dumps): `pilotwings-usa.sfc`, `pilotwings-jp.sfc`, `pilotwings-eur.sfc`. The microcode goes in `external/firmware/`. Then check it; each dump you supplied should read `ok`:
+
+   ```bash
+   python3 tools/identify.py
+   ```
+
+4. **Run the doctor.** It checks the checkout, every model, each dump, and ends by naming the next thing to run:
+
+   ```bash
+   python3 doctor.py
+   ```
+
+   ```
+     N checks, nothing to report
+     next: python3 tools/identify.py
+   ```
+
+   A line marked `!` carries what to do on the line below it. The setup mistakes it catches:
+
+   | The doctor says | Do this |
+   |:--|:--|
+   | `checkout: no git metadata` | Delete the folder and clone, step 2 |
+   | `... is not checked out` | `git submodule update --init --recursive` |
+   | `cartridge ...: missing` | Step 3 |
+
+5. **There is no single build command yet.** The project is highly experimental: it records the game, builds tables and patches an image through the commands under [The interface](#the-interface), and many problems are expected. Reports are welcome.
+
+### Requirements and the doctor
+
 | Requirement | Version |
 |:--|:--|
 | Python | 3.12 or newer |
@@ -44,20 +97,15 @@ The first loop rebuilds the four tables the DSP-1 carries in its data ROM from t
 | Your own copy of the DSP-1 microcode | 8,192 bytes, as `external/firmware/dsp1.bin` and `external/firmware/dsp1b.bin` |
 | Docker | Any, only to build the assembler in [`asm/`](asm/) and the recording emulator in [`emu/`](emu/) |
 
-```bash
-git clone --recurse-submodules https://github.com/gufranco/snes-pilotwings-nochip.git
-cd snes-pilotwings-nochip
-python3 doctor.py
-```
-
-Nothing is installed from a package index and nothing is downloaded. The five models this project measures itself against are git submodules at the repository root. A source archive from the download-zip link carries none of them, so the doctor reports each as not checked out and every check that drives a model fails.
+Nothing is installed from a package index and nothing is downloaded. The five models this project measures itself against are git submodules at the repository root. A source archive from the download-zip link carries none of them, and the doctor names such a folder as one.
 
 The microcode can sit anywhere `UPD7725_FIRMWARE_DIR` names instead of `external/firmware/`. Without it, every check that drives the part reports that it had nothing to run.
 
-The doctor prints the machine, this project's version, every model and its version, whether the microcode runs, which of the two masks are present, the state of each dump, and the report of each model's own doctor filed under that model's name. It exits 0 when every check passes and 1 otherwise. Paste its whole output into any bug report. On a fresh recursive clone with no dumps and no microcode it ends with:
+The doctor prints the machine, this project's version, whether the folder is a git clone, every model and its version, whether the microcode runs, which of the two masks are present, the state of each dump, and the report of each model's own doctor filed under that model's name. It exits 0 when every check passes and 1 otherwise. Paste its whole output into any bug report. On a fresh recursive clone with no dumps and no microcode it ends with:
 
 ```
-  5 of 92 checks did not pass
+  5 of 93 checks did not pass
+  next: fix the first line marked ! above, then run python3 doctor.py again
 ```
 
 The five are the missing microcode, the two masks the DSP model has no image for, and the empty `cartridges` directory each of two submodules ships.
@@ -677,7 +725,7 @@ for t in *.test.py tools/*.test.py; do python3 -m coverage run -a "$t"; done
 python3 -m coverage report
 ```
 
-1,023 tests across 40 files, one `<module>.test.py` beside each module. Coverage is a hard gate at 100% of statements and branches, set in [`pyproject.toml`](pyproject.toml). Commits follow Conventional Commits, and semantic-release cuts the version from them.
+1,055 tests across 41 files, one `<module>.test.py` beside each module. Coverage is a hard gate at 100% of statements and branches, set in [`pyproject.toml`](pyproject.toml). Commits follow Conventional Commits, and semantic-release cuts the version from them.
 
 Comments appear in the assembly and only there: entry and exit state, register widths, and where each address came from. Python source carries none.
 

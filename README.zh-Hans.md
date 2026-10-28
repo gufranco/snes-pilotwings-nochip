@@ -7,7 +7,7 @@
 [![CI](https://github.com/gufranco/snes-pilotwings-nochip/actions/workflows/ci.yml/badge.svg)](https://github.com/gufranco/snes-pilotwings-nochip/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-**16** 条命令对照芯片回答了 **3** 份地区录制所含的每个问题，**0** 个错误答案，`$0a` 地面字 **43,440** 个中 **43,440** 个完全一致，**1,023** 个测试，每个模块的语句和分支覆盖率均为 **100%**，除标准库外没有依赖，另有 **5** 个固定版本的子模块
+**16** 条命令对照芯片回答了 **3** 份地区录制所含的每个问题，**0** 个错误答案，`$0a` 地面字 **43,440** 个中 **43,440** 个完全一致，**1,055** 个测试，每个模块的语句和分支覆盖率均为 **100%**，除标准库外没有依赖，另有 **5** 个固定版本的子模块
 
 ```python
 import tables
@@ -36,6 +36,59 @@ arccosine  256 words  first (16384, 16343, 16303)
 
 ## 安装
 
+### 分步操作
+
+从零到可用的检出共五步。第 4 步的 doctor 会确认前三步。
+
+1. **安装 Python、git，要汇编时再装 Docker。**
+
+   | | Windows | macOS | Linux |
+   |:--|:--|:--|:--|
+   | Python 3.12 或更新版本 | `winget install Python.Python.3.12` | `brew install python@3.12` | 发行版的 `python3` 软件包 |
+   | git | `winget install Git.Git` | `xcode-select --install` | 发行版的 `git` 软件包 |
+   | Docker（仅汇编器和录制用模拟器需要） | `winget install Docker.DockerDesktop`，然后启动 Docker Desktop | Docker Desktop，或 `brew install colima docker` 后运行 `colima start` | Docker Engine，然后 `sudo systemctl start docker` |
+
+   在 Windows 上，本页写 `python3` 的地方请输入 `py -3.12`。
+
+2. **克隆仓库，不要下载。**
+
+   ```bash
+   git clone --recurse-submodules https://github.com/gufranco/snes-pilotwings-nochip.git
+   cd snes-pilotwings-nochip
+   ```
+
+   > [!CAUTION]
+   > 只有克隆才能得到可用的副本。GitHub 上绿色的 **Code** 按钮还提供 **Download ZIP**，但 ZIP 在这里永远无法使用：本项目依赖的 5 个模型是以 git 子模块固定的独立仓库，ZIP 一个都不包含，之后也无法补上。doctor 会把这样的副本报告为下载的归档；请删除它并克隆。没有加 `--recurse-submodules` 的克隆，可以用 `git submodule update --init --recursive` 就地修复。
+
+3. **把转储放进 `external/roms/`**，文件名按[转储列表](#the-dumps)：`pilotwings-usa.sfc`, `pilotwings-jp.sfc`, `pilotwings-eur.sfc`。微码放在 `external/firmware/`。然后检查，你提供的每个转储都应显示 `ok`：
+
+   ```bash
+   python3 tools/identify.py
+   ```
+
+4. **运行 doctor。** 它检查检出、每个模型、每个转储，最后说明下一步运行什么：
+
+   ```bash
+   python3 doctor.py
+   ```
+
+   ```
+     N checks, nothing to report
+     next: python3 tools/identify.py
+   ```
+
+   标有 `!` 的行，下一行写着该怎么做。它能发现的设置错误：
+
+   | doctor 显示 | 怎么做 |
+   |:--|:--|
+   | `checkout: no git metadata` | 删除文件夹并克隆，第 2 步 |
+   | `... is not checked out` | `git submodule update --init --recursive` |
+   | `cartridge ...: missing` | 第 3 步 |
+
+5. **目前还没有单一的构建命令。** 本项目高度实验性：它通过“接口”中的命令录制游戏、构建表并给镜像打补丁，预计会有很多问题。欢迎报告。
+
+### 依赖与 doctor
+
 | 要求 | 版本 |
 |:--|:--|
 | Python | 3.12 或更新 |
@@ -44,20 +97,15 @@ arccosine  256 words  first (16384, 16343, 16303)
 | 你自己的 DSP-1 微码副本 | 8,192 字节，存为 `external/firmware/dsp1.bin` 和 `external/firmware/dsp1b.bin` |
 | Docker | 任意版本，仅用于构建 [`asm/`](asm/) 中的汇编器和 [`emu/`](emu/) 中的录制用模拟器 |
 
-```bash
-git clone --recurse-submodules https://github.com/gufranco/snes-pilotwings-nochip.git
-cd snes-pilotwings-nochip
-python3 doctor.py
-```
-
-不从任何软件包索引安装任何东西，也不下载任何东西。本项目用来衡量自身的五个模型是仓库根目录下的 git 子模块。通过下载 zip 链接得到的源码归档不包含其中任何一个，因此诊断脚本会把每个都报告为未检出，所有驱动模型的检查都会失败。
+不从任何软件包索引安装任何东西，也不下载任何东西。本项目用来衡量自身的五个模型是仓库根目录下的 git 子模块。通过下载 zip 链接得到的源码归档不包含其中任何一个，诊断脚本会把这样的文件夹报告为归档。
 
 微码可以放在 `UPD7725_FIRMWARE_DIR` 指定的任意位置，而不是 `external/firmware/`。没有微码时，所有驱动芯片的检查都会报告没有可运行的内容。
 
-诊断脚本会打印机器信息、本项目的版本、每个模型及其版本、微码能否运行、两个掩模版本中有哪些、每份转储的状态，以及每个模型自身诊断脚本的报告，按该模型的名称归档。所有检查都通过时退出码为 0，否则为 1。提交任何 bug 报告时请粘贴它的完整输出。在一次全新的递归克隆上，没有转储也没有微码时，它的结尾是：
+诊断脚本会打印机器信息、本项目的版本、该文件夹是否为 git 克隆、每个模型及其版本、微码能否运行、两个掩模版本中有哪些、每份转储的状态，以及每个模型自身诊断脚本的报告，按该模型的名称归档。所有检查都通过时退出码为 0，否则为 1。提交任何 bug 报告时请粘贴它的完整输出。在一次全新的递归克隆上，没有转储也没有微码时，它的结尾是：
 
 ```
-  5 of 92 checks did not pass
+  5 of 93 checks did not pass
+  next: fix the first line marked ! above, then run python3 doctor.py again
 ```
 
 这五项是：缺失的微码、DSP 模型没有镜像的两个掩模版本，以及两个子模块各自附带的空 `cartridges` 目录。
@@ -679,7 +727,7 @@ for t in *.test.py tools/*.test.py; do python3 -m coverage run -a "$t"; done
 python3 -m coverage report
 ```
 
-40 个文件共 1,023 个测试，每个模块旁边有一个 `<module>.test.py`。覆盖率是一项硬性门禁检查，要求语句和分支均为 100%，在 [`pyproject.toml`](pyproject.toml) 中设置。提交遵循 Conventional Commits，semantic-release 据此确定版本。
+41 个文件共 1,055 个测试，每个模块旁边有一个 `<module>.test.py`。覆盖率是一项硬性门禁检查，要求语句和分支均为 100%，在 [`pyproject.toml`](pyproject.toml) 中设置。提交遵循 Conventional Commits，semantic-release 据此确定版本。
 
 注释只出现在汇编代码中：入口和出口状态、寄存器宽度，以及每个地址的来源。Python 源码中没有注释。
 
