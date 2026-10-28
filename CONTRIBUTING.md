@@ -52,7 +52,9 @@ what keeps the suite meaningful on a machine that holds neither.
 
 Conventional Commits, subject under fifty characters, imperative mood. The body explains what
 changed and why, wrapped at seventy two columns. Releases are cut by semantic-release from those
-subjects, so the type is what decides the version.
+subjects, so the type is what decides the version. The project is experimental and stays below
+1.0: a breaking change raises the minor number, and 1.0.0 is cut by hand when the images are ready
+for players.
 
 ## What will be sent back
 
