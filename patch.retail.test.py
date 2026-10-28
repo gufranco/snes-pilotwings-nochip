@@ -9,7 +9,7 @@ import sites
 
 ROOT = Path(__file__).resolve().parent
 
-ROMS = ROOT / "roms"
+ROMS = ROOT / "external" / "roms"
 
 WIDE_ACCUMULATOR = False
 NARROW_INDEX = True
@@ -138,7 +138,7 @@ class Accesses(unittest.TestCase):
     def setUp(self) -> None:
         rom = _rom()
         if rom is None:
-            self.skipTest("no cartridge dump in roms/, so there is nothing to disassemble")
+            self.skipTest("no cartridge dump in external/roms/, so there is nothing to disassemble")
         self.rom = rom
         self.listing = _decoded(rom)
         self.real = {
@@ -322,7 +322,7 @@ class Replaced(unittest.TestCase):
     def setUp(self) -> None:
         rom = _rom()
         if rom is None:
-            self.skipTest("no cartridge dump in roms/, so there is nothing to replace")
+            self.skipTest("no cartridge dump in external/roms/, so there is nothing to replace")
         self.rom = rom
         named = {*patch.HOOKS.values(), *patch.STATUS_HOOKS.values(), *patch.MIRRORED.values()}
         self.stubs = dict.fromkeys(named, 0x00AD28)
@@ -357,7 +357,7 @@ class RasterChain(unittest.TestCase):
     def setUp(self) -> None:
         rom = _rom()
         if rom is None:
-            self.skipTest("no cartridge dump in roms/, so there is no table to read")
+            self.skipTest("no cartridge dump in external/roms/, so there is no table to read")
         self.rom = rom
 
     def test_the_table_holds_the_three_handlers_the_chain_runs(self) -> None:

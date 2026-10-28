@@ -7,9 +7,9 @@ import sites
 ROOT = Path(__file__).resolve().parent
 
 HELD = {
-    one.region: ROOT / "roms" / one.filename
+    one.region: ROOT / "external" / "roms" / one.filename
     for one in dumps.artifacts()
-    if (ROOT / "roms" / one.filename).is_file()
+    if (ROOT / "external" / "roms" / one.filename).is_file()
 }
 
 

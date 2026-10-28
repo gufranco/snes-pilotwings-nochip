@@ -11,9 +11,9 @@ import hardware
 ROOT = Path(__file__).resolve().parent
 
 IMAGES = [
-    (one.filename, (ROOT / "roms" / one.filename).read_bytes())
+    (one.filename, (ROOT / "external" / "roms" / one.filename).read_bytes())
     for one in dumps.artifacts()
-    if (ROOT / "roms" / one.filename).is_file()
+    if (ROOT / "external" / "roms" / one.filename).is_file()
 ]
 
 TRACES = [

@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parent
 
 MASKS = {
     one.stem: one.read_bytes()
-    for one in sorted((ROOT / "firmware").glob("dsp1*.bin"))
+    for one in sorted((ROOT / "external" / "firmware").glob("dsp1*.bin"))
     if one.stat().st_size == tables.IMAGE_BYTES
 }
 

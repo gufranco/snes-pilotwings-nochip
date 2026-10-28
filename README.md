@@ -40,8 +40,8 @@ The first loop rebuilds the four tables the DSP-1 carries in its data ROM from t
 |:--|:--|
 | Python | 3.12 or newer |
 | git | Any, to fetch the five submodules |
-| Your own cartridge dumps | 524,288 bytes each, in `roms/` under the names in [The dumps](#the-dumps) |
-| Your own copy of the DSP-1 microcode | 8,192 bytes, as `firmware/dsp1.bin` and `firmware/dsp1b.bin` |
+| Your own cartridge dumps | 524,288 bytes each, in `external/roms/` under the names in [The dumps](#the-dumps) |
+| Your own copy of the DSP-1 microcode | 8,192 bytes, as `external/firmware/dsp1.bin` and `external/firmware/dsp1b.bin` |
 | Docker | Any, only to build the assembler in [`asm/`](asm/) and the recording emulator in [`emu/`](emu/) |
 
 ```bash
@@ -52,7 +52,7 @@ python3 doctor.py
 
 Nothing is installed from a package index and nothing is downloaded. The five models this project measures itself against are git submodules at the repository root. A source archive from the download-zip link carries none of them, so the doctor reports each as not checked out and every check that drives a model fails.
 
-The microcode can sit anywhere `UPD7725_FIRMWARE_DIR` names instead of `firmware/`. Without it, every check that drives the part reports that it had nothing to run.
+The microcode can sit anywhere `UPD7725_FIRMWARE_DIR` names instead of `external/firmware/`. Without it, every check that drives the part reports that it had nothing to run.
 
 The doctor prints the machine, this project's version, every model and its version, whether the microcode runs, which of the two masks are present, the state of each dump, and the report of each model's own doctor filed under that model's name. It exits 0 when every check passes and 1 otherwise. Paste its whole output into any bug report. On a fresh recursive clone with no dumps and no microcode it ends with:
 
@@ -71,7 +71,7 @@ This is a set of scripts run from the repository root, plus the modules they are
 | Command | Arguments | What it does | Exit |
 |:--|:--|:--|:--|
 | `python3 doctor.py` | none | Reports the machine and the whole chain of models | 0 clean, 1 when a check did not pass |
-| `python3 tools/identify.py` | none | Checks each file in `roms/` against [`artifacts.manifest.json`](artifacts.manifest.json) and prints the commands that compute a SHA-256 on macOS, Linux and Windows | 0 when every dump matches or is absent, 1 when one is wrong |
+| `python3 tools/identify.py` | none | Checks each file in `external/roms/` against [`artifacts.manifest.json`](artifacts.manifest.json) and prints the commands that compute a SHA-256 on macOS, Linux and Windows | 0 when every dump matches or is absent, 1 when one is wrong |
 | `python3 exchanges.py <trace>` | a recording | Cuts the recording at each command site and prints every command with its exchanges, share, distinct argument sets, sites and how it can be answered | 0, 2 |
 | `python3 tables.py <microcode image>` | an 8,192 byte image | Finds the four tables in the image's data ROM and prints the word each starts at | 0, 2 |
 | `python3 microcode.py <mask>` | `dsp1` or `dsp1b` | Walks the microcode's dispatch for all 256 command bytes and prints each handler with the commands the cartridge writes | 0, 2 |
@@ -85,7 +85,7 @@ This is a set of scripts run from the repository root, plus the modules they are
 | `python3 tools/profile.py <image> <symbol file> [<routine>] [<snapshot>] [--built]` | as above, plus `--built` when the snapshot already holds the built tables | Runs one call and splits its cycles by the label each instruction sits under, top 16 | 0, 1 without a snapshot or labels, 2 |
 
 ```bash
-python3 tables.py firmware/dsp1.bin
+python3 tables.py external/firmware/dsp1.bin
 ```
 
 ```
@@ -98,7 +98,7 @@ python3 tables.py firmware/dsp1.bin
   4 of 4 carried, 1,280 bytes to reproduce them all, against 131,072 for one table over a whole input
 ```
 
-The same command on `firmware/dsp1b.bin` finds the sine, cosine and arccosine two words lower, at 278, 406 and 540, and the reciprocal at 101.
+The same command on `external/firmware/dsp1b.bin` finds the sine, cosine and arccosine two words lower, at 278, 406 and 540, and the reciprocal at 101.
 
 ### The recording emulator
 
@@ -106,7 +106,7 @@ The same command on `firmware/dsp1b.bin` finds the sine, cosine and arccosine tw
 
 ```bash
 docker build -t pwemu emu
-docker run --rm -v "$PWD:/work" -e PWTRACE=build/trace-usa.bin pwemu roms/pilotwings-usa.sfc 12000
+docker run --rm -v "$PWD:/work" -e PWTRACE=build/trace-usa.bin pwemu external/roms/pilotwings-usa.sfc 12000
 ```
 
 | Input | Meaning |
@@ -138,7 +138,7 @@ Each record in the port log is 12 bytes, little endian: the frame as 32 bits, th
 | | `digest_commands(filename)` | The SHA-256 command for `macOS`, `Linux` and `Windows` |
 | | `manifest()`, `through()`, `not_this()` | The manifest, its sources, and the files it names to refuse |
 | [`version.py`](version.py) | `VERSION`, `stamped(name, release=None)` | The release, and the file name an image of that release carries |
-| [`hardware.py`](hardware.py) | `install(environment=None)` | Puts every model on `sys.path`, adds `firmware/` to `UPD7725_FIRMWARE_DIR`, and returns that variable |
+| [`hardware.py`](hardware.py) | `install(environment=None)` | Puts every model on `sys.path`, adds `external/firmware/` to `UPD7725_FIRMWARE_DIR`, and returns that variable |
 | | `load(package)` | A model package: `mos65xx`, `snesdsp`, `mapper`, `romimage`, `snesdriver` or `upd7725` |
 | | `root_of(package)` | The model's directory. Any other name raises `UnknownPackage` |
 | [`tools/identify.py`](tools/identify.py) | `look(artifact, root)`, `judge(artifact, data)` | A `Looked` with `region`, `filename`, `state` of `ok`, `absent` or `wrong`, `detail`, and `ok` |
@@ -599,9 +599,9 @@ Named as No-Intro names them. Every digest is of the whole file with no copier h
 
 | File | Read as | Size |
 |:--|:--|--:|
-| Pilotwings, USA | `roms/pilotwings-usa.sfc` | 524,288 |
-| Pilotwings, Japan | `roms/pilotwings-jp.sfc` | 524,288 |
-| Pilotwings, Europe | `roms/pilotwings-eur.sfc` | 524,288 |
+| Pilotwings, USA | `external/roms/pilotwings-usa.sfc` | 524,288 |
+| Pilotwings, Japan | `external/roms/pilotwings-jp.sfc` | 524,288 |
+| Pilotwings, Europe | `external/roms/pilotwings-eur.sfc` | 524,288 |
 
 | Region | SHA-256 | CRC32 |
 |:--|:--|:--|

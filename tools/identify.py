@@ -47,7 +47,7 @@ def judge(one: Any, data: bytes, digest: str | None = None) -> Looked:
 
 
 def look(one: Any, root: Path | str = ROOT) -> Looked:
-    where = Path(root) / "roms" / one.filename
+    where = Path(root) / "external" / "roms" / one.filename
     if not where.is_file():
         return Looked(one.region, one.filename, STATE_ABSENT, "not on this machine")
     return judge(one, where.read_bytes())
@@ -61,7 +61,9 @@ def report(root: Path | str = ROOT) -> list[str]:
         lines.append(f"  {mark}  {found.region} / {found.filename}: {found.detail}")
     lines.append("")
     lines.append(f"  {dumps.DECIDES} is what decides. Work one out yourself with:")
-    for system, command in dumps.digest_commands(f"roms/{dumps.artifacts()[0].filename}").items():
+    for system, command in dumps.digest_commands(
+        f"external/roms/{dumps.artifacts()[0].filename}"
+    ).items():
         lines.append(f"    {system:8s} {command}")
     return lines
 

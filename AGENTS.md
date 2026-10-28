@@ -211,8 +211,31 @@ No cartridge dump, no microcode image, no fragment of either, no intermediate bu
 no test fixture carrying any of it. Digests yes, bytes never. Nothing here says where a dump can be
 obtained and nothing here downloads one.
 
-`roms/`, `firmware/`, `build/` and `dist/` are ignored, and the ignore file covers them on its own
+`external/`, `build/` and `dist/` are ignored, and the ignore file covers them on its own
 rather than relying on one configured on a machine, because that one does not travel with a clone.
+
+## Files kept in `external/`
+
+Everything this member reads and may not ship sits in `external/`, which git
+ignores and Dropbox is told to leave alone, per FAMILY.md's "Where the files a
+member reads are kept". [`artifacts.manifest.json`](artifacts.manifest.json)
+names all 5 by size, CRC32, MD5, SHA-1 and SHA-256:
+
+- `external/roms/`, the three cartridge dumps, which the identify tool, the census and the patch
+  read; the `artifacts` list in the manifest identifies them.
+- `external/firmware/`, the DSP-1 and DSP-1B microcode the models run.
+
+The tool and its test sit in `tools/`, where this project keeps its tools, so
+the command is `python3 tools/external.py`.
+
+```bash
+python3 tools/external.py
+python3 tools/external.py --describe external/<file>
+```
+
+The first says which are here, verified, missing or wrong. The second prints
+the manifest entry for a file being added, which gets its entry in the same
+change.
 
 ## Gates
 

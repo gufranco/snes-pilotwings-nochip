@@ -40,8 +40,8 @@ arccosine  256 words  first (16384, 16343, 16303)
 |:--|:--|
 | Python | 3.12以降 |
 | git | 任意、5つのサブモジュールの取得に使用 |
-| ご自身のカートリッジのダンプ | 各524,288バイト、[ダンプ](#the-dumps)の名前で`roms/`に配置 |
-| ご自身が持つDSP-1マイクロコードのコピー | 8,192バイト、`firmware/dsp1.bin`および`firmware/dsp1b.bin`として配置 |
+| ご自身のカートリッジのダンプ | 各524,288バイト、[ダンプ](#the-dumps)の名前で`external/roms/`に配置 |
+| ご自身が持つDSP-1マイクロコードのコピー | 8,192バイト、`external/firmware/dsp1.bin`および`external/firmware/dsp1b.bin`として配置 |
 | Docker | 任意、[`asm/`](asm/)のアセンブラと[`emu/`](emu/)の記録用エミュレータのビルドにのみ使用 |
 
 ```bash
@@ -52,7 +52,7 @@ python3 doctor.py
 
 パッケージインデックスからは何もインストールせず、何もダウンロードしません。このプロジェクトが自身を照合する5つのモデルは、リポジトリのルートにあるgitサブモジュールです。download-zipリンクから得たソースアーカイブにはそのどれも含まれないため、ドクターはそれぞれをチェックアウトされていないと報告し、モデルを動かすチェックはすべて失敗します。
 
-マイクロコードは`firmware/`の代わりに`UPD7725_FIRMWARE_DIR`が指す任意の場所に置けます。マイクロコードがないと、チップを動かすチェックはすべて実行対象がなかったと報告します。
+マイクロコードは`external/firmware/`の代わりに`UPD7725_FIRMWARE_DIR`が指す任意の場所に置けます。マイクロコードがないと、チップを動かすチェックはすべて実行対象がなかったと報告します。
 
 ドクターは、マシン、このプロジェクトのバージョン、各モデルとそのバージョン、マイクロコードが動くかどうか、2つのマスクのうちどちらがあるか、各ダンプの状態、そして各モデル自身のドクターの報告をそのモデル名の下に出力します。すべてのチェックが通れば0で、そうでなければ1で終了します。バグ報告には出力全体を貼り付けてください。ダンプもマイクロコードもない再帰クローンの直後では、次の行で終わります。
 
@@ -71,7 +71,7 @@ python3 doctor.py
 | コマンド | 引数 | 動作 | 終了コード |
 |:--|:--|:--|:--|
 | `python3 doctor.py` | なし | マシンとモデルの連鎖全体を報告します | 0は正常、1はチェックが通らなかったとき |
-| `python3 tools/identify.py` | なし | `roms/`内の各ファイルを[`artifacts.manifest.json`](artifacts.manifest.json)と照合し、macOS、Linux、WindowsでSHA-256を計算するコマンドを出力します | 0はすべてのダンプが一致するか存在しないとき、1は1つでも誤っているとき |
+| `python3 tools/identify.py` | なし | `external/roms/`内の各ファイルを[`artifacts.manifest.json`](artifacts.manifest.json)と照合し、macOS、Linux、WindowsでSHA-256を計算するコマンドを出力します | 0はすべてのダンプが一致するか存在しないとき、1は1つでも誤っているとき |
 | `python3 exchanges.py <trace>` | 記録 | 記録を各コマンドサイトで区切り、各コマンドについてそのやり取り、割合、異なる引数セット、サイト、答え方を出力します | 0、2 |
 | `python3 tables.py <microcode image>` | 8,192バイトのイメージ | イメージのデータROMから4つのテーブルを見つけ、それぞれの開始ワードを出力します | 0、2 |
 | `python3 microcode.py <mask>` | `dsp1`または`dsp1b` | 256個すべてのコマンドバイトについてマイクロコードのディスパッチをたどり、各ハンドラをカートリッジが書き込むコマンドとともに出力します | 0、2 |
@@ -85,7 +85,7 @@ python3 doctor.py
 | `python3 tools/profile.py <image> <symbol file> [<routine>] [<snapshot>] [--built]` | 上と同じ、スナップショットがすでに構築済みのテーブルを保持しているときは`--built`を追加 | 1回呼び出し、そのサイクルを各命令が属するラベルごとに分けて上位16件を出力します | 0、1はスナップショットまたはラベルがないとき、2 |
 
 ```bash
-python3 tables.py firmware/dsp1.bin
+python3 tables.py external/firmware/dsp1.bin
 ```
 
 ```
@@ -98,7 +98,7 @@ python3 tables.py firmware/dsp1.bin
   4 of 4 carried, 1,280 bytes to reproduce them all, against 131,072 for one table over a whole input
 ```
 
-同じコマンドを`firmware/dsp1b.bin`に対して実行すると、正弦、余弦、逆余弦は2ワード下の278、406、540に、逆数は101に見つかります。
+同じコマンドを`external/firmware/dsp1b.bin`に対して実行すると、正弦、余弦、逆余弦は2ワード下の278、406、540に、逆数は101に見つかります。
 
 ### 記録用エミュレータ
 
@@ -106,7 +106,7 @@ python3 tables.py firmware/dsp1.bin
 
 ```bash
 docker build -t pwemu emu
-docker run --rm -v "$PWD:/work" -e PWTRACE=build/trace-usa.bin pwemu roms/pilotwings-usa.sfc 12000
+docker run --rm -v "$PWD:/work" -e PWTRACE=build/trace-usa.bin pwemu external/roms/pilotwings-usa.sfc 12000
 ```
 
 | 入力 | 意味 |
@@ -138,7 +138,7 @@ docker run --rm -v "$PWD:/work" -e PWTRACE=build/trace-usa.bin pwemu roms/pilotw
 | | `digest_commands(filename)` | `macOS`、`Linux`、`Windows`用のSHA-256コマンド |
 | | `manifest()`、`through()`、`not_this()` | マニフェスト、その出典、拒否すべきとして挙げるファイル |
 | [`version.py`](version.py) | `VERSION`、`stamped(name, release=None)` | リリースと、そのリリースのイメージが持つファイル名 |
-| [`hardware.py`](hardware.py) | `install(environment=None)` | すべてのモデルを`sys.path`に追加し、`firmware/`を`UPD7725_FIRMWARE_DIR`に加え、その変数を返します |
+| [`hardware.py`](hardware.py) | `install(environment=None)` | すべてのモデルを`sys.path`に追加し、`external/firmware/`を`UPD7725_FIRMWARE_DIR`に加え、その変数を返します |
 | | `load(package)` | モデルパッケージ。`mos65xx`、`snesdsp`、`mapper`、`romimage`、`snesdriver`、`upd7725`のいずれか |
 | | `root_of(package)` | モデルのディレクトリ。それ以外の名前は`UnknownPackage`を送出します |
 | [`tools/identify.py`](tools/identify.py) | `look(artifact, root)`、`judge(artifact, data)` | `region`、`filename`、`ok`・`absent`・`wrong`のいずれかの`state`、`detail`、`ok`を持つ`Looked` |
@@ -601,9 +601,9 @@ No-Introでの名前に従っています。どのダイジェストもコピア
 
 | ファイル | 読み込み先 | サイズ |
 |:--|:--|--:|
-| Pilotwings、USA | `roms/pilotwings-usa.sfc` | 524,288 |
-| Pilotwings、Japan | `roms/pilotwings-jp.sfc` | 524,288 |
-| Pilotwings、Europe | `roms/pilotwings-eur.sfc` | 524,288 |
+| Pilotwings、USA | `external/roms/pilotwings-usa.sfc` | 524,288 |
+| Pilotwings、Japan | `external/roms/pilotwings-jp.sfc` | 524,288 |
+| Pilotwings、Europe | `external/roms/pilotwings-eur.sfc` | 524,288 |
 
 | 地域 | SHA-256 | CRC32 |
 |:--|:--|:--|

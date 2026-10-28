@@ -40,8 +40,8 @@ arccosine  256 words  first (16384, 16343, 16303)
 |:--|:--|
 | Python | 3.12 或更新 |
 | git | 任何版本，用於取得五個子模組 |
-| 你自己的卡帶傾印檔 | 每個 524,288 位元組，放在 `roms/` 中，檔名見[傾印檔](#the-dumps) |
-| 你自己的 DSP-1 微碼副本 | 8,192 位元組，存為 `firmware/dsp1.bin` 和 `firmware/dsp1b.bin` |
+| 你自己的卡帶傾印檔 | 每個 524,288 位元組，放在 `external/roms/` 中，檔名見[傾印檔](#the-dumps) |
+| 你自己的 DSP-1 微碼副本 | 8,192 位元組，存為 `external/firmware/dsp1.bin` 和 `external/firmware/dsp1b.bin` |
 | Docker | 任何版本，只用於建置 [`asm/`](asm/) 中的組譯器和 [`emu/`](emu/) 中的錄製模擬器 |
 
 ```bash
@@ -52,7 +52,7 @@ python3 doctor.py
 
 不會從套件索引安裝任何東西，也不會下載任何東西。本專案用作對照的五個模型是位於儲存庫根目錄的 git 子模組。從 download-zip 連結取得的原始碼封存檔不包含任何一個，因此診斷腳本會把每個都報告為未簽出，而每個驅動模型的檢查都會失敗。
 
-微碼可以放在 `UPD7725_FIRMWARE_DIR` 指定的任何位置，而不是 `firmware/`。沒有微碼的話，每個驅動晶片的檢查都會報告沒有東西可執行。
+微碼可以放在 `UPD7725_FIRMWARE_DIR` 指定的任何位置，而不是 `external/firmware/`。沒有微碼的話，每個驅動晶片的檢查都會報告沒有東西可執行。
 
 診斷腳本會印出機器資訊、本專案的版本、每個模型及其版本、微碼能否執行、兩個掩膜版本中哪些存在、每個傾印檔的狀態，以及每個模型本身的診斷腳本的報告，按該模型的名稱歸檔。所有檢查都通過時以 0 結束，否則以 1 結束。提交任何錯誤報告時請貼上完整輸出。在全新的遞迴複製中，沒有傾印檔也沒有微碼時，輸出以下列內容結尾：
 
@@ -71,7 +71,7 @@ python3 doctor.py
 | 指令 | 參數 | 作用 | 結束碼 |
 |:--|:--|:--|:--|
 | `python3 doctor.py` | 無 | 報告機器資訊和整條模型鏈 | 0 表示正常，1 表示有檢查未通過 |
-| `python3 tools/identify.py` | 無 | 將 `roms/` 中每個檔案與 [`artifacts.manifest.json`](artifacts.manifest.json) 對照，並印出在 macOS、Linux 和 Windows 上計算 SHA-256 的指令 | 0 表示每個傾印檔都相符或不存在，1 表示有一個不正確 |
+| `python3 tools/identify.py` | 無 | 將 `external/roms/` 中每個檔案與 [`artifacts.manifest.json`](artifacts.manifest.json) 對照，並印出在 macOS、Linux 和 Windows 上計算 SHA-256 的指令 | 0 表示每個傾印檔都相符或不存在，1 表示有一個不正確 |
 | `python3 exchanges.py <trace>` | 一份錄製記錄 | 在每個指令發出點切分錄製記錄，印出每個指令及其交換次數、佔比、不同參數組數、發出點，以及可以如何作答 | 0、2 |
 | `python3 tables.py <microcode image>` | 一個 8,192 位元組的映像檔 | 在映像檔的數據 ROM 中找出四個表格，並印出每個表格起始的字位置 | 0、2 |
 | `python3 microcode.py <mask>` | `dsp1` 或 `dsp1b` | 走訪微碼對全部 256 個指令位元組的分派，並印出每個處理程序及卡帶寫入的指令 | 0、2 |
@@ -85,7 +85,7 @@ python3 doctor.py
 | `python3 tools/profile.py <image> <symbol file> [<routine>] [<snapshot>] [--built]` | 同上，快照已含建好的表格時另加 `--built` | 執行一次呼叫，按每條指令所在的標籤拆分週期數，列出前 16 名 | 0，1 表示沒有快照或標籤，2 |
 
 ```bash
-python3 tables.py firmware/dsp1.bin
+python3 tables.py external/firmware/dsp1.bin
 ```
 
 ```
@@ -98,7 +98,7 @@ python3 tables.py firmware/dsp1.bin
   4 of 4 carried, 1,280 bytes to reproduce them all, against 131,072 for one table over a whole input
 ```
 
-對 `firmware/dsp1b.bin` 執行同一指令，會發現正弦、餘弦和反餘弦低兩個字，位於 278、406 和 540，倒數則位於 101。
+對 `external/firmware/dsp1b.bin` 執行同一指令，會發現正弦、餘弦和反餘弦低兩個字，位於 278、406 和 540，倒數則位於 101。
 
 ### 錄製模擬器
 
@@ -106,7 +106,7 @@ python3 tables.py firmware/dsp1.bin
 
 ```bash
 docker build -t pwemu emu
-docker run --rm -v "$PWD:/work" -e PWTRACE=build/trace-usa.bin pwemu roms/pilotwings-usa.sfc 12000
+docker run --rm -v "$PWD:/work" -e PWTRACE=build/trace-usa.bin pwemu external/roms/pilotwings-usa.sfc 12000
 ```
 
 | 輸入 | 含義 |
@@ -138,7 +138,7 @@ docker run --rm -v "$PWD:/work" -e PWTRACE=build/trace-usa.bin pwemu roms/pilotw
 | | `digest_commands(filename)` | 用於 `macOS`、`Linux` 和 `Windows` 的 SHA-256 指令 |
 | | `manifest()`, `through()`, `not_this()` | 清單、其來源，以及清單指名要拒絕的檔案 |
 | [`version.py`](version.py) | `VERSION`, `stamped(name, release=None)` | 發行版本，以及該版本的映像檔所帶的檔名 |
-| [`hardware.py`](hardware.py) | `install(environment=None)` | 把每個模型加入 `sys.path`，把 `firmware/` 加入 `UPD7725_FIRMWARE_DIR`，並傳回該變數 |
+| [`hardware.py`](hardware.py) | `install(environment=None)` | 把每個模型加入 `sys.path`，把 `external/firmware/` 加入 `UPD7725_FIRMWARE_DIR`，並傳回該變數 |
 | | `load(package)` | 一個模型套件：`mos65xx`、`snesdsp`、`mapper`、`romimage`、`snesdriver` 或 `upd7725` |
 | | `root_of(package)` | 模型的目錄。任何其他名稱會引發 `UnknownPackage` |
 | [`tools/identify.py`](tools/identify.py) | `look(artifact, root)`, `judge(artifact, data)` | 一個 `Looked`，帶有 `region`、`filename`、值為 `ok`、`absent` 或 `wrong` 的 `state`、`detail`，以及 `ok` |
@@ -601,9 +601,9 @@ uPD77C25 在程式旁邊保存 1024 個字的數據 ROM。[`tables.py`](tables.p
 
 | 檔案 | 讀取路徑 | 大小 |
 |:--|:--|--:|
-| Pilotwings，USA | `roms/pilotwings-usa.sfc` | 524,288 |
-| Pilotwings，日本 | `roms/pilotwings-jp.sfc` | 524,288 |
-| Pilotwings，歐洲 | `roms/pilotwings-eur.sfc` | 524,288 |
+| Pilotwings，USA | `external/roms/pilotwings-usa.sfc` | 524,288 |
+| Pilotwings，日本 | `external/roms/pilotwings-jp.sfc` | 524,288 |
+| Pilotwings，歐洲 | `external/roms/pilotwings-eur.sfc` | 524,288 |
 
 | 地區 | SHA-256 | CRC32 |
 |:--|:--|:--|

@@ -40,8 +40,8 @@ arccosine  256 words  first (16384, 16343, 16303)
 |:--|:--|
 | Python | 3.12 或更新 |
 | git | 任意版本，用于获取五个子模块 |
-| 你自己的卡带转储 | 每个 524,288 字节，放在 `roms/` 中，文件名见[转储](#the-dumps) |
-| 你自己的 DSP-1 微码副本 | 8,192 字节，存为 `firmware/dsp1.bin` 和 `firmware/dsp1b.bin` |
+| 你自己的卡带转储 | 每个 524,288 字节，放在 `external/roms/` 中，文件名见[转储](#the-dumps) |
+| 你自己的 DSP-1 微码副本 | 8,192 字节，存为 `external/firmware/dsp1.bin` 和 `external/firmware/dsp1b.bin` |
 | Docker | 任意版本，仅用于构建 [`asm/`](asm/) 中的汇编器和 [`emu/`](emu/) 中的录制用模拟器 |
 
 ```bash
@@ -52,7 +52,7 @@ python3 doctor.py
 
 不从任何软件包索引安装任何东西，也不下载任何东西。本项目用来衡量自身的五个模型是仓库根目录下的 git 子模块。通过下载 zip 链接得到的源码归档不包含其中任何一个，因此诊断脚本会把每个都报告为未检出，所有驱动模型的检查都会失败。
 
-微码可以放在 `UPD7725_FIRMWARE_DIR` 指定的任意位置，而不是 `firmware/`。没有微码时，所有驱动芯片的检查都会报告没有可运行的内容。
+微码可以放在 `UPD7725_FIRMWARE_DIR` 指定的任意位置，而不是 `external/firmware/`。没有微码时，所有驱动芯片的检查都会报告没有可运行的内容。
 
 诊断脚本会打印机器信息、本项目的版本、每个模型及其版本、微码能否运行、两个掩模版本中有哪些、每份转储的状态，以及每个模型自身诊断脚本的报告，按该模型的名称归档。所有检查都通过时退出码为 0，否则为 1。提交任何 bug 报告时请粘贴它的完整输出。在一次全新的递归克隆上，没有转储也没有微码时，它的结尾是：
 
@@ -71,7 +71,7 @@ python3 doctor.py
 | 命令 | 参数 | 作用 | 退出码 |
 |:--|:--|:--|:--|
 | `python3 doctor.py` | 无 | 报告机器信息和整条模型链 | 0 表示正常，1 表示有检查未通过 |
-| `python3 tools/identify.py` | 无 | 将 `roms/` 中的每个文件与 [`artifacts.manifest.json`](artifacts.manifest.json) 对照检查，并打印在 macOS、Linux 和 Windows 上计算 SHA-256 的命令 | 0 表示每份转储都匹配或不存在，1 表示有一份不对 |
+| `python3 tools/identify.py` | 无 | 将 `external/roms/` 中的每个文件与 [`artifacts.manifest.json`](artifacts.manifest.json) 对照检查，并打印在 macOS、Linux 和 Windows 上计算 SHA-256 的命令 | 0 表示每份转储都匹配或不存在，1 表示有一份不对 |
 | `python3 exchanges.py <trace>` | 一份录制 | 在每个命令调用点切分录制，打印每条命令及其交换、占比、不同参数组、调用点以及可以如何作答 | 0、2 |
 | `python3 tables.py <microcode image>` | 一个 8,192 字节的镜像 | 在镜像的数据 ROM 中找到四张表，并打印每张表起始的字 | 0、2 |
 | `python3 microcode.py <mask>` | `dsp1` 或 `dsp1b` | 遍历微码对全部 256 个命令字节的分派，打印每个处理程序以及卡带写入的命令 | 0、2 |
@@ -85,7 +85,7 @@ python3 doctor.py
 | `python3 tools/profile.py <image> <symbol file> [<routine>] [<snapshot>] [--built]` | 同上，快照中已包含构建好的表时加上 `--built` | 运行一次调用，按每条指令所在的标签拆分其周期数，列出前 16 个 | 0，1 表示没有快照或标签，2 |
 
 ```bash
-python3 tables.py firmware/dsp1.bin
+python3 tables.py external/firmware/dsp1.bin
 ```
 
 ```
@@ -98,7 +98,7 @@ python3 tables.py firmware/dsp1.bin
   4 of 4 carried, 1,280 bytes to reproduce them all, against 131,072 for one table over a whole input
 ```
 
-对 `firmware/dsp1b.bin` 运行同一命令时，找到的正弦、余弦和反余弦低两个字，分别位于 278、406 和 540，倒数位于 101。
+对 `external/firmware/dsp1b.bin` 运行同一命令时，找到的正弦、余弦和反余弦低两个字，分别位于 278、406 和 540，倒数位于 101。
 
 ### 录制用模拟器
 
@@ -106,7 +106,7 @@ python3 tables.py firmware/dsp1.bin
 
 ```bash
 docker build -t pwemu emu
-docker run --rm -v "$PWD:/work" -e PWTRACE=build/trace-usa.bin pwemu roms/pilotwings-usa.sfc 12000
+docker run --rm -v "$PWD:/work" -e PWTRACE=build/trace-usa.bin pwemu external/roms/pilotwings-usa.sfc 12000
 ```
 
 | 输入 | 含义 |
@@ -138,7 +138,7 @@ docker run --rm -v "$PWD:/work" -e PWTRACE=build/trace-usa.bin pwemu roms/pilotw
 | | `digest_commands(filename)` | `macOS`、`Linux` 和 `Windows` 上的 SHA-256 命令 |
 | | `manifest()`、`through()`、`not_this()` | 清单、清单的来源，以及清单中列出的应拒绝的文件 |
 | [`version.py`](version.py) | `VERSION`、`stamped(name, release=None)` | 发布版本，以及该版本镜像使用的文件名 |
-| [`hardware.py`](hardware.py) | `install(environment=None)` | 把每个模型放到 `sys.path` 上，把 `firmware/` 加入 `UPD7725_FIRMWARE_DIR`，并返回该变量 |
+| [`hardware.py`](hardware.py) | `install(environment=None)` | 把每个模型放到 `sys.path` 上，把 `external/firmware/` 加入 `UPD7725_FIRMWARE_DIR`，并返回该变量 |
 | | `load(package)` | 一个模型包：`mos65xx`、`snesdsp`、`mapper`、`romimage`、`snesdriver` 或 `upd7725` |
 | | `root_of(package)` | 模型所在目录。其他名称会抛出 `UnknownPackage` |
 | [`tools/identify.py`](tools/identify.py) | `look(artifact, root)`、`judge(artifact, data)` | 一个 `Looked`，包含 `region`、`filename`、取值为 `ok`、`absent` 或 `wrong` 的 `state`、`detail` 以及 `ok` |
@@ -601,9 +601,9 @@ uPD77C25 在程序旁边保存了 1024 个字的数据 ROM。[`tables.py`](table
 
 | 文件 | 读取路径 | 大小 |
 |:--|:--|--:|
-| Pilotwings，USA | `roms/pilotwings-usa.sfc` | 524,288 |
-| Pilotwings，日本 | `roms/pilotwings-jp.sfc` | 524,288 |
-| Pilotwings，欧洲 | `roms/pilotwings-eur.sfc` | 524,288 |
+| Pilotwings，USA | `external/roms/pilotwings-usa.sfc` | 524,288 |
+| Pilotwings，日本 | `external/roms/pilotwings-jp.sfc` | 524,288 |
+| Pilotwings，欧洲 | `external/roms/pilotwings-eur.sfc` | 524,288 |
 
 | 地区 | SHA-256 | CRC32 |
 |:--|:--|:--|

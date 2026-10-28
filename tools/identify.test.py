@@ -29,15 +29,18 @@ class LookTest(unittest.TestCase):
         self.assertTrue(found.ok)
 
     def test_a_file_that_is_here_is_read_and_judged(self) -> None:
+        # Arrange
         one = dumps.artifacts()[0]
-        with tempfile.TemporaryDirectory() as made:
-            where = Path(made) / "roms"
-            where.mkdir()
-            (where / one.filename).write_bytes(b"\x00" * 16)
+        made = tempfile.mkdtemp()
+        where = Path(made) / "external" / "roms"
+        where.mkdir(parents=True)
+        (where / one.filename).write_bytes(b"\x00" * 16)
 
-            found = identify.look(one, root=made)
+        # Act
+        found = identify.look(one, root=made)
 
-            self.assertNotEqual(found.state, identify.STATE_ABSENT)
+        # Assert
+        self.assertNotEqual(found.state, identify.STATE_ABSENT)
 
     def test_a_file_that_matches_is_reported_as_matching(
         self,
