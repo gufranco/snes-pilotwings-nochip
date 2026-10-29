@@ -4,8 +4,10 @@
 
 [English](README.md) | 日本語 | [简体中文](README.zh-Hans.md) | [繁體中文（香港）](README.zh-HK.md)
 
-[![CI](https://github.com/gufranco/snes-pilotwings-nochip/actions/workflows/ci.yml/badge.svg)](https://github.com/gufranco/snes-pilotwings-nochip/actions/workflows/ci.yml)
-[![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![ci](https://img.shields.io/github/actions/workflow/status/gufranco/snes-pilotwings-nochip/ci.yml?branch=main&style=flat-square&label=ci)](https://github.com/gufranco/snes-pilotwings-nochip/actions/workflows/ci.yml)
+[![release](https://img.shields.io/github/v/release/gufranco/snes-pilotwings-nochip?style=flat-square&label=release)](https://github.com/gufranco/snes-pilotwings-nochip/releases/latest)
+[![coverage](https://img.shields.io/badge/coverage-100%25-brightgreen?style=flat-square)](https://github.com/gufranco/snes-pilotwings-nochip/actions/workflows/ci.yml)
+[![license](https://img.shields.io/github/license/gufranco/snes-pilotwings-nochip?style=flat-square&label=license)](LICENSE)
 
 **16**個のコマンドを、**3**つの地域版の記録に含まれるすべての質問でチップと照合して回答、誤答**0**件、`$0a`の地面ワードは**43,440**個中**43,440**個が完全一致、テスト**1,093**件、全モジュールで命令と分岐のカバレッジ**100%**、標準ライブラリ以外の依存はなく、固定されたサブモジュールが**5**個です。
 
