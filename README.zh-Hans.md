@@ -7,7 +7,7 @@
 [![CI](https://github.com/gufranco/snes-pilotwings-nochip/actions/workflows/ci.yml/badge.svg)](https://github.com/gufranco/snes-pilotwings-nochip/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-**16** 条命令对照芯片回答了 **3** 份地区录制所含的每个问题，**0** 个错误答案，`$0a` 地面字 **43,440** 个中 **43,440** 个完全一致，**1,055** 个测试，每个模块的语句和分支覆盖率均为 **100%**，除标准库外没有依赖，另有 **5** 个固定版本的子模块
+**16** 条命令对照芯片回答了 **3** 份地区录制所含的每个问题，**0** 个错误答案，`$0a` 地面字 **43,440** 个中 **43,440** 个完全一致，**1,076** 个测试，每个模块的语句和分支覆盖率均为 **100%**，除标准库外没有依赖，另有 **5** 个固定版本的子模块
 
 ```python
 import tables
@@ -40,15 +40,14 @@ arccosine  256 words  first (16384, 16343, 16303)
 
 从零到可用的检出共五步。第 4 步的 doctor 会确认前三步。
 
-1. **安装 Python、git，要汇编时再装 Docker。**
+1. **只安装 git 和 Docker。** Python 以及构建用到的每个工具都在本项目的 Docker 镜像里，第一条命令会构建它。
 
    | | Windows | macOS | Linux |
    |:--|:--|:--|:--|
-   | Python 3.12 或更新版本 | `winget install Python.Python.3.12` | `brew install python@3.12` | 发行版的 `python3` 软件包 |
    | git | `winget install Git.Git` | `xcode-select --install` | 发行版的 `git` 软件包 |
-   | Docker（仅汇编器和录制用模拟器需要） | `winget install Docker.DockerDesktop`，然后启动 Docker Desktop | Docker Desktop，或 `brew install colima docker` 后运行 `colima start` | Docker Engine，然后 `sudo systemctl start docker` |
+   | Docker | `winget install Docker.DockerDesktop`，然后启动 Docker Desktop | Docker Desktop，或 `brew install colima docker` 后运行 `colima start` | Docker Engine，然后 `sudo systemctl start docker` |
 
-   在 Windows 上，本页写 `python3` 的地方请输入 `py -3.12`。
+   在 Windows 上，本页写 `./run.sh` 的地方请输入 `.\run.cmd`。
 
 2. **克隆仓库，不要下载。**
 
@@ -58,30 +57,32 @@ arccosine  256 words  first (16384, 16343, 16303)
    ```
 
    > [!CAUTION]
-   > 只有克隆才能得到可用的副本。GitHub 上绿色的 **Code** 按钮还提供 **Download ZIP**，但 ZIP 在这里永远无法使用：本项目依赖的 5 个模型是以 git 子模块固定的独立仓库，ZIP 一个都不包含，之后也无法补上。doctor 会把这样的副本报告为下载的归档；请删除它并克隆。没有加 `--recurse-submodules` 的克隆，可以用 `git submodule update --init --recursive` 就地修复。
+   > 只有克隆才能得到可用的副本。GitHub 上绿色的 **Code** 按钮还提供 **Download ZIP**，但 ZIP 在这里永远无法使用：本项目依赖的 5 个模型是以 git 子模块固定的独立仓库，ZIP 一个都不包含，之后也无法补上。启动脚本会拒绝这样的副本并说明原因；请删除它并克隆。没有加 `--recurse-submodules` 的克隆，可以用 `git submodule update --init --recursive` 就地修复。
 
-3. **把转储放进 `external/roms/`**，文件名按[转储列表](#the-dumps)：`pilotwings-usa.sfc`, `pilotwings-jp.sfc`, `pilotwings-eur.sfc`。微码放在 `external/firmware/`。然后检查，你提供的每个转储都应显示 `ok`：
+3. **把转储放进 `external/roms/`**，文件名按[转储列表](#the-dumps)：`pilotwings-usa.sfc`, `pilotwings-jp.sfc`, `pilotwings-eur.sfc`。微码放在 `external/firmware/`。然后检查，你提供的每个转储都应显示 `ok`。这第一条命令会构建镜像，需要几分钟；之后的命令会立即开始：
 
    ```bash
-   python3 tools/identify.py
+   ./run.sh tools/identify.py
    ```
 
-4. **运行 doctor。** 它检查检出、每个模型、每个转储，最后说明下一步运行什么：
+4. **运行 doctor。** 它检查检出、每个模型、每个转储和镜像中的工具，最后说明下一步运行什么：
 
    ```bash
-   python3 doctor.py
+   ./run.sh doctor.py
    ```
 
    ```
      N checks, nothing to report
-     next: python3 tools/identify.py
+     next: ./run.sh tools/identify.py, or on Windows .\run.cmd tools/identify.py
    ```
 
-   标有 `!` 的行，下一行写着该怎么做。它能发现的设置错误：
+   标有 `!` 的行，下一行写着该怎么做。doctor 和启动脚本能发现的设置错误：
 
-   | doctor 显示 | 怎么做 |
+   | 提示 | 怎么做 |
    |:--|:--|
-   | `checkout: no git metadata` | 删除文件夹并克隆，第 2 步 |
+   | `This folder has no git metadata` | 删除文件夹并克隆，第 2 步 |
+   | `Docker is not installed` | 第 1 步 |
+   | `Docker is installed but its engine is not answering` | 启动 Docker Desktop，或 `sudo systemctl start docker` |
    | `... is not checked out` | `git submodule update --init --recursive` |
    | `cartridge ...: missing` | 第 3 步 |
 
@@ -91,21 +92,20 @@ arccosine  256 words  first (16384, 16343, 16303)
 
 | 要求 | 版本 |
 |:--|:--|
-| Python | 3.12 或更新 |
 | git | 任意版本，用于获取五个子模块 |
 | 你自己的卡带转储 | 每个 524,288 字节，放在 `external/roms/` 中，文件名见[转储](#the-dumps) |
 | 你自己的 DSP-1 微码副本 | 8,192 字节，存为 `external/firmware/dsp1.bin` 和 `external/firmware/dsp1b.bin` |
-| Docker | 任意版本，仅用于构建 [`asm/`](asm/) 中的汇编器和 [`emu/`](emu/) 中的录制用模拟器 |
+| Docker | 任意当前版本，且正在运行。Python 3.12、asar 1.81 和录制用模拟器都在 [`Dockerfile`](Dockerfile) 描述的镜像中，[`run.sh`](run.sh) 在其中运行每条命令 |
 
-不从任何软件包索引安装任何东西，也不下载任何东西。本项目用来衡量自身的五个模型是仓库根目录下的 git 子模块。通过下载 zip 链接得到的源码归档不包含其中任何一个，诊断脚本会把这样的文件夹报告为归档。
+除 Docker 和 git 外，不在你的机器上安装任何东西，运行时也不下载任何东西。本项目用来衡量自身的五个模型是仓库根目录下的 git 子模块。通过下载 zip 链接得到的源码归档不包含其中任何一个，诊断脚本会把这样的文件夹报告为归档。
 
 微码可以放在 `UPD7725_FIRMWARE_DIR` 指定的任意位置，而不是 `external/firmware/`。没有微码时，所有驱动芯片的检查都会报告没有可运行的内容。
 
 诊断脚本会打印机器信息、本项目的版本、该文件夹是否为 git 克隆、每个模型及其版本、微码能否运行、两个掩模版本中有哪些、每份转储的状态，以及每个模型自身诊断脚本的报告，按该模型的名称归档。所有检查都通过时退出码为 0，否则为 1。提交任何 bug 报告时请粘贴它的完整输出。在一次全新的递归克隆上，没有转储也没有微码时，它的结尾是：
 
 ```
-  5 of 93 checks did not pass
-  next: fix the first line marked ! above, then run python3 doctor.py again
+  5 of 95 checks did not pass
+  next: fix the first line marked ! above, then run ./run.sh doctor.py, or on Windows .\run.cmd doctor.py
 ```
 
 这五项是：缺失的微码、DSP 模型没有镜像的两个掩模版本，以及两个子模块各自附带的空 `cartridges` 目录。
@@ -118,22 +118,22 @@ arccosine  256 words  first (16384, 16343, 16303)
 
 | 命令 | 参数 | 作用 | 退出码 |
 |:--|:--|:--|:--|
-| `python3 doctor.py` | 无 | 报告机器信息和整条模型链 | 0 表示正常，1 表示有检查未通过 |
-| `python3 tools/identify.py` | 无 | 将 `external/roms/` 中的每个文件与 [`artifacts.manifest.json`](artifacts.manifest.json) 对照检查，并打印在 macOS、Linux 和 Windows 上计算 SHA-256 的命令 | 0 表示每份转储都匹配或不存在，1 表示有一份不对 |
-| `python3 exchanges.py <trace>` | 一份录制 | 在每个命令调用点切分录制，打印每条命令及其交换、占比、不同参数组、调用点以及可以如何作答 | 0、2 |
-| `python3 tables.py <microcode image>` | 一个 8,192 字节的镜像 | 在镜像的数据 ROM 中找到四张表，并打印每张表起始的字 | 0、2 |
-| `python3 microcode.py <mask>` | `dsp1` 或 `dsp1b` | 遍历微码对全部 256 个命令字节的分派，打印每个处理程序以及卡带写入的命令 | 0、2 |
-| `python3 layout.py <image> <bytes wanted>` | 一个镜像和一个大小 | 查找 256 字节或更长的 `$FF` 或 `$00` 连续段，并说明镜像能否在不扩容的情况下容纳该大小 | 0、2 |
-| `python3 lut.py [<rows>]` | 每张表的行数，默认 65,536 | 计算在整个输入上制表后四张表的大小 | 0 |
-| `python3 derived.py <mask> [<directory>] [--reindex]` | 一个掩模版本，输出目录，默认 `build` | 驱动芯片计算 `$4000` 到 `$7FFF` 上的倒数以及 65,536 个角度上的正弦和余弦，并对每个字统计前导倍增次数。把 `reciprocal`、`recip-up`、`recip-down`、`recip-exponent`、`leading`、`sine` 和 `cosine` 写成 32,768 字节的分片，命名为 `<stem>-<n>.bin`。`--reindex` 根据磁盘上已有的倒数重建三张 `recip-` 表 | 0、2 |
-| `python3 state02build.py <mask> [<directory>]` | 一个掩模版本，存放录制并接收输出的目录，默认 `build` | 对录制中的每个参数组驱动 `$02`，写出它的三张状态表 `state02-map.asm`、`state02-data.asm`，以及 65,536 个角度上经过钳位的余弦 | 0、2 |
-| `python3 lutbuild.py <mask> [<directory>]` | 一个掩模版本，输出目录，默认 `build` | 根据 `build/trace-usa.bin`、`build/trace-jp.bin` 和 `build/trace-eur.bin` 构建已录制答案表，通过驱动 DSP-1 补全 `$13` 和 `$18`，并写出 `lut-<n>.bin`、`lut-map.asm` 和 `lut-axes.asm` | 0、2 |
-| `python3 patch.py <rom> <symbols> <out> <game bytes> [--slow]` | 汇编后的镜像，由 `name hex` 行组成的符号文件，输出路径，镜像内游戏部分的长度 | 把卡带对芯片的每次访问指向替代实现，从文件头中清除协处理器，设置大小字节，除非给出 `--slow` 否则设置快速 ROM 位，并重写校验和 | 0，1 表示镜像没有访问芯片，2 |
-| `python3 tools/cycles.py <image> <assembler log> [<routine>] [<snapshot>]` | 一个镜像，汇编器打印的符号，默认例程 `ground_block`，默认快照 `build/nb2/wram-000300.bin` | 在 65816 模型上运行该例程一次，打印其周期数和指令数 | 0，1 表示没有快照，2 |
-| `python3 tools/profile.py <image> <symbol file> [<routine>] [<snapshot>] [--built]` | 同上，快照中已包含构建好的表时加上 `--built` | 运行一次调用，按每条指令所在的标签拆分其周期数，列出前 16 个 | 0，1 表示没有快照或标签，2 |
+| `./run.sh doctor.py` | 无 | 报告机器信息和整条模型链 | 0 表示正常，1 表示有检查未通过 |
+| `./run.sh tools/identify.py` | 无 | 将 `external/roms/` 中的每个文件与 [`artifacts.manifest.json`](artifacts.manifest.json) 对照检查，并打印在 macOS、Linux 和 Windows 上计算 SHA-256 的命令 | 0 表示每份转储都匹配或不存在，1 表示有一份不对 |
+| `./run.sh exchanges.py <trace>` | 一份录制 | 在每个命令调用点切分录制，打印每条命令及其交换、占比、不同参数组、调用点以及可以如何作答 | 0、2 |
+| `./run.sh tables.py <microcode image>` | 一个 8,192 字节的镜像 | 在镜像的数据 ROM 中找到四张表，并打印每张表起始的字 | 0、2 |
+| `./run.sh microcode.py <mask>` | `dsp1` 或 `dsp1b` | 遍历微码对全部 256 个命令字节的分派，打印每个处理程序以及卡带写入的命令 | 0、2 |
+| `./run.sh layout.py <image> <bytes wanted>` | 一个镜像和一个大小 | 查找 256 字节或更长的 `$FF` 或 `$00` 连续段，并说明镜像能否在不扩容的情况下容纳该大小 | 0、2 |
+| `./run.sh lut.py [<rows>]` | 每张表的行数，默认 65,536 | 计算在整个输入上制表后四张表的大小 | 0 |
+| `./run.sh derived.py <mask> [<directory>] [--reindex]` | 一个掩模版本，输出目录，默认 `build` | 驱动芯片计算 `$4000` 到 `$7FFF` 上的倒数以及 65,536 个角度上的正弦和余弦，并对每个字统计前导倍增次数。把 `reciprocal`、`recip-up`、`recip-down`、`recip-exponent`、`leading`、`sine` 和 `cosine` 写成 32,768 字节的分片，命名为 `<stem>-<n>.bin`。`--reindex` 根据磁盘上已有的倒数重建三张 `recip-` 表 | 0、2 |
+| `./run.sh state02build.py <mask> [<directory>]` | 一个掩模版本，存放录制并接收输出的目录，默认 `build` | 对录制中的每个参数组驱动 `$02`，写出它的三张状态表 `state02-map.asm`、`state02-data.asm`，以及 65,536 个角度上经过钳位的余弦 | 0、2 |
+| `./run.sh lutbuild.py <mask> [<directory>]` | 一个掩模版本，输出目录，默认 `build` | 根据 `build/trace-usa.bin`、`build/trace-jp.bin` 和 `build/trace-eur.bin` 构建已录制答案表，通过驱动 DSP-1 补全 `$13` 和 `$18`，并写出 `lut-<n>.bin`、`lut-map.asm` 和 `lut-axes.asm` | 0、2 |
+| `./run.sh patch.py <rom> <symbols> <out> <game bytes> [--slow]` | 汇编后的镜像，由 `name hex` 行组成的符号文件，输出路径，镜像内游戏部分的长度 | 把卡带对芯片的每次访问指向替代实现，从文件头中清除协处理器，设置大小字节，除非给出 `--slow` 否则设置快速 ROM 位，并重写校验和 | 0，1 表示镜像没有访问芯片，2 |
+| `./run.sh tools/cycles.py <image> <assembler log> [<routine>] [<snapshot>]` | 一个镜像，汇编器打印的符号，默认例程 `ground_block`，默认快照 `build/nb2/wram-000300.bin` | 在 65816 模型上运行该例程一次，打印其周期数和指令数 | 0，1 表示没有快照，2 |
+| `./run.sh tools/profile.py <image> <symbol file> [<routine>] [<snapshot>] [--built]` | 同上，快照中已包含构建好的表时加上 `--built` | 运行一次调用，按每条指令所在的标签拆分其周期数，列出前 16 个 | 0，1 表示没有快照或标签，2 |
 
 ```bash
-python3 tables.py external/firmware/dsp1.bin
+./run.sh tables.py external/firmware/dsp1.bin
 ```
 
 ```
@@ -150,11 +150,10 @@ python3 tables.py external/firmware/dsp1.bin
 
 ### 录制用模拟器
 
-[`emu/`](emu/) 构建 `pwemu`，即 commit `2971061cf07fdc6fc7d18883edf4e648eb16a6d2` 处的 snes9x，在每次 DSP-1 端口访问上加了钩子，外面套一个最小的 libretro 前端。
+镜像中的 `pwemu` 由 [`emu/`](emu/) 构建，即 commit `2971061cf07fdc6fc7d18883edf4e648eb16a6d2` 处的 snes9x，在每次 DSP-1 端口访问上加了钩子，外面套一个最小的 libretro 前端。
 
 ```bash
-docker build -t pwemu emu
-docker run --rm -v "$PWD:/work" -e PWTRACE=build/trace-usa.bin pwemu external/roms/pilotwings-usa.sfc 12000
+./run.sh --exec env PWTRACE=build/trace-usa.bin pwemu external/roms/pilotwings-usa.sfc 12000
 ```
 
 | 输入 | 含义 |
@@ -173,7 +172,7 @@ docker run --rm -v "$PWD:/work" -e PWTRACE=build/trace-usa.bin pwemu external/ro
 
 ### 汇编器
 
-[`asm/Dockerfile`](asm/Dockerfile) 构建 asar v1.81。[`asm/nochip.asm`](asm/nochip.asm) 是入口文件。它把替代实现放在 bank `$10`，包含 [`asm/`](asm/) 中所有其他 `.asm` 文件，并读取上述脚本写入 `build/` 的表。它打印的 `SYM <name> <address>` 行就是 [`tools/cycles.py`](tools/cycles.py) 读取的内容。
+镜像中带有由 [`Dockerfile`](Dockerfile) 构建的 asar v1.81。[`asm/nochip.asm`](asm/nochip.asm) 是入口文件。它把替代实现放在 bank `$10`，包含 [`asm/`](asm/) 中所有其他 `.asm` 文件，并读取上述脚本写入 `build/` 的表。它打印的 `SYM <name> <address>` 行就是 [`tools/cycles.py`](tools/cycles.py) 读取的内容。
 
 ### 转储、版本以及底层模型
 
@@ -718,16 +717,10 @@ uPD77C25 在程序旁边保存了 1024 个字的数据 ROM。[`tables.py`](table
 | 安全报告 | [SECURITY.md](SECURITY.md) |
 
 ```bash
-uvx ruff@0.16.3 format --check .
-uvx ruff@0.16.3 check .
-uvx --python 3.12 mypy .
-for t in *.test.py tools/*.test.py; do python3 "$t" || break; done
-python3 -m coverage erase
-for t in *.test.py tools/*.test.py; do python3 -m coverage run -a "$t"; done
-python3 -m coverage report
+./run.sh --gates
 ```
 
-41 个文件共 1,055 个测试，每个模块旁边有一个 `<module>.test.py`。覆盖率是一项硬性门禁检查，要求语句和分支均为 100%，在 [`pyproject.toml`](pyproject.toml) 中设置。提交遵循 Conventional Commits，semantic-release 据此确定版本。
+43 个文件共 1,076 个测试，每个模块旁边有一个 `<module>.test.py`。覆盖率是一项硬性门禁检查，要求语句和分支均为 100%，在 [`pyproject.toml`](pyproject.toml) 中设置。提交遵循 Conventional Commits，semantic-release 据此确定版本。
 
 注释只出现在汇编代码中：入口和出口状态、寄存器宽度，以及每个地址的来源。Python 源码中没有注释。
 
@@ -736,8 +729,8 @@ python3 -m coverage report
 ## 参考资料
 
 - No-Intro，提供三份零售版转储的名称和摘要。
-- commit `2971061cf07fdc6fc7d18883edf4e648eb16a6d2` 处的 snes9x，https://github.com/snes9xgit/snes9x ，由 [`emu/Dockerfile`](emu/Dockerfile) 构建，用于录制每次端口访问。这些录制是关于该模拟器的 DSP-1 的证据，这就是为什么查找是对照芯片自身的微码检查，而不是对照这些录制。
-- asar v1.81，https://github.com/RPGHacker/asar ，由 [`asm/Dockerfile`](asm/Dockerfile) 构建。
+- commit `2971061cf07fdc6fc7d18883edf4e648eb16a6d2` 处的 snes9x，https://github.com/snes9xgit/snes9x ，由 [`Dockerfile`](Dockerfile) 构建，用于录制每次端口访问。这些录制是关于该模拟器的 DSP-1 的证据，这就是为什么查找是对照芯片自身的微码检查，而不是对照这些录制。
+- asar v1.81，https://github.com/RPGHacker/asar ，由 [`Dockerfile`](Dockerfile) 构建。
 - neviksti 的无芯片 Star Ocean 改版，提供了大于低位映射卡带地址空间的镜像的寻址规则。
 - Nintendo EAD 和 Argonaut，制作了这款游戏。
 

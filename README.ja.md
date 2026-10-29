@@ -7,7 +7,7 @@
 [![CI](https://github.com/gufranco/snes-pilotwings-nochip/actions/workflows/ci.yml/badge.svg)](https://github.com/gufranco/snes-pilotwings-nochip/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-**16**個のコマンドを、**3**つの地域版の記録に含まれるすべての質問でチップと照合して回答、誤答**0**件、`$0a`の地面ワードは**43,440**個中**43,440**個が完全一致、テスト**1,055**件、全モジュールで命令と分岐のカバレッジ**100%**、標準ライブラリ以外の依存はなく、固定されたサブモジュールが**5**個です。
+**16**個のコマンドを、**3**つの地域版の記録に含まれるすべての質問でチップと照合して回答、誤答**0**件、`$0a`の地面ワードは**43,440**個中**43,440**個が完全一致、テスト**1,076**件、全モジュールで命令と分岐のカバレッジ**100%**、標準ライブラリ以外の依存はなく、固定されたサブモジュールが**5**個です。
 
 ```python
 import tables
@@ -40,15 +40,14 @@ arccosine  256 words  first (16384, 16343, 16303)
 
 何もない状態から動くチェックアウトまで5つの手順です。手順4のドクターが最初の3つを確認します。
 
-1. **Python、git、アセンブルするならDockerをインストールします。**
+1. **gitとDockerだけをインストールします。** Pythonとビルドが使うすべてのツールはこのプロジェクトのDockerイメージに入っており、最初のコマンドがそれをビルドします。
 
    | | Windows | macOS | Linux |
    |:--|:--|:--|:--|
-   | Python 3.12以降 | `winget install Python.Python.3.12` | `brew install python@3.12` | ディストリビューションの`python3`パッケージ |
    | git | `winget install Git.Git` | `xcode-select --install` | ディストリビューションの`git`パッケージ |
-   | Docker（アセンブラと記録用エミュレーターだけに必要） | `winget install Docker.DockerDesktop`を実行し、Docker Desktopを起動 | Docker Desktop、または`brew install colima docker`の後に`colima start` | Docker Engineを入れ、`sudo systemctl start docker` |
+   | Docker | `winget install Docker.DockerDesktop`を実行し、Docker Desktopを起動 | Docker Desktop、または`brew install colima docker`の後に`colima start` | Docker Engineを入れ、`sudo systemctl start docker` |
 
-   Windowsでは、このページの`python3`を`py -3.12`に置き換えてください。
+   Windowsでは、このページの`./run.sh`を`.\run.cmd`に置き換えてください。
 
 2. **リポジトリをクローンします。ダウンロードはしないでください。**
 
@@ -58,30 +57,32 @@ arccosine  256 words  first (16384, 16343, 16303)
    ```
 
    > [!CAUTION]
-   > 動くコピーを得る方法はクローンだけです。GitHubの緑の**Code**ボタンには**Download ZIP**もありますが、ZIPはここでは決して動きません。このプロジェクトが使う5個のモデルはgitのサブモジュールとして固定された別のリポジトリで、ZIPにはどれも含まれず、後から追加することもできません。ドクターはそのようなコピーをダウンロードしたアーカイブとして報告します。削除してクローンしてください。`--recurse-submodules`なしでクローンした場合は、`git submodule update --init --recursive`でその場で直せます。
+   > 動くコピーを得る方法はクローンだけです。GitHubの緑の**Code**ボタンには**Download ZIP**もありますが、ZIPはここでは決して動きません。このプロジェクトが使う5個のモデルはgitのサブモジュールとして固定された別のリポジトリで、ZIPにはどれも含まれず、後から追加することもできません。ランチャーはそのようなコピーを拒否し、その旨を表示します。削除してクローンしてください。`--recurse-submodules`なしでクローンした場合は、`git submodule update --init --recursive`でその場で直せます。
 
-3. **ダンプを`external/roms/`に置きます。** 名前は[ダンプの一覧](#the-dumps)のとおり`pilotwings-usa.sfc`, `pilotwings-jp.sfc`, `pilotwings-eur.sfc`です。マイクロコードは`external/firmware/`に置きます。その後で確認します。用意した各ダンプが`ok`と表示されるはずです。
+3. **ダンプを`external/roms/`に置きます。** 名前は[ダンプの一覧](#the-dumps)のとおり`pilotwings-usa.sfc`, `pilotwings-jp.sfc`, `pilotwings-eur.sfc`です。マイクロコードは`external/firmware/`に置きます。その後で確認します。用意した各ダンプが`ok`と表示されるはずです。この最初のコマンドはイメージをビルドするため数分かかり、2回目以降はすぐに始まります。
 
    ```bash
-   python3 tools/identify.py
+   ./run.sh tools/identify.py
    ```
 
-4. **ドクターを実行します。** チェックアウト、各モデル、各ダンプを確認し、最後に次に実行するものを示します。
+4. **ドクターを実行します。** チェックアウト、各モデル、各ダンプ、イメージ内のツールを確認し、最後に次に実行するものを示します。
 
    ```bash
-   python3 doctor.py
+   ./run.sh doctor.py
    ```
 
    ```
      N checks, nothing to report
-     next: python3 tools/identify.py
+     next: ./run.sh tools/identify.py, or on Windows .\run.cmd tools/identify.py
    ```
 
-   `!`の付いた行は、その下の行にすべきことを書いています。ドクターが見つける設定の誤りは次のとおりです。
+   `!`の付いた行は、その下の行にすべきことを書いています。ドクターとランチャーが見つける設定の誤りは次のとおりです。
 
-   | ドクターの表示 | すること |
+   | 表示 | すること |
    |:--|:--|
-   | `checkout: no git metadata` | フォルダーを削除してクローンする（手順2） |
+   | `This folder has no git metadata` | フォルダーを削除してクローンする（手順2） |
+   | `Docker is not installed` | 手順1 |
+   | `Docker is installed but its engine is not answering` | Docker Desktopを起動するか、`sudo systemctl start docker` |
    | `... is not checked out` | `git submodule update --init --recursive` |
    | `cartridge ...: missing` | 手順3 |
 
@@ -91,21 +92,20 @@ arccosine  256 words  first (16384, 16343, 16303)
 
 | 必要なもの | バージョン |
 |:--|:--|
-| Python | 3.12以降 |
 | git | 任意、5つのサブモジュールの取得に使用 |
 | ご自身のカートリッジのダンプ | 各524,288バイト、[ダンプ](#the-dumps)の名前で`external/roms/`に配置 |
 | ご自身が持つDSP-1マイクロコードのコピー | 8,192バイト、`external/firmware/dsp1.bin`および`external/firmware/dsp1b.bin`として配置 |
-| Docker | 任意、[`asm/`](asm/)のアセンブラと[`emu/`](emu/)の記録用エミュレータのビルドにのみ使用 |
+| Docker | 現行の任意のリリースで、起動していること。Python 3.12、asar 1.81、記録用エミュレータは[`Dockerfile`](Dockerfile)が定めるイメージに入っており、[`run.sh`](run.sh)がすべてのコマンドをその中で実行します |
 
-パッケージインデックスからは何もインストールせず、何もダウンロードしません。このプロジェクトが自身を照合する5つのモデルは、リポジトリのルートにあるgitサブモジュールです。download-zipリンクから得たソースアーカイブにはそのどれも含まれず、ドクターはそのようなフォルダーをアーカイブとして報告します。
+DockerとGit以外、あなたのマシンには何もインストールせず、実行時に何もダウンロードしません。このプロジェクトが自身を照合する5つのモデルは、リポジトリのルートにあるgitサブモジュールです。download-zipリンクから得たソースアーカイブにはそのどれも含まれず、ドクターはそのようなフォルダーをアーカイブとして報告します。
 
 マイクロコードは`external/firmware/`の代わりに`UPD7725_FIRMWARE_DIR`が指す任意の場所に置けます。マイクロコードがないと、チップを動かすチェックはすべて実行対象がなかったと報告します。
 
 ドクターは、マシン、このプロジェクトのバージョン、フォルダーがgitのクローンかどうか、各モデルとそのバージョン、マイクロコードが動くかどうか、2つのマスクのうちどちらがあるか、各ダンプの状態、そして各モデル自身のドクターの報告をそのモデル名の下に出力します。すべてのチェックが通れば0で、そうでなければ1で終了します。バグ報告には出力全体を貼り付けてください。ダンプもマイクロコードもない再帰クローンの直後では、次の行で終わります。
 
 ```
-  5 of 93 checks did not pass
-  next: fix the first line marked ! above, then run python3 doctor.py again
+  5 of 95 checks did not pass
+  next: fix the first line marked ! above, then run ./run.sh doctor.py, or on Windows .\run.cmd doctor.py
 ```
 
 この5つは、マイクロコードの欠如、DSPモデルがイメージを持たない2つのマスク、そして2つのサブモジュールがそれぞれ同梱する空の`cartridges`ディレクトリです。
@@ -118,22 +118,22 @@ arccosine  256 words  first (16384, 16343, 16303)
 
 | コマンド | 引数 | 動作 | 終了コード |
 |:--|:--|:--|:--|
-| `python3 doctor.py` | なし | マシンとモデルの連鎖全体を報告します | 0は正常、1はチェックが通らなかったとき |
-| `python3 tools/identify.py` | なし | `external/roms/`内の各ファイルを[`artifacts.manifest.json`](artifacts.manifest.json)と照合し、macOS、Linux、WindowsでSHA-256を計算するコマンドを出力します | 0はすべてのダンプが一致するか存在しないとき、1は1つでも誤っているとき |
-| `python3 exchanges.py <trace>` | 記録 | 記録を各コマンドサイトで区切り、各コマンドについてそのやり取り、割合、異なる引数セット、サイト、答え方を出力します | 0、2 |
-| `python3 tables.py <microcode image>` | 8,192バイトのイメージ | イメージのデータROMから4つのテーブルを見つけ、それぞれの開始ワードを出力します | 0、2 |
-| `python3 microcode.py <mask>` | `dsp1`または`dsp1b` | 256個すべてのコマンドバイトについてマイクロコードのディスパッチをたどり、各ハンドラをカートリッジが書き込むコマンドとともに出力します | 0、2 |
-| `python3 layout.py <image> <bytes wanted>` | イメージとサイズ | 256バイト以上続く`$FF`または`$00`の連なりを見つけ、イメージを拡張せずにそのサイズを収められるかを示します | 0、2 |
-| `python3 lut.py [<rows>]` | テーブルごとの行数、デフォルトは65,536 | 入力全体にわたって表にした4つのテーブルの大きさを求めます | 0 |
-| `python3 derived.py <mask> [<directory>] [--reindex]` | マスク、出力ディレクトリ、デフォルトは`build` | チップを動かして`$4000`から`$7FFF`までの逆数と65,536個の角度での正弦と余弦を求め、すべてのワードについて先頭の倍加回数を数えます。`reciprocal`、`recip-up`、`recip-down`、`recip-exponent`、`leading`、`sine`、`cosine`を、`<stem>-<n>.bin`という名前の32,768バイトの断片として書き出します。`--reindex`は、ディスク上にある逆数から3つの`recip-`テーブルを再構築します | 0、2 |
-| `python3 state02build.py <mask> [<directory>]` | マスク、記録を保持し出力を受け取るディレクトリ、デフォルトは`build` | 記録に含まれるすべての引数セットで`$02`を動かし、3つの状態テーブル、`state02-map.asm`、`state02-data.asm`、65,536個の角度でのクランプされた余弦を書き出します | 0、2 |
-| `python3 lutbuild.py <mask> [<directory>]` | マスク、出力ディレクトリ、デフォルトは`build` | `build/trace-usa.bin`、`build/trace-jp.bin`、`build/trace-eur.bin`から記録済みの答えのテーブルを作り、DSP-1を動かして`$13`と`$18`を補完し、`lut-<n>.bin`、`lut-map.asm`、`lut-axes.asm`を書き出します | 0、2 |
-| `python3 patch.py <rom> <symbols> <out> <game bytes> [--slow]` | アセンブル済みのイメージ、`name hex`行からなるシンボルファイル、出力パス、イメージ内のゲームの長さ | カートリッジがチップに行うすべてのアクセスを置き換え先に向け、ヘッダからコプロセッサを外し、サイズバイトを設定し、`--slow`が指定されない限り高速ROMビットを設定し、チェックサムを書き直します | 0、1はイメージがチップに一度もアクセスしないとき、2 |
-| `python3 tools/cycles.py <image> <assembler log> [<routine>] [<snapshot>]` | イメージ、アセンブラが出力したシンボル、デフォルトのルーチンは`ground_block`、デフォルトのスナップショットは`build/nb2/wram-000300.bin` | 65816モデル上でルーチンを1回呼び出し、そのサイクル数と命令数を出力します | 0、1はスナップショットがないとき、2 |
-| `python3 tools/profile.py <image> <symbol file> [<routine>] [<snapshot>] [--built]` | 上と同じ、スナップショットがすでに構築済みのテーブルを保持しているときは`--built`を追加 | 1回呼び出し、そのサイクルを各命令が属するラベルごとに分けて上位16件を出力します | 0、1はスナップショットまたはラベルがないとき、2 |
+| `./run.sh doctor.py` | なし | マシンとモデルの連鎖全体を報告します | 0は正常、1はチェックが通らなかったとき |
+| `./run.sh tools/identify.py` | なし | `external/roms/`内の各ファイルを[`artifacts.manifest.json`](artifacts.manifest.json)と照合し、macOS、Linux、WindowsでSHA-256を計算するコマンドを出力します | 0はすべてのダンプが一致するか存在しないとき、1は1つでも誤っているとき |
+| `./run.sh exchanges.py <trace>` | 記録 | 記録を各コマンドサイトで区切り、各コマンドについてそのやり取り、割合、異なる引数セット、サイト、答え方を出力します | 0、2 |
+| `./run.sh tables.py <microcode image>` | 8,192バイトのイメージ | イメージのデータROMから4つのテーブルを見つけ、それぞれの開始ワードを出力します | 0、2 |
+| `./run.sh microcode.py <mask>` | `dsp1`または`dsp1b` | 256個すべてのコマンドバイトについてマイクロコードのディスパッチをたどり、各ハンドラをカートリッジが書き込むコマンドとともに出力します | 0、2 |
+| `./run.sh layout.py <image> <bytes wanted>` | イメージとサイズ | 256バイト以上続く`$FF`または`$00`の連なりを見つけ、イメージを拡張せずにそのサイズを収められるかを示します | 0、2 |
+| `./run.sh lut.py [<rows>]` | テーブルごとの行数、デフォルトは65,536 | 入力全体にわたって表にした4つのテーブルの大きさを求めます | 0 |
+| `./run.sh derived.py <mask> [<directory>] [--reindex]` | マスク、出力ディレクトリ、デフォルトは`build` | チップを動かして`$4000`から`$7FFF`までの逆数と65,536個の角度での正弦と余弦を求め、すべてのワードについて先頭の倍加回数を数えます。`reciprocal`、`recip-up`、`recip-down`、`recip-exponent`、`leading`、`sine`、`cosine`を、`<stem>-<n>.bin`という名前の32,768バイトの断片として書き出します。`--reindex`は、ディスク上にある逆数から3つの`recip-`テーブルを再構築します | 0、2 |
+| `./run.sh state02build.py <mask> [<directory>]` | マスク、記録を保持し出力を受け取るディレクトリ、デフォルトは`build` | 記録に含まれるすべての引数セットで`$02`を動かし、3つの状態テーブル、`state02-map.asm`、`state02-data.asm`、65,536個の角度でのクランプされた余弦を書き出します | 0、2 |
+| `./run.sh lutbuild.py <mask> [<directory>]` | マスク、出力ディレクトリ、デフォルトは`build` | `build/trace-usa.bin`、`build/trace-jp.bin`、`build/trace-eur.bin`から記録済みの答えのテーブルを作り、DSP-1を動かして`$13`と`$18`を補完し、`lut-<n>.bin`、`lut-map.asm`、`lut-axes.asm`を書き出します | 0、2 |
+| `./run.sh patch.py <rom> <symbols> <out> <game bytes> [--slow]` | アセンブル済みのイメージ、`name hex`行からなるシンボルファイル、出力パス、イメージ内のゲームの長さ | カートリッジがチップに行うすべてのアクセスを置き換え先に向け、ヘッダからコプロセッサを外し、サイズバイトを設定し、`--slow`が指定されない限り高速ROMビットを設定し、チェックサムを書き直します | 0、1はイメージがチップに一度もアクセスしないとき、2 |
+| `./run.sh tools/cycles.py <image> <assembler log> [<routine>] [<snapshot>]` | イメージ、アセンブラが出力したシンボル、デフォルトのルーチンは`ground_block`、デフォルトのスナップショットは`build/nb2/wram-000300.bin` | 65816モデル上でルーチンを1回呼び出し、そのサイクル数と命令数を出力します | 0、1はスナップショットがないとき、2 |
+| `./run.sh tools/profile.py <image> <symbol file> [<routine>] [<snapshot>] [--built]` | 上と同じ、スナップショットがすでに構築済みのテーブルを保持しているときは`--built`を追加 | 1回呼び出し、そのサイクルを各命令が属するラベルごとに分けて上位16件を出力します | 0、1はスナップショットまたはラベルがないとき、2 |
 
 ```bash
-python3 tables.py external/firmware/dsp1.bin
+./run.sh tables.py external/firmware/dsp1.bin
 ```
 
 ```
@@ -150,11 +150,10 @@ python3 tables.py external/firmware/dsp1.bin
 
 ### 記録用エミュレータ
 
-[`emu/`](emu/)は`pwemu`をビルドします。これはコミット`2971061cf07fdc6fc7d18883edf4e648eb16a6d2`のsnes9xに、DSP-1のすべてのポートアクセスに対するフックを加え、最小限のlibretroフロントエンドの背後に置いたものです。
+イメージ内の`pwemu`は[`emu/`](emu/)からビルドしたもので、コミット`2971061cf07fdc6fc7d18883edf4e648eb16a6d2`のsnes9xに、DSP-1のすべてのポートアクセスに対するフックを加え、最小限のlibretroフロントエンドの背後に置いたものです。
 
 ```bash
-docker build -t pwemu emu
-docker run --rm -v "$PWD:/work" -e PWTRACE=build/trace-usa.bin pwemu external/roms/pilotwings-usa.sfc 12000
+./run.sh --exec env PWTRACE=build/trace-usa.bin pwemu external/roms/pilotwings-usa.sfc 12000
 ```
 
 | 入力 | 意味 |
@@ -173,7 +172,7 @@ docker run --rm -v "$PWD:/work" -e PWTRACE=build/trace-usa.bin pwemu external/ro
 
 ### アセンブラ
 
-[`asm/Dockerfile`](asm/Dockerfile)はasar v1.81をビルドします。[`asm/nochip.asm`](asm/nochip.asm)がエントリファイルです。置き換えをバンク`$10`に配置し、[`asm/`](asm/)内の他のすべての`.asm`ファイルをインクルードし、上のスクリプトが`build/`に書き出すテーブルを読み込みます。出力される`SYM <name> <address>`行を[`tools/cycles.py`](tools/cycles.py)が読みます。
+イメージには[`Dockerfile`](Dockerfile)がビルドしたasar v1.81が入っています。[`asm/nochip.asm`](asm/nochip.asm)がエントリファイルです。置き換えをバンク`$10`に配置し、[`asm/`](asm/)内の他のすべての`.asm`ファイルをインクルードし、上のスクリプトが`build/`に書き出すテーブルを読み込みます。出力される`SYM <name> <address>`行を[`tools/cycles.py`](tools/cycles.py)が読みます。
 
 ### ダンプ、バージョン、その下にあるモデル
 
@@ -718,16 +717,10 @@ No-Introでの名前に従っています。どのダイジェストもコピア
 | セキュリティ報告 | [SECURITY.md](SECURITY.md) |
 
 ```bash
-uvx ruff@0.16.3 format --check .
-uvx ruff@0.16.3 check .
-uvx --python 3.12 mypy .
-for t in *.test.py tools/*.test.py; do python3 "$t" || break; done
-python3 -m coverage erase
-for t in *.test.py tools/*.test.py; do python3 -m coverage run -a "$t"; done
-python3 -m coverage report
+./run.sh --gates
 ```
 
-41ファイルにわたる1,055件のテストがあり、各モジュールの横に`<module>.test.py`が1つずつあります。カバレッジは命令と分岐の100%を必須のゲートとし、[`pyproject.toml`](pyproject.toml)で設定しています。コミットはConventional Commitsに従い、semantic-releaseがそこからバージョンを決定します。
+43ファイルにわたる1,076件のテストがあり、各モジュールの横に`<module>.test.py`が1つずつあります。カバレッジは命令と分岐の100%を必須のゲートとし、[`pyproject.toml`](pyproject.toml)で設定しています。コミットはConventional Commitsに従い、semantic-releaseがそこからバージョンを決定します。
 
 コメントはアセンブリにのみ書きます。内容は入口と出口の状態、レジスタ幅、各アドレスの由来です。Pythonのソースにはコメントがありません。
 
@@ -736,8 +729,8 @@ python3 -m coverage report
 ## 参考文献
 
 - No-Intro、3つの市販ダンプの名前とダイジェストについて。
-- コミット`2971061cf07fdc6fc7d18883edf4e648eb16a6d2`のsnes9x、https://github.com/snes9xgit/snes9x 。すべてのポートアクセスを記録するために[`emu/Dockerfile`](emu/Dockerfile)でビルドしています。記録はそのエミュレータのDSP-1についての証拠であるため、ルックアップは記録ではなくチップ自身のマイクロコードと照合しています。
-- asar v1.81、https://github.com/RPGHacker/asar 。[`asm/Dockerfile`](asm/Dockerfile)でビルドしています。
+- コミット`2971061cf07fdc6fc7d18883edf4e648eb16a6d2`のsnes9x、https://github.com/snes9xgit/snes9x 。すべてのポートアクセスを記録するために[`Dockerfile`](Dockerfile)でビルドしています。記録はそのエミュレータのDSP-1についての証拠であるため、ルックアップは記録ではなくチップ自身のマイクロコードと照合しています。
+- asar v1.81、https://github.com/RPGHacker/asar 。[`Dockerfile`](Dockerfile)でビルドしています。
 - nevikstiによるチップなしのStar Ocean変換、ローカートリッジのアドレス空間より大きいイメージのアドレス指定規則について。
 - Nintendo EADとArgonaut、ゲームについて。
 

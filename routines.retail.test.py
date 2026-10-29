@@ -5,6 +5,7 @@ from typing import override
 
 import hardware
 import routines
+import toolchain
 
 MISSING = hardware.load("snesdsp").NoFirmware
 
@@ -14,8 +15,6 @@ IMAGE = BUILD / "ops.sfc"
 SOURCE = ROOT / "asm" / "ops-check.asm"
 
 IMAGE_BYTES = 4 * 1024 * 1024
-
-ASSEMBLER = "pilotwings-asar-191"
 
 TRIED = 400
 
@@ -31,19 +30,11 @@ def assembled() -> dict[str, int] | None:
     IMAGE.write_bytes(bytes(IMAGE_BYTES))
     try:
         done = subprocess.run(
-            [
-                "docker",
-                "run",
-                "--rm",
-                "-v",
-                f"{ROOT}:/work",
-                "-w",
-                "/work",
-                ASSEMBLER,
-                "--no-title-check",
-                str(SOURCE.relative_to(ROOT)),
-                str(IMAGE.relative_to(ROOT)),
-            ],
+            toolchain.command(
+                toolchain.ASSEMBLER,
+                (),
+                ["--no-title-check", str(SOURCE.relative_to(ROOT)), str(IMAGE.relative_to(ROOT))],
+            ),
             capture_output=True,
             text=True,
             timeout=300,
@@ -66,7 +57,7 @@ class AgainstThePartTest(unittest.TestCase):
     def setUp(self) -> None:
         found = assembled()
         if found is None:
-            self.skipTest("the assembler image is not on this machine")
+            self.skipTest("asar runs inside ./run.sh")
         try:
             routines.asked(0x00, (1, 1), 1)
         except MISSING:

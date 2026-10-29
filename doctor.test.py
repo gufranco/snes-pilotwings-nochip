@@ -407,6 +407,41 @@ class CheckoutTest(unittest.TestCase):
         self.assertIn(f"git clone --recurse-submodules {doctor.ORIGIN}", found.advice or "")
 
 
+class ToolTest(unittest.TestCase):
+    def test_a_tool_that_is_here_is_reported_with_where_it_is(self) -> None:
+        # Arrange
+        look = lambda _name: "/usr/local/bin/asar"  # noqa: E731
+
+        # Act
+        found = doctor._tools(("asar",), look)
+
+        # Assert
+        self.assertTrue(found[0].ok)
+        self.assertIn("/usr/local/bin/asar", found[0].detail)
+
+    def test_one_that_is_not_says_so_and_names_the_launcher(self) -> None:
+        # Arrange
+        look = lambda _name: None  # noqa: E731
+
+        # Act
+        found = doctor._tools(("asar",), look)
+
+        # Assert
+        self.assertFalse(found[0].ok)
+        self.assertIn("not on the path", found[0].detail)
+        self.assertIn("./run.sh <script>", found[0].advice or "")
+
+    def test_the_image_tools_are_the_ones_checked(self) -> None:
+        # Arrange
+        expected = ("asar", "pwemu")
+
+        # Act
+        found = doctor.TOOLS
+
+        # Assert
+        self.assertEqual(found, expected)
+
+
 class NextStepTest(unittest.TestCase):
     def test_a_clean_report_ends_with_the_command_to_run_next(self) -> None:
         # Arrange
@@ -416,7 +451,10 @@ class NextStepTest(unittest.TestCase):
         said = doctor.report(found)
 
         # Assert
-        self.assertEqual(said[-1], f"  next: {doctor.NEXT_WHEN_CLEAN}")
+        self.assertEqual(
+            said[-1],
+            "  next: ./run.sh tools/identify.py, or on Windows .\\run.cmd tools/identify.py",
+        )
 
     def test_an_unwell_report_ends_by_pointing_at_the_first_failure(self) -> None:
         # Arrange
@@ -426,11 +464,15 @@ class NextStepTest(unittest.TestCase):
         said = doctor.report(found)
 
         # Assert
-        self.assertEqual(said[-1], f"  next: {doctor.NEXT_WHEN_NOT}")
+        self.assertEqual(
+            said[-1],
+            "  next: fix the first line marked ! above, then run"
+            " ./run.sh doctor.py, or on Windows .\\run.cmd doctor.py",
+        )
 
-    def test_the_examination_reports_the_checkout_and_the_engine(self) -> None:
+    def test_the_examination_reports_the_checkout_and_the_image_tools(self) -> None:
         # Arrange
-        wanted = {"checkout"}
+        wanted = {"checkout", "asar", "pwemu"}
 
         # Act
         names = {one.name for one in doctor.examine()}

@@ -4,6 +4,22 @@ The family standard is in [FAMILY.md](FAMILY.md) and binds this repository as it
 member. This file carries what is only true here. Where the two appear to disagree, the standard
 wins and the disagreement is a defect in this file.
 
+## Two hard rules about tooling
+
+**Docker carries every dependency, never the host.** Python, asar, the emulator
+and every lint and test tool live in the image the [`Dockerfile`](Dockerfile)
+describes. The host needs Docker and git, nothing else. Every documented command
+runs through [`run.sh`](run.sh), or [`run.cmd`](run.cmd) on Windows, and nothing
+here tells a reader to install a tool or uses one the host happens to have. Set
+by the owner on 2026-10-28.
+
+**The three chip-free projects share one tooling layout.** This repository and
+the other two of snes-street-fighter-alpha-2-nochip, snes-dungeon-master-nochip
+and snes-pilotwings-nochip keep the same Dockerfile stage names, launchers, gate
+script, [`toolchain.py`](toolchain.py), CI jobs and doctor shape. A tooling
+change lands in all three in the same task, and a difference between them comes
+from the game. Set by the owner on 2026-10-28.
+
 ## What this project is, in one paragraph
 
 Pilotwings carries a DSP-1, an NEC uPD77C25 running a program Nintendo masked into it, and the part
@@ -226,11 +242,11 @@ names all 5 by size, CRC32, MD5, SHA-1 and SHA-256:
 - `external/firmware/`, the DSP-1 and DSP-1B microcode the models run.
 
 The tool and its test sit in `tools/`, where this project keeps its tools, so
-the command is `python3 tools/external.py`.
+the command is `./run.sh tools/external.py`.
 
 ```bash
-python3 tools/external.py
-python3 tools/external.py --describe external/<file>
+./run.sh tools/external.py
+./run.sh tools/external.py --describe external/<file>
 ```
 
 The first says which are here, verified, missing or wrong. The second prints
@@ -240,16 +256,28 @@ change.
 ## Gates
 
 Every one of these passes before a change is done. A gate that was not run is a gate that failed.
+They run together, in the image:
+
+```bash
+./run.sh --gates
+```
+
+[`scripts/gates.sh`](scripts/gates.sh) runs in the `gates` stage of the
+[`Dockerfile`](Dockerfile) and stops at the first failure: ruff check, ruff
+format, mypy, prettier, yamllint, shellcheck, actionlint, then every test module
+under coverage and the coverage report. CI runs the same script in the same
+image.
+
+What it runs, for reference:
 
 | gate | command |
 |---|---|
-| tests | `for t in *.test.py tools/*.test.py; do python3 "$t" \|\| break; done` |
-| coverage, 100% of statements and branches | `python3 -m coverage erase && for t in *.test.py tools/*.test.py; do python3 -m coverage run -a "$t"; done && python3 -m coverage report` |
+| coverage, 100% of statements and branches | `coverage erase && for t in *.test.py tools/*.test.py; do coverage run -a "$t"; done && coverage report` |
 | types | `mypy .` |
 | lint | `ruff check .` |
 | format | `ruff format --check .` |
-| yaml | `uvx yamllint==1.38.0 --strict .` |
-| this machine | `python3 doctor.py` |
+| yaml | `yamllint --strict .` |
+| this machine | `./run.sh doctor.py` |
 
 The checks needing a dump or the microcode live in `*.retail.test.py` and are kept out of the
 coverage measurement. A machine holding the artifacts runs one set of paths and a machine without

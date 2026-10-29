@@ -7,7 +7,7 @@ English | [日本語](README.ja.md) | [简体中文](README.zh-Hans.md) | [繁�
 [![CI](https://github.com/gufranco/snes-pilotwings-nochip/actions/workflows/ci.yml/badge.svg)](https://github.com/gufranco/snes-pilotwings-nochip/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-**16** commands answered against the part on every question **3** regional recordings hold, **0** wrong answers, **43,440** of **43,440** `$0a` ground words exact, **1,055** tests, **100%** statement and branch coverage of every module, no dependencies outside the standard library and **5** pinned submodules
+**16** commands answered against the part on every question **3** regional recordings hold, **0** wrong answers, **43,440** of **43,440** `$0a` ground words exact, **1,076** tests, **100%** statement and branch coverage of every module, no dependencies outside the standard library and **5** pinned submodules
 
 ```python
 import tables
@@ -40,15 +40,14 @@ The first loop rebuilds the four tables the DSP-1 carries in its data ROM from t
 
 Five steps from nothing to a working checkout. The doctor in step 4 confirms the first three.
 
-1. **Install Python, git, and Docker if you will assemble.**
+1. **Install git and Docker, and nothing else.** Python and every tool the build runs live in this project's Docker image, which the first command builds.
 
    | | Windows | macOS | Linux |
    |:--|:--|:--|:--|
-   | Python 3.12 or newer | `winget install Python.Python.3.12` | `brew install python@3.12` | your distribution's `python3` package |
    | git | `winget install Git.Git` | `xcode-select --install` | your distribution's `git` package |
-   | Docker, only for the assembler and the recording emulator | `winget install Docker.DockerDesktop`, then start Docker Desktop | Docker Desktop, or `brew install colima docker` then `colima start` | Docker Engine, then `sudo systemctl start docker` |
+   | Docker | `winget install Docker.DockerDesktop`, then start Docker Desktop | Docker Desktop, or `brew install colima docker` then `colima start` | Docker Engine, then `sudo systemctl start docker` |
 
-   On Windows, type `py -3.12` wherever this page says `python3`.
+   On Windows, type `.\run.cmd` wherever this page says `./run.sh`.
 
 2. **Clone the repository. Do not download it.**
 
@@ -58,30 +57,32 @@ Five steps from nothing to a working checkout. The doctor in step 4 confirms the
    ```
 
    > [!CAUTION]
-   > Cloning is the only way to get a copy that works. The green **Code** button on GitHub also offers **Download ZIP**, and a ZIP never works here: the 5 models this project runs on are separate repositories pinned as git submodules, a ZIP carries none of them, and nothing can add them afterwards. The doctor names such a copy a downloaded archive; delete it and clone. A clone made without `--recurse-submodules` is repaired in place with `git submodule update --init --recursive`.
+   > Cloning is the only way to get a copy that works. The green **Code** button on GitHub also offers **Download ZIP**, and a ZIP never works here: the 5 models this project runs on are separate repositories pinned as git submodules, a ZIP carries none of them, and nothing can add them afterwards. The launcher refuses such a copy and says so; delete it and clone. A clone made without `--recurse-submodules` is repaired in place with `git submodule update --init --recursive`.
 
-3. **Put your dump in `external/roms/`** under its name in [the dump list](#the-dumps): `pilotwings-usa.sfc`, `pilotwings-jp.sfc`, `pilotwings-eur.sfc`. The microcode goes in `external/firmware/`. Then check it; each dump you supplied should read `ok`:
+3. **Put your dump in `external/roms/`** under its name in [the dump list](#the-dumps): `pilotwings-usa.sfc`, `pilotwings-jp.sfc`, `pilotwings-eur.sfc`. The microcode goes in `external/firmware/`. Then check it; each dump you supplied should read `ok`. This first command builds the image and takes several minutes; later ones start at once:
 
    ```bash
-   python3 tools/identify.py
+   ./run.sh tools/identify.py
    ```
 
-4. **Run the doctor.** It checks the checkout, every model, each dump, and ends by naming the next thing to run:
+4. **Run the doctor.** It checks the checkout, every model, each dump and the image's tools, and ends by naming the next thing to run:
 
    ```bash
-   python3 doctor.py
+   ./run.sh doctor.py
    ```
 
    ```
      N checks, nothing to report
-     next: python3 tools/identify.py
+     next: ./run.sh tools/identify.py, or on Windows .\run.cmd tools/identify.py
    ```
 
-   A line marked `!` carries what to do on the line below it. The setup mistakes it catches:
+   A line marked `!` carries what to do on the line below it. The setup mistakes it and the launcher catch:
 
-   | The doctor says | Do this |
+   | The message | Do this |
    |:--|:--|
-   | `checkout: no git metadata` | Delete the folder and clone, step 2 |
+   | `This folder has no git metadata` | Delete the folder and clone, step 2 |
+   | `Docker is not installed` | Step 1 |
+   | `Docker is installed but its engine is not answering` | Start Docker Desktop, or `sudo systemctl start docker` |
    | `... is not checked out` | `git submodule update --init --recursive` |
    | `cartridge ...: missing` | Step 3 |
 
@@ -91,21 +92,20 @@ Five steps from nothing to a working checkout. The doctor in step 4 confirms the
 
 | Requirement | Version |
 |:--|:--|
-| Python | 3.12 or newer |
 | git | Any, to fetch the five submodules |
 | Your own cartridge dumps | 524,288 bytes each, in `external/roms/` under the names in [The dumps](#the-dumps) |
 | Your own copy of the DSP-1 microcode | 8,192 bytes, as `external/firmware/dsp1.bin` and `external/firmware/dsp1b.bin` |
-| Docker | Any, only to build the assembler in [`asm/`](asm/) and the recording emulator in [`emu/`](emu/) |
+| Docker | Any current, running. Python 3.12, asar 1.81 and the recording emulator live in the image the [`Dockerfile`](Dockerfile) describes, and [`run.sh`](run.sh) runs every command in it |
 
-Nothing is installed from a package index and nothing is downloaded. The five models this project measures itself against are git submodules at the repository root. A source archive from the download-zip link carries none of them, and the doctor names such a folder as one.
+Nothing is installed on your machine beyond Docker and git, and nothing is downloaded at run time. The five models this project measures itself against are git submodules at the repository root. A source archive from the download-zip link carries none of them, and the doctor names such a folder as one.
 
 The microcode can sit anywhere `UPD7725_FIRMWARE_DIR` names instead of `external/firmware/`. Without it, every check that drives the part reports that it had nothing to run.
 
 The doctor prints the machine, this project's version, whether the folder is a git clone, every model and its version, whether the microcode runs, which of the two masks are present, the state of each dump, and the report of each model's own doctor filed under that model's name. It exits 0 when every check passes and 1 otherwise. Paste its whole output into any bug report. On a fresh recursive clone with no dumps and no microcode it ends with:
 
 ```
-  5 of 93 checks did not pass
-  next: fix the first line marked ! above, then run python3 doctor.py again
+  5 of 95 checks did not pass
+  next: fix the first line marked ! above, then run ./run.sh doctor.py, or on Windows .\run.cmd doctor.py
 ```
 
 The five are the missing microcode, the two masks the DSP model has no image for, and the empty `cartridges` directory each of two submodules ships.
@@ -118,22 +118,22 @@ This is a set of scripts run from the repository root, plus the modules they are
 
 | Command | Arguments | What it does | Exit |
 |:--|:--|:--|:--|
-| `python3 doctor.py` | none | Reports the machine and the whole chain of models | 0 clean, 1 when a check did not pass |
-| `python3 tools/identify.py` | none | Checks each file in `external/roms/` against [`artifacts.manifest.json`](artifacts.manifest.json) and prints the commands that compute a SHA-256 on macOS, Linux and Windows | 0 when every dump matches or is absent, 1 when one is wrong |
-| `python3 exchanges.py <trace>` | a recording | Cuts the recording at each command site and prints every command with its exchanges, share, distinct argument sets, sites and how it can be answered | 0, 2 |
-| `python3 tables.py <microcode image>` | an 8,192 byte image | Finds the four tables in the image's data ROM and prints the word each starts at | 0, 2 |
-| `python3 microcode.py <mask>` | `dsp1` or `dsp1b` | Walks the microcode's dispatch for all 256 command bytes and prints each handler with the commands the cartridge writes | 0, 2 |
-| `python3 layout.py <image> <bytes wanted>` | an image and a size | Finds runs of `$FF` or `$00` of 256 bytes or more and says whether the image holds the size without growing | 0, 2 |
-| `python3 lut.py [<rows>]` | rows per table, default 65,536 | Sizes the four tables tabulated over a whole input | 0 |
-| `python3 derived.py <mask> [<directory>] [--reindex]` | a mask, the output directory, default `build` | Drives the part for its reciprocal over `$4000` to `$7FFF` and its sine and cosine at 65,536 angles, and counts leading doublings for every word. Writes `reciprocal`, `recip-up`, `recip-down`, `recip-exponent`, `leading`, `sine` and `cosine` as 32,768 byte pieces named `<stem>-<n>.bin`. `--reindex` rebuilds the three `recip-` tables from a reciprocal already on disk | 0, 2 |
-| `python3 state02build.py <mask> [<directory>]` | a mask, the directory holding the recordings and receiving the output, default `build` | Drives `$02` on every argument set the recordings hold and writes its three state tables, `state02-map.asm`, `state02-data.asm` and the clamped cosine at 65,536 angles | 0, 2 |
-| `python3 lutbuild.py <mask> [<directory>]` | a mask, the output directory, default `build` | Builds the table of recorded answers from `build/trace-usa.bin`, `build/trace-jp.bin` and `build/trace-eur.bin`, completes `$13` and `$18` by driving the DSP-1, and writes `lut-<n>.bin`, `lut-map.asm` and `lut-axes.asm` | 0, 2 |
-| `python3 patch.py <rom> <symbols> <out> <game bytes> [--slow]` | the assembled image, a symbol file of `name hex` lines, the output path, the length of the game inside the image | Points every access the cartridge makes to the part at the replacement, clears the coprocessor from the header, sets the size byte, sets the fast ROM bit unless `--slow` is given, and rewrites the checksum | 0, 1 when the image reaches no part, 2 |
-| `python3 tools/cycles.py <image> <assembler log> [<routine>] [<snapshot>]` | an image, the assembler's printed symbols, default routine `ground_block`, default snapshot `build/nb2/wram-000300.bin` | Runs one call to the routine on the 65816 model and prints its cycles and instructions | 0, 1 without a snapshot, 2 |
-| `python3 tools/profile.py <image> <symbol file> [<routine>] [<snapshot>] [--built]` | as above, plus `--built` when the snapshot already holds the built tables | Runs one call and splits its cycles by the label each instruction sits under, top 16 | 0, 1 without a snapshot or labels, 2 |
+| `./run.sh doctor.py` | none | Reports the machine and the whole chain of models | 0 clean, 1 when a check did not pass |
+| `./run.sh tools/identify.py` | none | Checks each file in `external/roms/` against [`artifacts.manifest.json`](artifacts.manifest.json) and prints the commands that compute a SHA-256 on macOS, Linux and Windows | 0 when every dump matches or is absent, 1 when one is wrong |
+| `./run.sh exchanges.py <trace>` | a recording | Cuts the recording at each command site and prints every command with its exchanges, share, distinct argument sets, sites and how it can be answered | 0, 2 |
+| `./run.sh tables.py <microcode image>` | an 8,192 byte image | Finds the four tables in the image's data ROM and prints the word each starts at | 0, 2 |
+| `./run.sh microcode.py <mask>` | `dsp1` or `dsp1b` | Walks the microcode's dispatch for all 256 command bytes and prints each handler with the commands the cartridge writes | 0, 2 |
+| `./run.sh layout.py <image> <bytes wanted>` | an image and a size | Finds runs of `$FF` or `$00` of 256 bytes or more and says whether the image holds the size without growing | 0, 2 |
+| `./run.sh lut.py [<rows>]` | rows per table, default 65,536 | Sizes the four tables tabulated over a whole input | 0 |
+| `./run.sh derived.py <mask> [<directory>] [--reindex]` | a mask, the output directory, default `build` | Drives the part for its reciprocal over `$4000` to `$7FFF` and its sine and cosine at 65,536 angles, and counts leading doublings for every word. Writes `reciprocal`, `recip-up`, `recip-down`, `recip-exponent`, `leading`, `sine` and `cosine` as 32,768 byte pieces named `<stem>-<n>.bin`. `--reindex` rebuilds the three `recip-` tables from a reciprocal already on disk | 0, 2 |
+| `./run.sh state02build.py <mask> [<directory>]` | a mask, the directory holding the recordings and receiving the output, default `build` | Drives `$02` on every argument set the recordings hold and writes its three state tables, `state02-map.asm`, `state02-data.asm` and the clamped cosine at 65,536 angles | 0, 2 |
+| `./run.sh lutbuild.py <mask> [<directory>]` | a mask, the output directory, default `build` | Builds the table of recorded answers from `build/trace-usa.bin`, `build/trace-jp.bin` and `build/trace-eur.bin`, completes `$13` and `$18` by driving the DSP-1, and writes `lut-<n>.bin`, `lut-map.asm` and `lut-axes.asm` | 0, 2 |
+| `./run.sh patch.py <rom> <symbols> <out> <game bytes> [--slow]` | the assembled image, a symbol file of `name hex` lines, the output path, the length of the game inside the image | Points every access the cartridge makes to the part at the replacement, clears the coprocessor from the header, sets the size byte, sets the fast ROM bit unless `--slow` is given, and rewrites the checksum | 0, 1 when the image reaches no part, 2 |
+| `./run.sh tools/cycles.py <image> <assembler log> [<routine>] [<snapshot>]` | an image, the assembler's printed symbols, default routine `ground_block`, default snapshot `build/nb2/wram-000300.bin` | Runs one call to the routine on the 65816 model and prints its cycles and instructions | 0, 1 without a snapshot, 2 |
+| `./run.sh tools/profile.py <image> <symbol file> [<routine>] [<snapshot>] [--built]` | as above, plus `--built` when the snapshot already holds the built tables | Runs one call and splits its cycles by the label each instruction sits under, top 16 | 0, 1 without a snapshot or labels, 2 |
 
 ```bash
-python3 tables.py external/firmware/dsp1.bin
+./run.sh tables.py external/firmware/dsp1.bin
 ```
 
 ```
@@ -150,11 +150,10 @@ The same command on `external/firmware/dsp1b.bin` finds the sine, cosine and arc
 
 ### The recording emulator
 
-[`emu/`](emu/) builds `pwemu`, snes9x at commit `2971061cf07fdc6fc7d18883edf4e648eb16a6d2` with a hook on every DSP-1 port access, behind a minimal libretro front end.
+The image's `pwemu`, built from [`emu/`](emu/), is snes9x at commit `2971061cf07fdc6fc7d18883edf4e648eb16a6d2` with a hook on every DSP-1 port access, behind a minimal libretro front end.
 
 ```bash
-docker build -t pwemu emu
-docker run --rm -v "$PWD:/work" -e PWTRACE=build/trace-usa.bin pwemu external/roms/pilotwings-usa.sfc 12000
+./run.sh --exec env PWTRACE=build/trace-usa.bin pwemu external/roms/pilotwings-usa.sfc 12000
 ```
 
 | Input | Meaning |
@@ -173,7 +172,7 @@ Each record in the port log is 12 bytes, little endian: the frame as 32 bits, th
 
 ### The assembler
 
-[`asm/Dockerfile`](asm/Dockerfile) builds asar v1.81. [`asm/nochip.asm`](asm/nochip.asm) is the entry file. It places the replacement in bank `$10`, includes every other `.asm` file in [`asm/`](asm/), and reads the tables the scripts above write into `build/`. Its printed `SYM <name> <address>` lines are what [`tools/cycles.py`](tools/cycles.py) reads.
+The image carries asar v1.81, built by the [`Dockerfile`](Dockerfile). [`asm/nochip.asm`](asm/nochip.asm) is the entry file. It places the replacement in bank `$10`, includes every other `.asm` file in [`asm/`](asm/), and reads the tables the scripts above write into `build/`. Its printed `SYM <name> <address>` lines are what [`tools/cycles.py`](tools/cycles.py) reads.
 
 ### Dumps, versions and the models underneath
 
@@ -716,16 +715,10 @@ This project reproduces the DSP-1 and never the DSP-1B. The attract demo is a re
 | Security reports | [SECURITY.md](SECURITY.md) |
 
 ```bash
-uvx ruff@0.16.3 format --check .
-uvx ruff@0.16.3 check .
-uvx --python 3.12 mypy .
-for t in *.test.py tools/*.test.py; do python3 "$t" || break; done
-python3 -m coverage erase
-for t in *.test.py tools/*.test.py; do python3 -m coverage run -a "$t"; done
-python3 -m coverage report
+./run.sh --gates
 ```
 
-1,055 tests across 41 files, one `<module>.test.py` beside each module. Coverage is a hard gate at 100% of statements and branches, set in [`pyproject.toml`](pyproject.toml). Commits follow Conventional Commits, and semantic-release cuts the version from them.
+1,076 tests across 43 files, one `<module>.test.py` beside each module. Coverage is a hard gate at 100% of statements and branches, set in [`pyproject.toml`](pyproject.toml). Commits follow Conventional Commits, and semantic-release cuts the version from them.
 
 Comments appear in the assembly and only there: entry and exit state, register widths, and where each address came from. Python source carries none.
 
@@ -734,8 +727,8 @@ Never attach a cartridge or a microcode image to an issue, and never link to som
 ## References
 
 - No-Intro, for the names and digests of the three retail dumps.
-- snes9x at commit `2971061cf07fdc6fc7d18883edf4e648eb16a6d2`, https://github.com/snes9xgit/snes9x, built by [`emu/Dockerfile`](emu/Dockerfile) to record every port access. The recordings are evidence about that emulator's DSP-1, which is why the lookup is checked against the part's own microcode rather than against them.
-- asar v1.81, https://github.com/RPGHacker/asar, built by [`asm/Dockerfile`](asm/Dockerfile).
+- snes9x at commit `2971061cf07fdc6fc7d18883edf4e648eb16a6d2`, https://github.com/snes9xgit/snes9x, built by the [`Dockerfile`](Dockerfile) to record every port access. The recordings are evidence about that emulator's DSP-1, which is why the lookup is checked against the part's own microcode rather than against them.
+- asar v1.81, https://github.com/RPGHacker/asar, built by the [`Dockerfile`](Dockerfile).
 - neviksti's chip-free Star Ocean conversion, for the addressing rule for images larger than a low cartridge's address space.
 - Nintendo EAD and Argonaut, for the game.
 

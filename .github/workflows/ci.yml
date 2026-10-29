@@ -14,140 +14,29 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
-env:
-  PYTHON_VERSION: "3.12"
-
 jobs:
-  lint:
-    name: lint, format and types
+  gates:
+    name: every gate in the project image
     runs-on: ubuntu-26.04
-    timeout-minutes: 10
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
         with:
           submodules: recursive
 
-      - uses: actions/setup-python@v7
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Build the image and run every gate in it
+        run: ./run.sh --gates
 
-      - name: install the checkers
-        run: python -m pip install --disable-pip-version-check ruff==0.16.3 mypy==1.14.1
-
-      - name: lint
-        run: ruff check .
-
-      - name: format
-        run: ruff format --check .
-
-      - name: types
-        run: mypy .
-
-  test:
-    name: tests and coverage
-    runs-on: ubuntu-26.04
-    timeout-minutes: 36
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          submodules: recursive
-
-      - uses: actions/setup-python@v7
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
-      - name: install coverage
-        run: python -m pip install --disable-pip-version-check coverage==7.6.10
-
-      - name: every test
+      - name: The doctor reports on a runner with no dump and no microcode
         run: |
-          for t in *.test.py tools/*.test.py; do
-            echo "--- $t"
-            python3 "$t" || exit 1
-          done
-
-      - name: coverage, which fails below 100 percent
-        run: |
-          python3 -m coverage erase
-          for t in *.test.py tools/*.test.py; do
-            case "$t" in *.retail.test.py) continue;; esac
-            python3 -m coverage run -a "$t" >/dev/null
-          done
-          python3 -m coverage report
-
-  doctor:
-    name: the doctor runs on a machine with nothing
-    runs-on: ubuntu-26.04
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          submodules: recursive
-
-      - uses: actions/setup-python@v7
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
-      - name: it reports rather than throwing
-        run: |
-          python3 doctor.py || true
-          python3 -c "
-          import doctor
-          found = doctor.examine()
-          assert found, 'the doctor examined nothing, which is not a clean run'
-          print(f'{len(found)} checks reported')
-          "
-
-      - name: no dump and no microcode are here, and the suite still runs green
-        run: |
-          test ! -d roms || test -z "$(ls -A roms)"
-          test ! -d firmware || test -z "$(ls -A firmware)"
-          for t in *.test.py tools/*.test.py; do
-            python3 "$t" || exit 1
-          done
-
-  formatting:
-    name: json and yaml formatting
-    runs-on: ubuntu-26.04
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: "22"
-
-      - uses: pnpm/action-setup@v6
-
-      - name: install
-        run: pnpm install --frozen-lockfile
-
-      - name: check
-        run: pnpm run format:check
-
-  workflows:
-    name: workflow files
-    runs-on: ubuntu-26.04
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: actionlint
-        uses: raven-actions/actionlint@v2
-
-      - name: Lint every YAML file
-        run: |
-          pipx install yamllint==1.38.0
-          yamllint --strict .
-
-      - name: shellcheck
-        run: shellcheck --severity=style --shell=bash scripts/*.sh
+          ./run.sh doctor.py || true
+          ./run.sh -c "import doctor; found = doctor.examine(); assert found; print(len(found))"
 
   release:
     name: release
     runs-on: ubuntu-26.04
     timeout-minutes: 10
-    needs: [lint, test, doctor, formatting, workflows]
+    needs: [gates]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     permissions:
       contents: write

@@ -1,5 +1,6 @@
 import importlib
 import platform
+import shutil
 import sys
 from collections.abc import Callable
 from pathlib import Path
@@ -12,6 +13,7 @@ sys.path.insert(0, str(ROOT / "tools"))
 
 import environment  # noqa: E402
 import hardware  # noqa: E402
+import toolchain  # noqa: E402
 from version import VERSION  # noqa: E402
 
 identify = importlib.import_module("identify")
@@ -22,9 +24,11 @@ PROJECT = "snes-pilotwings-nochip"
 
 ORIGIN = "https://github.com/gufranco/snes-pilotwings-nochip.git"
 
-NEXT_WHEN_CLEAN = "python3 tools/identify.py"
+TOOLS = toolchain.PROGRAMS
 
-NEXT_WHEN_NOT = "fix the first line marked ! above, then run python3 doctor.py again"
+NEXT_WHEN_CLEAN = toolchain.launched("tools/identify.py")
+
+NEXT_WHEN_NOT = f"fix the first line marked ! above, then run {toolchain.launched('doctor.py')}"
 
 PART = "dsp1"
 
@@ -199,6 +203,22 @@ def _cartridges(
     ]
 
 
+def _tools(named: Any = TOOLS, look: Any = shutil.which) -> list[Finding]:
+    lines = []
+    for one in named:
+        where = look(one)
+        lines.append(
+            Finding(
+                one,
+                bool(where),
+                where or "not on the path",
+                f"{one} ships in this project's image; start every command through"
+                f" {toolchain.launched('<script>')}, which runs it there",
+            )
+        )
+    return lines
+
+
 def _default_beneath() -> Any:
     return _ask_each(sorted(hardware.PACKAGES), hardware.root_of, importlib.import_module)
 
@@ -266,6 +286,7 @@ def examine(
     found.append(_microcode())
     found.append(_masks())
     found.extend(_cartridges())
+    found.extend(_tools())
     found.extend(_beneath(beneath))
     return found
 

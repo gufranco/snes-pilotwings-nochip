@@ -7,7 +7,7 @@
 [![CI](https://github.com/gufranco/snes-pilotwings-nochip/actions/workflows/ci.yml/badge.svg)](https://github.com/gufranco/snes-pilotwings-nochip/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-**16** 個指令在 **3** 份地區錄製記錄所含的每個問題上與晶片對照作答，**0** 個錯誤答案，**43,440** 個 `$0a` 地面字中 **43,440** 個完全正確，**1,055** 個測試，每個模組的陳述式和分支覆蓋率均為 **100%**，除標準函式庫外沒有任何依賴，另有 **5** 個固定版本的子模組
+**16** 個指令在 **3** 份地區錄製記錄所含的每個問題上與晶片對照作答，**0** 個錯誤答案，**43,440** 個 `$0a` 地面字中 **43,440** 個完全正確，**1,076** 個測試，每個模組的陳述式和分支覆蓋率均為 **100%**，除標準函式庫外沒有任何依賴，另有 **5** 個固定版本的子模組
 
 ```python
 import tables
@@ -40,15 +40,14 @@ arccosine  256 words  first (16384, 16343, 16303)
 
 由零開始到可用的副本共五步。第 4 步的 doctor 會確認前三步。
 
-1. **安裝 Python、git，要組譯時再裝 Docker。**
+1. **只安裝 git 和 Docker。** Python 以及建構用到的每個工具都在本專案的 Docker 映像裏，第一個指令會建構它。
 
    | | Windows | macOS | Linux |
    |:--|:--|:--|:--|
-   | Python 3.12 或更新版本 | `winget install Python.Python.3.12` | `brew install python@3.12` | 發行版的 `python3` 套件 |
    | git | `winget install Git.Git` | `xcode-select --install` | 發行版的 `git` 套件 |
-   | Docker（只有組譯器和錄製用模擬器需要） | `winget install Docker.DockerDesktop`，然後啟動 Docker Desktop | Docker Desktop，或 `brew install colima docker` 後執行 `colima start` | Docker Engine，然後 `sudo systemctl start docker` |
+   | Docker | `winget install Docker.DockerDesktop`，然後啟動 Docker Desktop | Docker Desktop，或 `brew install colima docker` 後執行 `colima start` | Docker Engine，然後 `sudo systemctl start docker` |
 
-   在 Windows 上，本頁寫 `python3` 的地方請輸入 `py -3.12`。
+   在 Windows 上，本頁寫 `./run.sh` 的地方請輸入 `.\run.cmd`。
 
 2. **複製儲存庫，不要下載。**
 
@@ -58,30 +57,32 @@ arccosine  256 words  first (16384, 16343, 16303)
    ```
 
    > [!CAUTION]
-   > 只有複製才能得到可用的副本。GitHub 上綠色的 **Code** 按鈕亦提供 **Download ZIP**，但 ZIP 在這裏永遠無法使用：本專案依賴的 5 個模型是以 git 子模組固定的獨立倉庫，ZIP 一個都不包含，之後亦無法補上。doctor 會把這樣的副本報告為下載的封存檔；請刪除它並複製。沒有加 `--recurse-submodules` 的複製，可以用 `git submodule update --init --recursive` 就地修復。
+   > 只有複製才能得到可用的副本。GitHub 上綠色的 **Code** 按鈕亦提供 **Download ZIP**，但 ZIP 在這裏永遠無法使用：本專案依賴的 5 個模型是以 git 子模組固定的獨立倉庫，ZIP 一個都不包含，之後亦無法補上。啟動腳本會拒絕這樣的副本並說明原因；請刪除它並複製。沒有加 `--recurse-submodules` 的複製，可以用 `git submodule update --init --recursive` 就地修復。
 
-3. **把傾印檔放進 `external/roms/`**，檔名按[傾印檔清單](#the-dumps)：`pilotwings-usa.sfc`, `pilotwings-jp.sfc`, `pilotwings-eur.sfc`。微碼放在 `external/firmware/`。然後檢查，你提供的每個傾印檔都應顯示 `ok`：
+3. **把傾印檔放進 `external/roms/`**，檔名按[傾印檔清單](#the-dumps)：`pilotwings-usa.sfc`, `pilotwings-jp.sfc`, `pilotwings-eur.sfc`。微碼放在 `external/firmware/`。然後檢查，你提供的每個傾印檔都應顯示 `ok`。這第一個指令會建構映像，需時數分鐘；之後的指令會即時開始：
 
    ```bash
-   python3 tools/identify.py
+   ./run.sh tools/identify.py
    ```
 
-4. **執行 doctor。** 它檢查副本、每個模型、每個傾印檔，最後說明下一步執行甚麼：
+4. **執行 doctor。** 它檢查副本、每個模型、每個傾印檔和映像中的工具，最後說明下一步執行甚麼：
 
    ```bash
-   python3 doctor.py
+   ./run.sh doctor.py
    ```
 
    ```
      N checks, nothing to report
-     next: python3 tools/identify.py
+     next: ./run.sh tools/identify.py, or on Windows .\run.cmd tools/identify.py
    ```
 
-   標有 `!` 的行，下一行寫着該怎麼做。它能發現的設定錯誤：
+   標有 `!` 的行，下一行寫着該怎麼做。doctor 和啟動腳本能發現的設定錯誤：
 
-   | doctor 顯示 | 怎樣做 |
+   | 提示 | 怎樣做 |
    |:--|:--|
-   | `checkout: no git metadata` | 刪除資料夾並複製，第 2 步 |
+   | `This folder has no git metadata` | 刪除資料夾並複製，第 2 步 |
+   | `Docker is not installed` | 第 1 步 |
+   | `Docker is installed but its engine is not answering` | 啟動 Docker Desktop，或 `sudo systemctl start docker` |
    | `... is not checked out` | `git submodule update --init --recursive` |
    | `cartridge ...: missing` | 第 3 步 |
 
@@ -91,21 +92,20 @@ arccosine  256 words  first (16384, 16343, 16303)
 
 | 需求 | 版本 |
 |:--|:--|
-| Python | 3.12 或更新 |
 | git | 任何版本，用於取得五個子模組 |
 | 你自己的卡帶傾印檔 | 每個 524,288 位元組，放在 `external/roms/` 中，檔名見[傾印檔](#the-dumps) |
 | 你自己的 DSP-1 微碼副本 | 8,192 位元組，存為 `external/firmware/dsp1.bin` 和 `external/firmware/dsp1b.bin` |
-| Docker | 任何版本，只用於建置 [`asm/`](asm/) 中的組譯器和 [`emu/`](emu/) 中的錄製模擬器 |
+| Docker | 任何現行版本，並須正在運行。Python 3.12、asar 1.81 和錄製模擬器都在 [`Dockerfile`](Dockerfile) 描述的映像中，[`run.sh`](run.sh) 在其中執行每個指令 |
 
-不會從套件索引安裝任何東西，也不會下載任何東西。本專案用作對照的五個模型是位於儲存庫根目錄的 git 子模組。從 download-zip 連結取得的原始碼封存檔不包含任何一個，診斷腳本會把這樣的資料夾報告為封存檔。
+除 Docker 和 git 外，不會在你的機器上安裝任何東西，執行時亦不會下載任何東西。本專案用作對照的五個模型是位於儲存庫根目錄的 git 子模組。從 download-zip 連結取得的原始碼封存檔不包含任何一個，診斷腳本會把這樣的資料夾報告為封存檔。
 
 微碼可以放在 `UPD7725_FIRMWARE_DIR` 指定的任何位置，而不是 `external/firmware/`。沒有微碼的話，每個驅動晶片的檢查都會報告沒有東西可執行。
 
 診斷腳本會印出機器資訊、本專案的版本、該資料夾是否為 git 複製、每個模型及其版本、微碼能否執行、兩個掩膜版本中哪些存在、每個傾印檔的狀態，以及每個模型本身的診斷腳本的報告，按該模型的名稱歸檔。所有檢查都通過時以 0 結束，否則以 1 結束。提交任何錯誤報告時請貼上完整輸出。在全新的遞迴複製中，沒有傾印檔也沒有微碼時，輸出以下列內容結尾：
 
 ```
-  5 of 93 checks did not pass
-  next: fix the first line marked ! above, then run python3 doctor.py again
+  5 of 95 checks did not pass
+  next: fix the first line marked ! above, then run ./run.sh doctor.py, or on Windows .\run.cmd doctor.py
 ```
 
 這五個是：缺少的微碼、DSP 模型沒有映像檔的兩個掩膜版本，以及兩個子模組各自附帶的空 `cartridges` 目錄。
@@ -118,22 +118,22 @@ arccosine  256 words  first (16384, 16343, 16303)
 
 | 指令 | 參數 | 作用 | 結束碼 |
 |:--|:--|:--|:--|
-| `python3 doctor.py` | 無 | 報告機器資訊和整條模型鏈 | 0 表示正常，1 表示有檢查未通過 |
-| `python3 tools/identify.py` | 無 | 將 `external/roms/` 中每個檔案與 [`artifacts.manifest.json`](artifacts.manifest.json) 對照，並印出在 macOS、Linux 和 Windows 上計算 SHA-256 的指令 | 0 表示每個傾印檔都相符或不存在，1 表示有一個不正確 |
-| `python3 exchanges.py <trace>` | 一份錄製記錄 | 在每個指令發出點切分錄製記錄，印出每個指令及其交換次數、佔比、不同參數組數、發出點，以及可以如何作答 | 0、2 |
-| `python3 tables.py <microcode image>` | 一個 8,192 位元組的映像檔 | 在映像檔的數據 ROM 中找出四個表格，並印出每個表格起始的字位置 | 0、2 |
-| `python3 microcode.py <mask>` | `dsp1` 或 `dsp1b` | 走訪微碼對全部 256 個指令位元組的分派，並印出每個處理程序及卡帶寫入的指令 | 0、2 |
-| `python3 layout.py <image> <bytes wanted>` | 一個映像檔和一個大小 | 找出長度為 256 位元組或以上的 `$FF` 或 `$00` 連續區段，並指出映像檔能否在不擴大的情況下容納該大小 | 0、2 |
-| `python3 lut.py [<rows>]` | 每個表格的行數，預設 65,536 | 計算四個表格在整個輸入範圍上製表後的大小 | 0 |
-| `python3 derived.py <mask> [<directory>] [--reindex]` | 一個掩膜版本、輸出目錄，預設 `build` | 驅動晶片計算 `$4000` 至 `$7FFF` 的倒數，以及 65,536 個角度的正弦和餘弦，並為每個字計算前導倍增次數。將 `reciprocal`、`recip-up`、`recip-down`、`recip-exponent`、`leading`、`sine` 和 `cosine` 寫成 32,768 位元組的分片，命名為 `<stem>-<n>.bin`。`--reindex` 從已在磁碟上的倒數重建三個 `recip-` 表格 | 0、2 |
-| `python3 state02build.py <mask> [<directory>]` | 一個掩膜版本、存放錄製記錄並接收輸出的目錄，預設 `build` | 在錄製記錄所含的每個參數組上驅動 `$02`，並寫出它的三個狀態表格 `state02-map.asm`、`state02-data.asm`，以及 65,536 個角度的鉗位餘弦 | 0、2 |
-| `python3 lutbuild.py <mask> [<directory>]` | 一個掩膜版本、輸出目錄，預設 `build` | 從 `build/trace-usa.bin`、`build/trace-jp.bin` 和 `build/trace-eur.bin` 建立已錄製答案的表格，透過驅動 DSP-1 補全 `$13` 和 `$18`，並寫出 `lut-<n>.bin`、`lut-map.asm` 和 `lut-axes.asm` | 0、2 |
-| `python3 patch.py <rom> <symbols> <out> <game bytes> [--slow]` | 組譯後的映像檔、由 `name hex` 行組成的符號檔、輸出路徑、映像檔內遊戲部分的長度 | 將卡帶對晶片的每次存取指向替代程式，從標頭中清除協處理器，設定大小位元組，除非指定 `--slow` 否則設定快速 ROM 位元，並重寫校驗和 | 0，1 表示映像檔沒有存取晶片，2 |
-| `python3 tools/cycles.py <image> <assembler log> [<routine>] [<snapshot>]` | 一個映像檔、組譯器印出的符號，預設常式 `ground_block`，預設快照 `build/nb2/wram-000300.bin` | 在 65816 模型上執行一次該常式，並印出其週期數和指令數 | 0，1 表示沒有快照，2 |
-| `python3 tools/profile.py <image> <symbol file> [<routine>] [<snapshot>] [--built]` | 同上，快照已含建好的表格時另加 `--built` | 執行一次呼叫，按每條指令所在的標籤拆分週期數，列出前 16 名 | 0，1 表示沒有快照或標籤，2 |
+| `./run.sh doctor.py` | 無 | 報告機器資訊和整條模型鏈 | 0 表示正常，1 表示有檢查未通過 |
+| `./run.sh tools/identify.py` | 無 | 將 `external/roms/` 中每個檔案與 [`artifacts.manifest.json`](artifacts.manifest.json) 對照，並印出在 macOS、Linux 和 Windows 上計算 SHA-256 的指令 | 0 表示每個傾印檔都相符或不存在，1 表示有一個不正確 |
+| `./run.sh exchanges.py <trace>` | 一份錄製記錄 | 在每個指令發出點切分錄製記錄，印出每個指令及其交換次數、佔比、不同參數組數、發出點，以及可以如何作答 | 0、2 |
+| `./run.sh tables.py <microcode image>` | 一個 8,192 位元組的映像檔 | 在映像檔的數據 ROM 中找出四個表格，並印出每個表格起始的字位置 | 0、2 |
+| `./run.sh microcode.py <mask>` | `dsp1` 或 `dsp1b` | 走訪微碼對全部 256 個指令位元組的分派，並印出每個處理程序及卡帶寫入的指令 | 0、2 |
+| `./run.sh layout.py <image> <bytes wanted>` | 一個映像檔和一個大小 | 找出長度為 256 位元組或以上的 `$FF` 或 `$00` 連續區段，並指出映像檔能否在不擴大的情況下容納該大小 | 0、2 |
+| `./run.sh lut.py [<rows>]` | 每個表格的行數，預設 65,536 | 計算四個表格在整個輸入範圍上製表後的大小 | 0 |
+| `./run.sh derived.py <mask> [<directory>] [--reindex]` | 一個掩膜版本、輸出目錄，預設 `build` | 驅動晶片計算 `$4000` 至 `$7FFF` 的倒數，以及 65,536 個角度的正弦和餘弦，並為每個字計算前導倍增次數。將 `reciprocal`、`recip-up`、`recip-down`、`recip-exponent`、`leading`、`sine` 和 `cosine` 寫成 32,768 位元組的分片，命名為 `<stem>-<n>.bin`。`--reindex` 從已在磁碟上的倒數重建三個 `recip-` 表格 | 0、2 |
+| `./run.sh state02build.py <mask> [<directory>]` | 一個掩膜版本、存放錄製記錄並接收輸出的目錄，預設 `build` | 在錄製記錄所含的每個參數組上驅動 `$02`，並寫出它的三個狀態表格 `state02-map.asm`、`state02-data.asm`，以及 65,536 個角度的鉗位餘弦 | 0、2 |
+| `./run.sh lutbuild.py <mask> [<directory>]` | 一個掩膜版本、輸出目錄，預設 `build` | 從 `build/trace-usa.bin`、`build/trace-jp.bin` 和 `build/trace-eur.bin` 建立已錄製答案的表格，透過驅動 DSP-1 補全 `$13` 和 `$18`，並寫出 `lut-<n>.bin`、`lut-map.asm` 和 `lut-axes.asm` | 0、2 |
+| `./run.sh patch.py <rom> <symbols> <out> <game bytes> [--slow]` | 組譯後的映像檔、由 `name hex` 行組成的符號檔、輸出路徑、映像檔內遊戲部分的長度 | 將卡帶對晶片的每次存取指向替代程式，從標頭中清除協處理器，設定大小位元組，除非指定 `--slow` 否則設定快速 ROM 位元，並重寫校驗和 | 0，1 表示映像檔沒有存取晶片，2 |
+| `./run.sh tools/cycles.py <image> <assembler log> [<routine>] [<snapshot>]` | 一個映像檔、組譯器印出的符號，預設常式 `ground_block`，預設快照 `build/nb2/wram-000300.bin` | 在 65816 模型上執行一次該常式，並印出其週期數和指令數 | 0，1 表示沒有快照，2 |
+| `./run.sh tools/profile.py <image> <symbol file> [<routine>] [<snapshot>] [--built]` | 同上，快照已含建好的表格時另加 `--built` | 執行一次呼叫，按每條指令所在的標籤拆分週期數，列出前 16 名 | 0，1 表示沒有快照或標籤，2 |
 
 ```bash
-python3 tables.py external/firmware/dsp1.bin
+./run.sh tables.py external/firmware/dsp1.bin
 ```
 
 ```
@@ -150,11 +150,10 @@ python3 tables.py external/firmware/dsp1.bin
 
 ### 錄製模擬器
 
-[`emu/`](emu/) 建置 `pwemu`，即位於 commit `2971061cf07fdc6fc7d18883edf4e648eb16a6d2` 的 snes9x，在每次 DSP-1 埠存取上加了掛鈎，前面是一個最簡的 libretro 前端。
+映像中的 `pwemu` 由 [`emu/`](emu/) 建置，即位於 commit `2971061cf07fdc6fc7d18883edf4e648eb16a6d2` 的 snes9x，在每次 DSP-1 埠存取上加了掛鈎，前面是一個最簡的 libretro 前端。
 
 ```bash
-docker build -t pwemu emu
-docker run --rm -v "$PWD:/work" -e PWTRACE=build/trace-usa.bin pwemu external/roms/pilotwings-usa.sfc 12000
+./run.sh --exec env PWTRACE=build/trace-usa.bin pwemu external/roms/pilotwings-usa.sfc 12000
 ```
 
 | 輸入 | 含義 |
@@ -173,7 +172,7 @@ docker run --rm -v "$PWD:/work" -e PWTRACE=build/trace-usa.bin pwemu external/ro
 
 ### 組譯器
 
-[`asm/Dockerfile`](asm/Dockerfile) 建置 asar v1.81。[`asm/nochip.asm`](asm/nochip.asm) 是入口檔案。它把替代程式放在記憶庫 `$10`，引入 [`asm/`](asm/) 中所有其他 `.asm` 檔案，並讀取上述腳本寫入 `build/` 的表格。它印出的 `SYM <name> <address>` 行正是 [`tools/cycles.py`](tools/cycles.py) 讀取的內容。
+映像中帶有由 [`Dockerfile`](Dockerfile) 建置的 asar v1.81。[`asm/nochip.asm`](asm/nochip.asm) 是入口檔案。它把替代程式放在記憶庫 `$10`，引入 [`asm/`](asm/) 中所有其他 `.asm` 檔案，並讀取上述腳本寫入 `build/` 的表格。它印出的 `SYM <name> <address>` 行正是 [`tools/cycles.py`](tools/cycles.py) 讀取的內容。
 
 ### 傾印檔、版本和底層模型
 
@@ -718,16 +717,10 @@ uPD77C25 在程式旁邊保存 1024 個字的數據 ROM。[`tables.py`](tables.p
 | 安全報告 | [SECURITY.md](SECURITY.md) |
 
 ```bash
-uvx ruff@0.16.3 format --check .
-uvx ruff@0.16.3 check .
-uvx --python 3.12 mypy .
-for t in *.test.py tools/*.test.py; do python3 "$t" || break; done
-python3 -m coverage erase
-for t in *.test.py tools/*.test.py; do python3 -m coverage run -a "$t"; done
-python3 -m coverage report
+./run.sh --gates
 ```
 
-41 個檔案共 1,055 個測試，每個模組旁邊有一個 `<module>.test.py`。覆蓋率是硬性關卡，陳述式和分支須達 100%，在 [`pyproject.toml`](pyproject.toml) 中設定。提交遵循 Conventional Commits，semantic-release 據此決定版本。
+43 個檔案共 1,076 個測試，每個模組旁邊有一個 `<module>.test.py`。覆蓋率是硬性關卡，陳述式和分支須達 100%，在 [`pyproject.toml`](pyproject.toml) 中設定。提交遵循 Conventional Commits，semantic-release 據此決定版本。
 
 註解只出現在組合語言中：入口和出口狀態、暫存器寬度，以及每個位址的來源。Python 原始碼不帶任何註解。
 
@@ -736,8 +729,8 @@ python3 -m coverage report
 ## 參考資料
 
 - No-Intro，提供三個零售版傾印檔的名稱和摘要。
-- 位於 commit `2971061cf07fdc6fc7d18883edf4e648eb16a6d2` 的 snes9x，https://github.com/snes9xgit/snes9x ，由 [`emu/Dockerfile`](emu/Dockerfile) 建置，用於錄製每次埠存取。錄製記錄是關於該模擬器的 DSP-1 的證據，這就是查表要與晶片本身的微碼而不是與錄製記錄對照的原因。
-- asar v1.81，https://github.com/RPGHacker/asar ，由 [`asm/Dockerfile`](asm/Dockerfile) 建置。
+- 位於 commit `2971061cf07fdc6fc7d18883edf4e648eb16a6d2` 的 snes9x，https://github.com/snes9xgit/snes9x ，由 [`Dockerfile`](Dockerfile) 建置，用於錄製每次埠存取。錄製記錄是關於該模擬器的 DSP-1 的證據，這就是查表要與晶片本身的微碼而不是與錄製記錄對照的原因。
+- asar v1.81，https://github.com/RPGHacker/asar ，由 [`Dockerfile`](Dockerfile) 建置。
 - neviksti 的無晶片 Star Ocean 轉換，提供大於低速卡帶定址空間的映像檔的定址規則。
 - Nintendo EAD 和 Argonaut，製作了這個遊戲。
 
