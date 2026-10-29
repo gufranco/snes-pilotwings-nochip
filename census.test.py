@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import override
 
 import census
+import script
 
 ROOT = Path(__file__).resolve().parent
 
@@ -242,5 +243,4 @@ class TierTest(unittest.TestCase):
         self.assertEqual(census.tier_of(0x06, census.INLINE_LIMIT + 1), census.TABLE)
 
 
-if __name__ == "__main__":
-    unittest.main()
+script.entry(__name__, unittest.main)

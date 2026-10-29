@@ -8,6 +8,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 import dumps  # noqa: E402
+import script  # noqa: E402
 
 STATE_OK = "ok"
 STATE_ABSENT = "absent"
@@ -79,5 +80,4 @@ def main(
     return 1 if any(not one.ok for one in found) else 0
 
 
-if __name__ == "__main__":
-    sys.exit(main(sys.argv[1:]))
+script.entry(__name__, main, sys.argv[1:])

@@ -2,6 +2,7 @@ import unittest
 from pathlib import Path
 
 import raster
+import script
 
 ROOT = Path(__file__).resolve().parent
 
@@ -178,5 +179,4 @@ class File(unittest.TestCase):
         self.assertTrue((ROOT / "raster.py").exists())
 
 
-if __name__ == "__main__":
-    unittest.main()
+script.entry(__name__, unittest.main)

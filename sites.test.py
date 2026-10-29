@@ -1,5 +1,6 @@
 import unittest
 
+import script
 import sites
 
 
@@ -70,5 +71,4 @@ class CensusTest(unittest.TestCase):
         self.assertIn("0", repr(taken))
 
 
-if __name__ == "__main__":
-    unittest.main()
+script.entry(__name__, unittest.main)

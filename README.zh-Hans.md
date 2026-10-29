@@ -7,7 +7,7 @@
 [![CI](https://github.com/gufranco/snes-pilotwings-nochip/actions/workflows/ci.yml/badge.svg)](https://github.com/gufranco/snes-pilotwings-nochip/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-**16** 条命令对照芯片回答了 **3** 份地区录制所含的每个问题，**0** 个错误答案，`$0a` 地面字 **43,440** 个中 **43,440** 个完全一致，**1,076** 个测试，每个模块的语句和分支覆盖率均为 **100%**，除标准库外没有依赖，另有 **5** 个固定版本的子模块
+**16** 条命令对照芯片回答了 **3** 份地区录制所含的每个问题，**0** 个错误答案，`$0a` 地面字 **43,440** 个中 **43,440** 个完全一致，**1,093** 个测试，每个模块的语句和分支覆盖率均为 **100%**，除标准库外没有依赖，另有 **5** 个固定版本的子模块
 
 ```python
 import tables
@@ -702,7 +702,7 @@ uPD77C25 在程序旁边保存了 1024 个字的数据 ROM。[`tables.py`](table
 | 四张表 | 微码的数据 ROM，逐字一致 | [`tables.retail.test.py`](tables.retail.test.py) |
 | 补丁 | 零售版镜像 | [`patch.retail.test.py`](patch.retail.test.py) |
 
-需要转储或微码的检查放在十个 `*.retail.test.py` 文件中，共 87 个测试，缺少其中任一项时会报告自身被跳过。它们不计入覆盖率测量，因为有这些文件的机器运行一组路径，没有的机器运行另一组。
+需要转储或微码的检查放在十个 `*.retail.test.py` 文件中，共 96 个测试，缺少其中任一项时会报告自身被跳过。在两者都有的机器上，门禁检查像对待其他文件一样按 100% 测量它们。CI 无法持有其中任何一项，因此以 `RETAIL_INPUTS=absent` 运行，覆盖率报告不包含它们。
 
 本项目重现的是 DSP-1，从不是 DSP-1B。吸引模式演示是一段按键输入的录制，在 DSP-1B 修正过的运算下，飞机按同样的输入会撞向地面。零售电路板上装的是哪个掩模版本，无法从转储中读出。这个问题以及其他所有比看上去更窄的断言都记录在 [`OPEN-QUESTIONS.md`](OPEN-QUESTIONS.md) 中，每条都附有能够解决它的测量方法。
 
@@ -720,7 +720,7 @@ uPD77C25 在程序旁边保存了 1024 个字的数据 ROM。[`tables.py`](table
 ./run.sh --gates
 ```
 
-43 个文件共 1,076 个测试，每个模块旁边有一个 `<module>.test.py`。覆盖率是一项硬性门禁检查，要求语句和分支均为 100%，在 [`pyproject.toml`](pyproject.toml) 中设置。提交遵循 Conventional Commits，semantic-release 据此确定版本。
+44 个文件共 1,093 个测试，每个模块旁边有一个 `<module>.test.py`。覆盖率是一项硬性门禁检查，要求语句和分支均为 100%，在 [`pyproject.toml`](pyproject.toml) 中设置。提交遵循 Conventional Commits，semantic-release 据此确定版本。
 
 注释只出现在汇编代码中：入口和出口状态、寄存器宽度，以及每个地址的来源。Python 源码中没有注释。
 

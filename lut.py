@@ -1,7 +1,9 @@
 import struct
+import sys
 from typing import Any, override
 
 import exchanges
+import script
 import tables
 
 FULL_DOMAIN = 65536
@@ -265,7 +267,4 @@ def main(argv: tuple[str, ...] | list[str] = (), say: Any = print) -> int:
     return 0
 
 
-if __name__ == "__main__":
-    import sys
-
-    raise SystemExit(main(sys.argv[1:]))
+script.entry(__name__, main, sys.argv[1:])

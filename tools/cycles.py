@@ -5,6 +5,7 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import hardware
+import script
 
 MIRROR = 0x7F
 
@@ -144,5 +145,4 @@ def main(argv: tuple[str, ...] | list[str] = (), say: Any = print) -> int:
     return 0
 
 
-if __name__ == "__main__":
-    raise SystemExit(main(sys.argv[1:]))
+script.entry(__name__, main, sys.argv[1:])

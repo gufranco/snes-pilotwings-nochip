@@ -3,6 +3,7 @@ import unittest
 from pathlib import Path
 
 import patch
+import script
 import sites
 
 ROOT = Path(__file__).resolve().parent
@@ -477,5 +478,4 @@ class FileTest(unittest.TestCase):
         self.assertTrue((ROOT / "patch.py").exists())
 
 
-if __name__ == "__main__":
-    unittest.main()
+script.entry(__name__, unittest.main)

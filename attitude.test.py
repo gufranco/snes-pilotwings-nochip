@@ -2,6 +2,7 @@ import unittest
 from typing import override
 
 import attitude
+import script
 
 
 class SignedTest(unittest.TestCase):
@@ -79,5 +80,4 @@ class MatrixTest(unittest.TestCase):
         self.assertEqual(got[attitude.CELLS["row2col1"]], attitude.product(0x4000, -0x2000))
 
 
-if __name__ == "__main__":
-    unittest.main()
+script.entry(__name__, unittest.main)

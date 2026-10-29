@@ -2,6 +2,7 @@ import unittest
 from pathlib import Path
 
 import dumps
+import script
 import sites
 
 ROOT = Path(__file__).resolve().parent
@@ -41,5 +42,4 @@ class ReachesTheePartTest(unittest.TestCase):
         self.assertEqual([sorted(one - shared) for one in shapes if one - shared], [])
 
 
-if __name__ == "__main__":
-    unittest.main()
+script.entry(__name__, unittest.main)

@@ -7,6 +7,7 @@ from typing import Any, ClassVar, override
 
 import hardware
 import parameter
+import script
 import state02
 import state02build
 
@@ -405,5 +406,4 @@ class File(unittest.TestCase):
         self.assertTrue((ROOT / "state02build.py").exists())
 
 
-if __name__ == "__main__":
-    unittest.main()
+script.entry(__name__, unittest.main)

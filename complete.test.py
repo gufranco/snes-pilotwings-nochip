@@ -4,6 +4,7 @@ from typing import Any, override
 
 import complete
 import hardware
+import script
 
 ROOT = Path(__file__).resolve().parent
 
@@ -206,5 +207,4 @@ class FileTest(unittest.TestCase):
         self.assertTrue((ROOT / "complete.py").exists())
 
 
-if __name__ == "__main__":
-    unittest.main()
+script.entry(__name__, unittest.main)

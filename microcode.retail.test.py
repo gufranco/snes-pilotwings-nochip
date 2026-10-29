@@ -3,8 +3,9 @@ from typing import Any, override
 
 import hardware
 import microcode
+import script
 
-MISSING = hardware.load("snesdsp").NoFirmware
+DSP = hardware.load("snesdsp")
 
 MASKS = (microcode.MASK, "dsp1b")
 
@@ -12,21 +13,16 @@ SHARED = ((0x00, 0x80), (0x01, 0x11), (0x03, 0x13))
 
 
 def program_of(mask: str) -> tuple[int, ...]:
-    part = hardware.load("snesdsp").Chip(mask)
+    part = DSP.Chip(mask)
     return tuple(part.core.stores.program[at] for at in range(microcode.PROGRAM_WORDS))
 
 
 class AgainstTheMicrocodeTest(unittest.TestCase):
     @override
     def setUp(self) -> None:
-        self.programs: dict[str, Any] = {}
-        for mask in MASKS:
-            try:
-                self.programs[mask] = program_of(mask)
-            except MISSING:
-                continue
-        if not self.programs:
-            self.skipTest("no microcode on this machine")
+        held = DSP.available()
+        self.programs: dict[str, Any] = {mask: program_of(mask) for mask in MASKS if mask in held}
+        script.skip_unless(self.programs, "no microcode on this machine")
 
     def test_every_mask_dispatches_to_twenty_handlers(self) -> None:
         for mask, program in self.programs.items():
@@ -50,13 +46,16 @@ class AgainstTheMicrocodeTest(unittest.TestCase):
                 self.assertEqual(found[first], found[second], f"{mask} ${first:02x} ${second:02x}")
 
     def test_the_two_masks_agree_on_which_bytes_share_a_handler(self) -> None:
-        if len(self.programs) < 2:
-            self.skipTest("only one mask on this machine")
+        # Arrange
+        script.skip_unless(len(self.programs) == len(MASKS), "only one mask on this machine")
+
+        # Act
         grouped = [
             sorted(tuple(sorted(one)) for one in microcode.handlers(program).values())
             for program in self.programs.values()
         ]
 
+        # Assert
         self.assertEqual(grouped[0], grouped[1])
 
     def test_every_handler_ends_rather_than_running_off(self) -> None:
@@ -82,14 +81,15 @@ class AgainstTheMicrocodeTest(unittest.TestCase):
 
 class MainTest(unittest.TestCase):
     def test_a_named_mask_reports_its_handlers(self) -> None:
+        # Arrange
+        script.skip_unless("dsp1" in DSP.available(), "no microcode on this machine")
         said: list[str] = []
-        try:
-            code = microcode.main(("dsp1",), say=said.append)
-        except MISSING:
-            self.skipTest("no microcode on this machine")
 
+        # Act
+        code = microcode.main(("dsp1",), say=said.append)
+
+        # Assert
         self.assertEqual(code, 0)
 
 
-if __name__ == "__main__":
-    unittest.main()
+script.entry(__name__, unittest.main)

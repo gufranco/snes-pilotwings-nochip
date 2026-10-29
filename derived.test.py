@@ -7,6 +7,7 @@ from typing import override
 
 import derived
 import hardware
+import script
 
 ROOT = Path(__file__).resolve().parent
 
@@ -476,5 +477,4 @@ class FileTest(unittest.TestCase):
         self.assertTrue((ROOT / "derived.py").exists())
 
 
-if __name__ == "__main__":
-    unittest.main()
+script.entry(__name__, unittest.main)

@@ -1,7 +1,10 @@
 import struct
+import sys
 from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any, override
+
+import script
 
 RECORD_BYTES = 12
 
@@ -271,7 +274,4 @@ def main(argv: tuple[str, ...] | list[str] = (), say: Any = print) -> int:
     return 0
 
 
-if __name__ == "__main__":
-    import sys
-
-    raise SystemExit(main(sys.argv[1:]))
+script.entry(__name__, main, sys.argv[1:])

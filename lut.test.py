@@ -3,6 +3,7 @@ import unittest
 
 import exchanges
 import lut
+import script
 import tables
 
 
@@ -354,5 +355,4 @@ class MainTest(unittest.TestCase):
         self.assertTrue(any("bytes" in one for one in said))
 
 
-if __name__ == "__main__":
-    unittest.main()
+script.entry(__name__, unittest.main)

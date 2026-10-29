@@ -4,6 +4,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
+
+import script  # noqa: E402
+
 sys.path.insert(0, str(ROOT / "tools"))
 
 import cycles  # noqa: E402
@@ -230,5 +233,4 @@ class FileTest(unittest.TestCase):
         self.assertTrue((ROOT / "tools" / "cycles.py").exists())
 
 
-if __name__ == "__main__":
-    unittest.main()
+script.entry(__name__, unittest.main)

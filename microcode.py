@@ -1,7 +1,9 @@
+import sys
 from collections.abc import Sequence
 from typing import Any
 
 import hardware
+import script
 
 PROGRAM_WORDS = 2048
 
@@ -159,12 +161,6 @@ def main(
     return 0
 
 
-if __name__ == "__main__":
-    import sys
-
-    raise SystemExit(main(sys.argv[1:]))
-
-
 FORMS = ("op", "rt", "jp", "ld")
 
 PRODUCT_SOURCES = ("ram[dp]", "idb", "m", "n")
@@ -224,3 +220,6 @@ def _destinations() -> Any:
 
 def _alu() -> Any:
     return _opcodes().ALU
+
+
+script.entry(__name__, main, sys.argv[1:])

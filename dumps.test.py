@@ -2,6 +2,7 @@ import hashlib
 import unittest
 
 import dumps
+import script
 
 
 def synthetic(size: int = dumps.CARTRIDGE_BYTES, fill: int = 0x5A) -> bytes:
@@ -146,5 +147,4 @@ class CommandTest(unittest.TestCase):
         self.assertTrue(all("somefile.sfc" in one for one in offered.values()))
 
 
-if __name__ == "__main__":
-    unittest.main()
+script.entry(__name__, unittest.main)

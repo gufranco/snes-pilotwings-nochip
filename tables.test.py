@@ -3,6 +3,7 @@ import struct
 import unittest
 from pathlib import Path
 
+import script
 import tables
 
 ROOT = Path(__file__).resolve().parent
@@ -193,5 +194,4 @@ class TableReprTest(unittest.TestCase):
         self.assertIn(tables.SINE, repr(tables.KNOWN[1]))
 
 
-if __name__ == "__main__":
-    unittest.main()
+script.entry(__name__, unittest.main)

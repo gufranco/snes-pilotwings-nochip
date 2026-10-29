@@ -3,6 +3,7 @@ import unittest
 from pathlib import Path
 
 import derived
+import script
 
 ROOT = Path(__file__).resolve().parent
 
@@ -72,5 +73,4 @@ class ReindexTest(unittest.TestCase):
             derived.pieces(into / "nothing.bin")
 
 
-if __name__ == "__main__":
-    unittest.main()
+script.entry(__name__, unittest.main)

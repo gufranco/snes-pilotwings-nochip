@@ -2,6 +2,7 @@ import unittest
 
 import commands
 import hardware
+import script
 
 DISASSEMBLE = hardware.load("mos65xx").disassemble
 
@@ -317,5 +318,4 @@ class ReprTest(unittest.TestCase):
         self.assertIn("argument", repr(read(SIXTEEN_BIT)[0]))
 
 
-if __name__ == "__main__":
-    unittest.main()
+script.entry(__name__, unittest.main)

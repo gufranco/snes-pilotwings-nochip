@@ -7,6 +7,7 @@ import complete
 import exchanges
 import hardware
 import lutbuild
+import script
 
 ROOT = Path(__file__).resolve().parent
 
@@ -453,5 +454,4 @@ class FileTest(unittest.TestCase):
         self.assertTrue((ROOT / "lutbuild.py").exists())
 
 
-if __name__ == "__main__":
-    unittest.main()
+script.entry(__name__, unittest.main)

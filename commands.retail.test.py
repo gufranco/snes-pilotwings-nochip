@@ -7,6 +7,7 @@ import census
 import commands
 import dumps
 import hardware
+import script
 
 ROOT = Path(__file__).resolve().parent
 
@@ -95,18 +96,24 @@ def executed(path: Path, rom: bytes) -> dict[int, int]:
             low[pbpc] = byte
         else:
             wide.add(pbpc)
-    found: dict[int, int] = {}
-    for pbpc, byte in low.items():
-        if pbpc in wide:
-            continue
-        for size in (3, 4):
-            at = ((pbpc >> 16) & 0x7F) * 0x8000 + ((pbpc & 0xFFFF) - size - 0x8000)
-            if 0 <= at < len(rom) - 4:
-                store = commands.store_at(rom, at)
-                if store is not None and store[1] == size:
-                    found[at] = byte
-                    break
-    return found
+    narrow = {pbpc: byte for pbpc, byte in low.items() if pbpc not in wide}
+    return dict(
+        found
+        for found in (_store_before(rom, pbpc, byte) for pbpc, byte in narrow.items())
+        if found is not None
+    )
+
+
+def _store_before(rom: bytes, pbpc: int, byte: int) -> tuple[int, int] | None:
+    sizes = (
+        (size, ((pbpc >> 16) & 0x7F) * 0x8000 + ((pbpc & 0xFFFF) - size - 0x8000))
+        for size in (3, 4)
+    )
+    reachable = ((size, at) for size, at in sizes if 0 <= at < len(rom) - 4)
+    stores = ((size, at, commands.store_at(rom, at)) for size, at in reachable)
+    return next(
+        ((at, byte) for size, at, store in stores if store is not None and store[1] == size), None
+    )
 
 
 @unittest.skipIf(not IMAGES or not TRACES, "no recording and dump pair on this machine")
@@ -119,12 +126,10 @@ class AgainstARecordingTest(unittest.TestCase):
     def setUpClass(cls) -> None:
         region = TRACES[0].stem.split("-")[-1]
         matching = [one for one in IMAGES if region in one[0]]
-        if not matching:
-            raise unittest.SkipTest(f"no dump for the region {TRACES[0].name} was recorded from")
+        script.skip_unless(matching, f"no dump for the region {TRACES[0].name} was recorded from")
         rom = matching[0][1]
         cls.ran = executed(TRACES[0], rom)
-        if not cls.ran:
-            raise unittest.SkipTest(f"{TRACES[0].name} issued no command this can locate")
+        script.skip_unless(cls.ran, f"{TRACES[0].name} issued no command this can locate")
         disassemble = hardware.load("mos65xx").disassemble
         cls.read = {one.offset: one for one in commands.read(rom, disassemble)}
 
@@ -156,5 +161,4 @@ class AgainstARecordingTest(unittest.TestCase):
                 self.assertNotEqual(self.read[at].why, "")
 
 
-if __name__ == "__main__":
-    unittest.main()
+script.entry(__name__, unittest.main)

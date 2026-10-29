@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import override
 
 import census
+import script
 
 ROOT = Path(__file__).resolve().parent
 
@@ -42,11 +43,16 @@ class AgainstARecordingTest(unittest.TestCase):
         self.assertLess(self.census.table_bytes(), 96 * 1024 * 1024 // 8 // 8)
 
     def test_the_multiply_is_answered_by_computing_it(self) -> None:
-        if census.MULTIPLY not in self.census.commands:
-            self.skipTest("this recording never multiplied")
+        # Arrange
+        script.skip_unless(
+            census.MULTIPLY in self.census.commands, "this recording never multiplied"
+        )
+        seen = self.census.distinct(census.MULTIPLY)
 
-        tier = census.tier_of(census.MULTIPLY, self.census.distinct(census.MULTIPLY))
+        # Act
+        tier = census.tier_of(census.MULTIPLY, seen)
 
+        # Assert
         self.assertEqual(tier, census.COMPUTED)
 
     def test_the_report_names_every_command_it_counted(self) -> None:
@@ -70,5 +76,4 @@ class NotClosedTest(unittest.TestCase):
         )
 
 
-if __name__ == "__main__":
-    unittest.main()
+script.entry(__name__, unittest.main)

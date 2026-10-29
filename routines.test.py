@@ -3,6 +3,7 @@ from pathlib import Path
 
 import hardware
 import routines
+import script
 
 ROOT = Path(__file__).resolve().parent
 
@@ -213,5 +214,4 @@ class FileTest(unittest.TestCase):
         self.assertTrue((ROOT / "asm" / "dsp1-ops.asm").exists())
 
 
-if __name__ == "__main__":
-    unittest.main()
+script.entry(__name__, unittest.main)

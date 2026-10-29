@@ -1,17 +1,10 @@
 import unittest
 
+import hardware
+import script
 import tabulate
 
-
-def microcode_here() -> bool:
-    try:
-        tabulate.chip()
-    except Exception:
-        return False
-    return True
-
-
-HELD = microcode_here()
+HELD = set(hardware.load("snesdsp").available())
 
 MULTIPLY = 0x00
 
@@ -23,7 +16,7 @@ def q15(first: int, second: int) -> int:
     return (signed(first) * signed(second) >> 15) & 0xFFFF
 
 
-@unittest.skipIf(not HELD, "no DSP-1 microcode on this machine")
+@unittest.skipIf(tabulate.MODEL not in HELD, "no DSP-1 microcode on this machine")
 class AgainstThePartTest(unittest.TestCase):
     def test_two_parts_built_fresh_answer_one_question_identically(self) -> None:
         self.assertTrue(tabulate.deterministic())
@@ -65,7 +58,7 @@ class AgainstThePartTest(unittest.TestCase):
         self.assertFalse(tabulate.storable(shape.writes or 0, shape.reads))
 
 
-@unittest.skipIf(not HELD, "no DSP-1 microcode on this machine")
+@unittest.skipIf(not {"dsp1", "dsp1b"} <= HELD, "no DSP-1 microcode on this machine")
 class BothMasksTest(unittest.TestCase):
     def test_the_corrected_mask_answers_the_same_multiply(self) -> None:
         first = tabulate.ask(MULTIPLY, (0x1234, 0x5678), model="dsp1")
@@ -80,5 +73,4 @@ class BothMasksTest(unittest.TestCase):
         self.assertEqual(first.writes, second.writes)
 
 
-if __name__ == "__main__":
-    unittest.main()
+script.entry(__name__, unittest.main)

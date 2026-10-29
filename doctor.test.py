@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any, ClassVar
 
 import doctor
+import script
 
 ROOT = Path(__file__).resolve().parent
 
@@ -346,7 +347,14 @@ class WiringTest(unittest.TestCase):
         self.assertNotIn("import hardware", before)
 
     def test_the_doctor_is_reachable_as_a_script(self) -> None:
-        self.assertIn('if __name__ == "__main__":', (ROOT / "doctor.py").read_text())
+        # Arrange
+        source = (ROOT / "doctor.py").read_text()
+
+        # Act
+        last = source.rstrip().splitlines()[-1]
+
+        # Assert
+        self.assertEqual(last, "script.entry(__name__, main, sys.argv[1:])")
 
     def test_the_part_this_project_replaces_is_named(self) -> None:
         self.assertEqual(doctor.PART, "dsp1")
@@ -481,5 +489,4 @@ class NextStepTest(unittest.TestCase):
         self.assertLessEqual(wanted, names)
 
 
-if __name__ == "__main__":
-    unittest.main()
+script.entry(__name__, unittest.main)

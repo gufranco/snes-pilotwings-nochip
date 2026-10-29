@@ -1,9 +1,11 @@
 import struct
+import sys
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
 import hardware
+import script
 
 WHOLE = 0x10000
 
@@ -235,7 +237,4 @@ def main(argv: tuple[str, ...] | list[str] = (), say: Any = print) -> int:
     return 0
 
 
-if __name__ == "__main__":
-    import sys
-
-    raise SystemExit(main(sys.argv[1:]))
+script.entry(__name__, main, sys.argv[1:])

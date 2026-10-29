@@ -5,6 +5,7 @@ from typing import override
 
 import commands
 import exchanges
+import script
 
 ROOT = Path(__file__).resolve().parent
 
@@ -489,5 +490,4 @@ class FileTest(unittest.TestCase):
         self.assertEqual(taken.table_bytes(), exchanges.ANSWER_BYTES)
 
 
-if __name__ == "__main__":
-    unittest.main()
+script.entry(__name__, unittest.main)

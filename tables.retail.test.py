@@ -2,6 +2,7 @@ import unittest
 from pathlib import Path
 from typing import override
 
+import script
 import tables
 
 ROOT = Path(__file__).resolve().parent
@@ -70,5 +71,4 @@ class BetweenTheMasksTest(unittest.TestCase):
         )
 
 
-if __name__ == "__main__":
-    unittest.main()
+script.entry(__name__, unittest.main)

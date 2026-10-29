@@ -1,6 +1,7 @@
 import unittest
 
 import parameter
+import script
 
 
 class Slots(unittest.TestCase):
@@ -100,5 +101,4 @@ class Fixed(unittest.TestCase):
         self.assertEqual(parameter.fixed([]), {})
 
 
-if __name__ == "__main__":
-    unittest.main()
+script.entry(__name__, unittest.main)

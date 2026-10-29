@@ -4,10 +4,12 @@ from pathlib import Path
 from typing import override
 
 import hardware
+import microcode
 import routines
+import script
 import toolchain
 
-MISSING = hardware.load("snesdsp").NoFirmware
+DSP = hardware.load("snesdsp")
 
 ROOT = Path(__file__).resolve().parent
 BUILD = ROOT / "build"
@@ -25,44 +27,46 @@ CASES = (
 )
 
 
-def assembled() -> dict[str, int] | None:
+def assemble() -> subprocess.CompletedProcess[str]:
     BUILD.mkdir(exist_ok=True)
     IMAGE.write_bytes(bytes(IMAGE_BYTES))
-    try:
-        done = subprocess.run(
-            toolchain.command(
-                toolchain.ASSEMBLER,
-                (),
-                ["--no-title-check", str(SOURCE.relative_to(ROOT)), str(IMAGE.relative_to(ROOT))],
-            ),
-            capture_output=True,
-            text=True,
-            timeout=300,
-            check=False,
-        )
-    except (OSError, subprocess.TimeoutExpired):
-        return None
-    if done.returncode != 0:
-        return None
-    where: dict[str, int] = {}
-    for line in done.stdout.splitlines():
-        parts = line.split()
-        if len(parts) == 3 and parts[1] == "at":
-            where[parts[0]] = int(parts[2], 16)
-    return where or None
+    return subprocess.run(
+        toolchain.command(
+            toolchain.ASSEMBLER,
+            (),
+            ["--no-title-check", str(SOURCE.relative_to(ROOT)), str(IMAGE.relative_to(ROOT))],
+        ),
+        capture_output=True,
+        text=True,
+        timeout=300,
+        check=False,
+    )
+
+
+def placed(listing: str) -> dict[str, int]:
+    rows = (line.split() for line in listing.splitlines())
+    return {parts[0]: int(parts[2], 16) for parts in rows if len(parts) == 3 and parts[1] == "at"}
+
+
+class PlacedTest(unittest.TestCase):
+    def test_only_the_lines_naming_a_placement_are_read(self) -> None:
+        # Arrange
+        listing = "op_00 at 8123\nassembled 3 routines\nop_08 at 81F0\n"
+
+        # Act
+        found = placed(listing)
+
+        # Assert
+        self.assertEqual(found, {"op_00": 0x8123, "op_08": 0x81F0})
 
 
 class AgainstThePartTest(unittest.TestCase):
     @override
     def setUp(self) -> None:
-        found = assembled()
-        if found is None:
-            self.skipTest("asar runs inside ./run.sh")
-        try:
-            routines.asked(0x00, (1, 1), 1)
-        except MISSING:
-            self.skipTest("no microcode on this machine")
-        self.where: dict[str, int] = found
+        script.skip_unless(microcode.MASK in DSP.available(), "no microcode on this machine")
+        done = assemble()
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.where: dict[str, int] = placed(done.stdout)
         self.image = IMAGE.read_bytes()
 
     def test_every_routine_was_placed(self) -> None:
@@ -79,14 +83,18 @@ class AgainstThePartTest(unittest.TestCase):
                 self.assertEqual(mine, theirs, f"{name} on {words}")
 
     def test_no_routine_runs_away(self) -> None:
-        for name, _, takes, gives, label in CASES:
-            entry = self.where[label]
-            for words in routines.inputs(takes, 8, seed=1):
-                try:
-                    routines.run(self.image, entry, words, gives)
-                except routines.TooLong as raised:
-                    self.fail(f"{name}: {raised}")
+        # Arrange
+        asked = [
+            (self.where[label], words, gives)
+            for _, _, takes, gives, label in CASES
+            for words in routines.inputs(takes, 8, seed=1)
+        ]
+
+        # Act
+        answered = [routines.run(self.image, entry, words, gives) for entry, words, gives in asked]
+
+        # Assert
+        self.assertEqual(len(answered), len(asked))
 
 
-if __name__ == "__main__":
-    unittest.main()
+script.entry(__name__, unittest.main)

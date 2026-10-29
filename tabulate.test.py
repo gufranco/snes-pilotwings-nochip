@@ -2,6 +2,7 @@ import unittest
 from typing import override
 
 import hardware
+import script
 import tabulate
 
 
@@ -177,5 +178,4 @@ class AgainstAStandInTest(unittest.TestCase):
         self.assertEqual([one.command for one in tabulate.sweep()], list(range(256)))
 
 
-if __name__ == "__main__":
-    unittest.main()
+script.entry(__name__, unittest.main)

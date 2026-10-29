@@ -1,3 +1,4 @@
+import sys
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -6,6 +7,7 @@ import derived
 import exchanges
 import hardware
 import parameter
+import script
 import state02
 
 SETUP = 0x02
@@ -173,7 +175,4 @@ def main(argv: tuple[str, ...] | list[str] = (), say: Any = print) -> int:
     return 0
 
 
-if __name__ == "__main__":
-    import sys
-
-    raise SystemExit(main(sys.argv[1:]))
+script.entry(__name__, main, sys.argv[1:])

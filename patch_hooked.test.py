@@ -2,6 +2,7 @@ import unittest
 from pathlib import Path
 
 import patch
+import script
 
 ROOT = Path(__file__).resolve().parent
 STUBS = {
@@ -195,5 +196,4 @@ class HookedTest(unittest.TestCase):
         self.assertEqual(replaced, 0)
 
 
-if __name__ == "__main__":
-    unittest.main()
+script.entry(__name__, unittest.main)

@@ -1,5 +1,6 @@
 import unittest
 
+import script
 import state02
 
 
@@ -60,5 +61,4 @@ class Checked(unittest.TestCase):
         state02.checked({})
 
 
-if __name__ == "__main__":
-    unittest.main()
+script.entry(__name__, unittest.main)

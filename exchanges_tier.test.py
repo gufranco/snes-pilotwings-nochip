@@ -1,6 +1,7 @@
 import unittest
 
 import exchanges
+import script
 
 
 class TierTest(unittest.TestCase):
@@ -20,5 +21,4 @@ class TierTest(unittest.TestCase):
         self.assertEqual(exchanges.tier_of(0x06, exchanges.INLINE_LIMIT + 1), exchanges.TABLE)
 
 
-if __name__ == "__main__":
-    unittest.main()
+script.entry(__name__, unittest.main)

@@ -7,7 +7,7 @@
 [![CI](https://github.com/gufranco/snes-pilotwings-nochip/actions/workflows/ci.yml/badge.svg)](https://github.com/gufranco/snes-pilotwings-nochip/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-**16** 個指令在 **3** 份地區錄製記錄所含的每個問題上與晶片對照作答，**0** 個錯誤答案，**43,440** 個 `$0a` 地面字中 **43,440** 個完全正確，**1,076** 個測試，每個模組的陳述式和分支覆蓋率均為 **100%**，除標準函式庫外沒有任何依賴，另有 **5** 個固定版本的子模組
+**16** 個指令在 **3** 份地區錄製記錄所含的每個問題上與晶片對照作答，**0** 個錯誤答案，**43,440** 個 `$0a` 地面字中 **43,440** 個完全正確，**1,093** 個測試，每個模組的陳述式和分支覆蓋率均為 **100%**，除標準函式庫外沒有任何依賴，另有 **5** 個固定版本的子模組
 
 ```python
 import tables
@@ -702,7 +702,7 @@ uPD77C25 在程式旁邊保存 1024 個字的數據 ROM。[`tables.py`](tables.p
 | 四個表格 | 微碼的數據 ROM，逐字相符 | [`tables.retail.test.py`](tables.retail.test.py) |
 | 修補 | 零售版映像檔 | [`patch.retail.test.py`](patch.retail.test.py) |
 
-需要傾印檔或微碼的檢查放在十個 `*.retail.test.py` 檔案中，共 87 個測試，任一缺少時會報告自己被略過。它們不計入覆蓋率量度，因為有這些檔案的機器執行一組路徑，沒有的機器則執行另一組。
+需要傾印檔或微碼的檢查放在十個 `*.retail.test.py` 檔案中，共 96 個測試，任一缺少時會報告自己被略過。在兩者都有的機器上，關卡檢查會像其他檔案一樣按 100% 量度它們。CI 無法持有其中任何一項，因此以 `RETAIL_INPUTS=absent` 執行，覆蓋率報告不包括它們。
 
 本專案重現 DSP-1，從不重現 DSP-1B。吸引模式示範是按鍵輸入的錄製，而在 DSP-1B 經修正的算術下，飛機以同樣的輸入會撞向地面。零售版電路板帶的是哪個掩膜版本，無法從傾印檔中讀出。這個問題，以及所有範圍比表面看來更窄的主張，都記錄在 [`OPEN-QUESTIONS.md`](OPEN-QUESTIONS.md) 中，每項都附有能確定答案的量度方法。
 
@@ -720,7 +720,7 @@ uPD77C25 在程式旁邊保存 1024 個字的數據 ROM。[`tables.py`](tables.p
 ./run.sh --gates
 ```
 
-43 個檔案共 1,076 個測試，每個模組旁邊有一個 `<module>.test.py`。覆蓋率是硬性關卡，陳述式和分支須達 100%，在 [`pyproject.toml`](pyproject.toml) 中設定。提交遵循 Conventional Commits，semantic-release 據此決定版本。
+44 個檔案共 1,093 個測試，每個模組旁邊有一個 `<module>.test.py`。覆蓋率是硬性關卡，陳述式和分支須達 100%，在 [`pyproject.toml`](pyproject.toml) 中設定。提交遵循 Conventional Commits，semantic-release 據此決定版本。
 
 註解只出現在組合語言中：入口和出口狀態、暫存器寬度，以及每個位址的來源。Python 原始碼不帶任何註解。
 

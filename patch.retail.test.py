@@ -1,10 +1,11 @@
 import unittest
 from pathlib import Path
-from typing import Any, override
+from typing import Any, NamedTuple, override
 
 import dumps
 import hardware
 import patch
+import script
 import sites
 
 ROOT = Path(__file__).resolve().parent
@@ -73,13 +74,14 @@ SETS_THE_FLAGS = (
 READS_THE_FLAGS = ("bpl", "bmi", "beq", "bne")
 
 
+def _is_usa(raw: bytes) -> bool:
+    found = dumps.identify(raw)
+    return found is not None and "usa" in found.name.lower()
+
+
 def _rom() -> bytes | None:
-    for name in sorted(ROMS.glob("*.sfc")):
-        raw = name.read_bytes()
-        found = dumps.identify(raw)
-        if found is not None and "usa" in found.name.lower():
-            return raw
-    return None
+    read = (name.read_bytes() for name in sorted(ROMS.glob("*.sfc")))
+    return next((raw for raw in read if _is_usa(raw)), None)
 
 
 STOPS = ("plb", "rts", "rtl", "rti", "jmp", "jml", "bra", "brl")
@@ -110,13 +112,30 @@ def _walk(rom: bytes, start: int, m: bool, x: bool, bound: int) -> Any:
             if one.mode == "relative":
                 step = one.operand - 0x100 if one.operand > 0x7F else one.operand
                 todo.append((one.offset + one.size + step, cm, cx))
-            elif one.mnemonic in ("jmp", "bra") and one.mode in ("absolute", "relative"):
-                if one.mode == "absolute":
-                    todo.append((one.operand - BANK, cm, cx))
+            elif one.mnemonic == "jmp" and one.mode == "absolutePC":
+                todo.append((one.operand - BANK, cm, cx))
                 break
             if one.mnemonic in STOPS:
                 break
     return [seen[at] for at in sorted(seen)]
+
+
+def _lands(one: Any) -> int | None:
+    if one.mode == "relative":
+        step = one.operand - 0x100 if one.operand > 0x7F else one.operand
+        return int(one.offset + one.size + step)
+    if one.mnemonic in ("jmp", "jsr") and one.mode == "absolutePC":
+        return int(one.operand - BANK)
+    return None
+
+
+def _flags_read_after(listing: Any, at: int) -> bool:
+    for step in listing[at + 1 :]:
+        if step.mnemonic in READS_THE_FLAGS:
+            return True
+        if step.mnemonic in SETS_THE_FLAGS:
+            return False
+    return False
 
 
 def _block(rom: bytes, site: int) -> Any:
@@ -133,12 +152,111 @@ def _decoded(rom: bytes) -> Any:
     return found
 
 
+class Step(NamedTuple):
+    mnemonic: str
+    mode: str
+    operand: int
+    offset: int = 0x10
+    size: int = 2
+
+
+WALKED = bytes([0x4C, 0x07, 0x80, 0xF0, 0xF0, 0xE2, 0x20, 0xC2, 0x10, 0x80, 0xF6]) + bytes(32)
+
+
+class HelperTest(unittest.TestCase):
+    def test_the_walk_follows_jumps_and_branches_and_stops_where_it_has_been(self) -> None:
+        # Arrange
+        code = WALKED
+
+        # Act
+        found = [(one.offset, one.mnemonic) for one in _walk(code, 0, False, False, 0)]
+
+        # Assert
+        self.assertEqual(
+            found, [(0, "jmp"), (1, "ora"), (3, "beq"), (5, "sep"), (7, "rep"), (9, "bra")]
+        )
+
+    def test_the_walk_ends_where_the_code_ends_when_nothing_stops_it(self) -> None:
+        # Arrange
+        code = bytes([0xEA, 0xEA, 0xEA, 0xEA])
+
+        # Act
+        found = [(one.offset, one.mnemonic) for one in _walk(code, 0, False, False, 0)]
+
+        # Assert
+        self.assertEqual(found, [(0, "nop"), (1, "nop"), (2, "nop"), (3, "nop")])
+
+    def test_a_branch_lands_past_itself_by_its_signed_step(self) -> None:
+        # Arrange
+        steps = (Step("bne", "relative", 0x02), Step("bne", "relative", 0xFE))
+
+        # Act
+        found = [_lands(one) for one in steps]
+
+        # Assert
+        self.assertEqual(found, [0x14, 0x10])
+
+    def test_a_call_lands_on_its_target_in_the_bank(self) -> None:
+        # Arrange
+        steps = (Step("jsr", "absolutePC", 0x8123), Step("jmp", "absolutePC", 0x8200))
+
+        # Act
+        found = [_lands(one) for one in steps]
+
+        # Assert
+        self.assertEqual(found, [0x0123, 0x0200])
+
+    def test_a_data_access_lands_nowhere(self) -> None:
+        # Arrange
+        step = Step("lda", "absolute", 0x8000)
+
+        # Act
+        found = _lands(step)
+
+        # Assert
+        self.assertIsNone(found)
+
+    def test_a_flag_branch_before_any_flag_setter_reads_the_flags(self) -> None:
+        # Arrange
+        listing = [Step("ldx", "absolute", 0x8000), Step("bne", "relative", 0x02)]
+
+        # Act
+        found = _flags_read_after(listing, 0)
+
+        # Assert
+        self.assertTrue(found)
+
+    def test_a_flag_setter_first_means_the_flags_are_not_read(self) -> None:
+        # Arrange
+        listing = [
+            Step("ldx", "absolute", 0x8000),
+            Step("lda", "absolute", 0x2000),
+            Step("bne", "relative", 0x02),
+        ]
+
+        # Act
+        found = _flags_read_after(listing, 0)
+
+        # Assert
+        self.assertFalse(found)
+
+    def test_a_listing_that_ends_first_reads_nothing(self) -> None:
+        # Arrange
+        listing = [Step("ldx", "absolute", 0x8000), Step("nop", "implied", 0)]
+
+        # Act
+        found = _flags_read_after(listing, 0)
+
+        # Assert
+        self.assertFalse(found)
+
+
 class Accesses(unittest.TestCase):
     @override
     def setUp(self) -> None:
-        rom = _rom()
-        if rom is None:
-            self.skipTest("no cartridge dump in external/roms/, so there is nothing to disassemble")
+        rom = script.needed(
+            _rom(), "no cartridge dump in external/roms/, so there is nothing to disassemble"
+        )
         self.rom = rom
         self.listing = _decoded(rom)
         self.real = {
@@ -265,27 +383,14 @@ class Accesses(unittest.TestCase):
             self.assertEqual(one.size, patch.ACCESS_BYTES, f"{one.address:#06x}")
 
     def test_nothing_branches_into_the_middle_of_an_access(self) -> None:
-        inside: set[int] = set()
-        for at in self.real:
-            inside |= set(range(at + 1, at + patch.ACCESS_BYTES))
+        # Arrange
+        inside = {at for start in self.real for at in range(start + 1, start + patch.ACCESS_BYTES)}
 
-        landing = set()
-        for one in self.listing:
-            if one.mode == "relative":
-                step = one.operand - 0x100 if one.operand > 0x7F else one.operand
-                landing.add(one.offset + one.size + step)
-            elif one.mnemonic in ("jmp", "jsr") and one.mode == "absolute":
-                landing.add(one.operand - BANK)
+        # Act
+        landing = {_lands(one) for one in self.listing} - {None}
 
+        # Assert
         self.assertEqual(landing & inside, set())
-
-    def _flags_read_after(self, at: int) -> bool:
-        for step in self.listing[at + 1 :]:
-            if step.mnemonic in READS_THE_FLAGS:
-                return True
-            if step.mnemonic in SETS_THE_FLAGS:
-                return False
-        return False
 
     def test_nothing_reads_the_flags_the_index_loads_do_not_set(self) -> None:
         # Arrange
@@ -296,7 +401,7 @@ class Accesses(unittest.TestCase):
         ]
 
         # Act
-        read = [f"{one.address:#06x}" for at, one in loads if self._flags_read_after(at)]
+        read = [f"{one.address:#06x}" for at, one in loads if _flags_read_after(self.listing, at)]
 
         # Assert
         self.assertEqual(read, [])
@@ -320,10 +425,9 @@ class Accesses(unittest.TestCase):
 class Replaced(unittest.TestCase):
     @override
     def setUp(self) -> None:
-        rom = _rom()
-        if rom is None:
-            self.skipTest("no cartridge dump in external/roms/, so there is nothing to replace")
-        self.rom = rom
+        self.rom = script.needed(
+            _rom(), "no cartridge dump in external/roms/, so there is nothing to replace"
+        )
         named = {*patch.HOOKS.values(), *patch.STATUS_HOOKS.values(), *patch.MIRRORED.values()}
         self.stubs = dict.fromkeys(named, 0x00AD28)
 
@@ -355,10 +459,9 @@ class Replaced(unittest.TestCase):
 class RasterChain(unittest.TestCase):
     @override
     def setUp(self) -> None:
-        rom = _rom()
-        if rom is None:
-            self.skipTest("no cartridge dump in external/roms/, so there is no table to read")
-        self.rom = rom
+        self.rom = script.needed(
+            _rom(), "no cartridge dump in external/roms/, so there is no table to read"
+        )
 
     def test_the_table_holds_the_three_handlers_the_chain_runs(self) -> None:
         at = patch.RASTER_THIRD - 4
@@ -398,5 +501,4 @@ def _decoded_accesses(rom: bytes) -> dict[int, Any]:
     }
 
 
-if __name__ == "__main__":
-    unittest.main()
+script.entry(__name__, unittest.main)

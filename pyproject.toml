@@ -39,13 +39,11 @@ ignore = [
 "*.test.py" = ["PLR2004"]
 "doctor.py" = ["BLE001"]
 "environment.py" = ["BLE001", "T201"]
-"tabulate.retail.test.py" = ["BLE001"]
 
 [tool.coverage.run]
 branch = true
 source = ["."]
 omit = [
-  "*.retail.test.py",
   "mos65xx-python/*",
   "snes-dsp-python/*",
   "snes-mapper-python/*",
@@ -58,9 +56,6 @@ omit = [
 fail_under = 100
 show_missing = true
 skip_covered = true
-exclude_also = [
-  'if __name__ == "__main__":',
-]
 
 [tool.mypy]
 strict = true

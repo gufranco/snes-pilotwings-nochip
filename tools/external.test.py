@@ -9,6 +9,10 @@ import unittest
 from pathlib import Path
 from typing import Any
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+import script
+
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools"))
 
@@ -395,5 +399,4 @@ class UsageTest(unittest.TestCase):
         self.assertEqual(str(raised.exception), external.USAGE)
 
 
-if __name__ == "__main__":
-    unittest.main()
+script.entry(__name__, unittest.main)

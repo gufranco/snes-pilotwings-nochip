@@ -3,6 +3,7 @@ from pathlib import Path
 
 import hardware
 import microcode
+import script
 
 ROOT = Path(__file__).resolve().parent
 
@@ -274,5 +275,4 @@ class ExplainTest(unittest.TestCase):
         self.assertEqual(microcode.explain(0x000000), "nothing")
 
 
-if __name__ == "__main__":
-    unittest.main()
+script.entry(__name__, unittest.main)

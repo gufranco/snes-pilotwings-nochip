@@ -7,7 +7,7 @@ English | [日本語](README.ja.md) | [简体中文](README.zh-Hans.md) | [繁�
 [![CI](https://github.com/gufranco/snes-pilotwings-nochip/actions/workflows/ci.yml/badge.svg)](https://github.com/gufranco/snes-pilotwings-nochip/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-**16** commands answered against the part on every question **3** regional recordings hold, **0** wrong answers, **43,440** of **43,440** `$0a` ground words exact, **1,076** tests, **100%** statement and branch coverage of every module, no dependencies outside the standard library and **5** pinned submodules
+**16** commands answered against the part on every question **3** regional recordings hold, **0** wrong answers, **43,440** of **43,440** `$0a` ground words exact, **1,093** tests, **100%** statement and branch coverage of every module, no dependencies outside the standard library and **5** pinned submodules
 
 ```python
 import tables
@@ -700,7 +700,7 @@ Two oracles, and nothing here computes a DSP-1 result of its own. The retail car
 | The four tables | The microcode's data ROM, word for word | [`tables.retail.test.py`](tables.retail.test.py) |
 | The patch | The retail images | [`patch.retail.test.py`](patch.retail.test.py) |
 
-The checks that need a dump or the microcode live in the ten `*.retail.test.py` files, 87 tests that report themselves skipped when either is absent. They are kept out of the coverage measurement, because a machine with the artifacts runs one set of paths and a machine without them runs the other.
+The checks that need a dump or the microcode live in the ten `*.retail.test.py` files, 96 tests that report themselves skipped when either is absent. On a machine that holds both, the gate measures them at 100% like every other file. CI can hold neither, so it runs with `RETAIL_INPUTS=absent`, which leaves them out of the coverage report.
 
 This project reproduces the DSP-1 and never the DSP-1B. The attract demo is a recording of button presses, and on the DSP-1B's corrected arithmetic the plane flies the same inputs into the ground. Which mask a retail board carries cannot be read from a dump. That question and every other claim narrower than it looks are in [`OPEN-QUESTIONS.md`](OPEN-QUESTIONS.md), each with the measurement that would settle it.
 
@@ -718,7 +718,7 @@ This project reproduces the DSP-1 and never the DSP-1B. The attract demo is a re
 ./run.sh --gates
 ```
 
-1,076 tests across 43 files, one `<module>.test.py` beside each module. Coverage is a hard gate at 100% of statements and branches, set in [`pyproject.toml`](pyproject.toml). Commits follow Conventional Commits, and semantic-release cuts the version from them.
+1,093 tests across 44 files, one `<module>.test.py` beside each module. Coverage is a hard gate at 100% of statements and branches, set in [`pyproject.toml`](pyproject.toml). Commits follow Conventional Commits, and semantic-release cuts the version from them.
 
 Comments appear in the assembly and only there: entry and exit state, register widths, and where each address came from. Python source carries none.
 

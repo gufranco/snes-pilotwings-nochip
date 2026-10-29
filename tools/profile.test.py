@@ -5,6 +5,9 @@ from typing import override
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
+
+import script  # noqa: E402
+
 sys.path.insert(0, str(ROOT / "tools"))
 
 import profile as profiler  # noqa: E402
@@ -225,5 +228,4 @@ class FileTest(unittest.TestCase):
         self.assertTrue((ROOT / "tools" / "profile.py").exists())
 
 
-if __name__ == "__main__":
-    unittest.main()
+script.entry(__name__, unittest.main)

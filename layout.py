@@ -1,5 +1,8 @@
+import sys
 from pathlib import Path
 from typing import Any
+
+import script
 
 FILLERS = (0xFF, 0x00)
 
@@ -73,7 +76,4 @@ def main(argv: tuple[str, ...] | list[str] = (), say: Any = print) -> int:
     return 0
 
 
-if __name__ == "__main__":
-    import sys
-
-    raise SystemExit(main(sys.argv[1:]))
+script.entry(__name__, main, sys.argv[1:])

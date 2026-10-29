@@ -5,42 +5,27 @@ from typing import Any, override
 import attitude
 import derived
 import hardware
+import script
 
-MISSING = hardware.load("snesdsp").NoFirmware
+DSP = hardware.load("snesdsp")
 
 ROOT = Path(__file__).resolve().parent
 BUILD = ROOT / "build"
+SINE, COSINE = BUILD / "sine.bin", BUILD / "cosine.bin"
 SETUP = 0x02
 ANSWERS = 4
 
 STEP = 2048
 
 
-def _tables() -> tuple[tuple[int, ...], tuple[int, ...]] | None:
-    sine, cosine = BUILD / "sine.bin", BUILD / "cosine.bin"
-    if not (sine.with_name("sine-0.bin").exists() and cosine.with_name("cosine-0.bin").exists()):
-        return None
-    return derived.pieces(sine), derived.pieces(cosine)
-
-
-def _part() -> Any:
-    try:
-        return hardware.load("snesdsp").Chip("dsp1")
-    except MISSING:
-        return None
-
-
 class MatrixAgainstThePartTest(unittest.TestCase):
     @override
     def setUp(self) -> None:
-        tables = _tables()
-        if tables is None:
-            self.skipTest("no sine or cosine table in build; run derived.py first")
-        self.sine, self.cosine = tables
-        part = _part()
-        if part is None:
-            self.skipTest("no part image on this machine")
-        self.part = part
+        tables = SINE.with_name("sine-0.bin").exists() and COSINE.with_name("cosine-0.bin").exists()
+        script.skip_unless(tables, "no sine or cosine table in build; run derived.py first")
+        script.skip_unless("dsp1" in DSP.available(), "no part image on this machine")
+        self.sine, self.cosine = derived.pieces(SINE), derived.pieces(COSINE)
+        self.part: Any = DSP.Chip("dsp1")
 
     def test_every_cell_agrees_on_a_grid_that_reaches_the_corners(self) -> None:
         tried = 0
@@ -70,5 +55,4 @@ class MatrixAgainstThePartTest(unittest.TestCase):
         self.assertEqual(attitude.matrix(self.sine, self.cosine, five, six)[0x6B], want)
 
 
-if __name__ == "__main__":
-    unittest.main()
+script.entry(__name__, unittest.main)

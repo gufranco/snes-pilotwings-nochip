@@ -1,4 +1,7 @@
+import functools
+import itertools
 import unittest
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, override
 
@@ -7,6 +10,7 @@ import exchanges
 import hardware
 import parameter
 import raster
+import script
 
 ROOT = Path(__file__).resolve().parent
 
@@ -25,6 +29,10 @@ LOOP = 0x364
 
 COUNTER = 0x09
 
+STEPS = 3_000_000
+
+DSP = hardware.load("snesdsp")
+
 STAGES = {
     "raw": 0x369,
     "held": 0x36B,
@@ -35,16 +43,19 @@ STAGES = {
 }
 
 
-def _missing() -> str | None:
-    if hardware.load("snesdsp").why_not():
-        return "no microcode image, so the part cannot be run"
-    if not all((BUILD / f"trace-{one}.bin").exists() for one in REGIONS):
-        return "no recordings in build/, so there are no arguments to check against"
-    return None
+WANTED = {at: name for name, at in STAGES.items()}
+
+
+def _require() -> None:
+    script.skip_unless(MASK in DSP.available(), "no microcode image, so the part cannot be run")
+    script.skip_unless(
+        all((BUILD / f"trace-{one}.bin").exists() for one in REGIONS),
+        "no recordings in build/, so there are no arguments to check against",
+    )
 
 
 def _part() -> Any:
-    return hardware.load("snesdsp").Chip(MASK)
+    return DSP.Chip(MASK)
 
 
 def _pairs(region: str) -> list[tuple[tuple[int, ...], int, int]]:
@@ -75,28 +86,53 @@ _CELLS = (
 )
 
 
-def _stream(part: Any, first: int, count: int) -> tuple[int, ...]:
+def _unwatched(part: Any) -> None:
+    return None
+
+
+def _step(part: Any, watch: Callable[[Any], None]) -> int | None:
+    watch(part)
+    part.core.step()
+    return part.console.read(0) if part.core.registers.sr.rqm else None
+
+
+def _stream(
+    part: Any, first: int, count: int, watch: Callable[[Any], None] = _unwatched
+) -> tuple[int, ...]:
     part.write(STREAM)
     part.write(first & 0xFF)
     part.write(first >> 8)
-    core = part.core
-    host = part.console
-    got: list[int] = []
-    for _ in range(3_000_000):
-        core.step()
-        if core.registers.sr.rqm:
-            got.append(host.read(0))
-            if len(got) >= count * 2:
-                break
+    stepped = (_step(part, watch) for _ in range(STEPS))
+    got = tuple(itertools.islice((one for one in stepped if one is not None), count * 2))
     return tuple(got[k] | got[k + 1] << 8 for k in range(0, len(got) - 1, 2))
+
+
+def _watch(rows: list[dict[str, int]], part: Any) -> None:
+    core = part.core
+    here = core.registers.pc
+    if here == LOOP:
+        rows.append({"line": derived.signed(core.stores.scratch[COUNTER])})
+    name = WANTED.get(here)
+    if name is None or not rows:
+        return
+    row = rows[-1]
+    row[name] = derived.signed(core.registers.word("a"))
+    if name == "reciprocal":
+        row["exponent"] = derived.signed(core.registers.word("b"))
+    if name == "first":
+        row["first exponent"] = derived.signed(core.registers.word("b"))
+
+
+def _rows(part: Any, first: int, count: int) -> list[dict[str, int]]:
+    rows: list[dict[str, int]] = []
+    _stream(part, first, count, functools.partial(_watch, rows))
+    return [one for one in rows if len(one) == len(STAGES) + 3]
 
 
 class Reciprocal(unittest.TestCase):
     @override
     def setUp(self) -> None:
-        why = _missing()
-        if why:
-            self.skipTest(why)
+        _require()
         self.part = _part()
 
     def test_it_answers_every_value_the_normalise_loop_can_leave(self) -> None:
@@ -126,9 +162,7 @@ class Reciprocal(unittest.TestCase):
 class Chain(unittest.TestCase):
     @override
     def setUp(self) -> None:
-        why = _missing()
-        if why:
-            self.skipTest(why)
+        _require()
         self.table = derived.reciprocal(_part(), derived.NORMAL_LOW, derived.NORMAL_HIGH)
 
     def test_every_stage_agrees_on_every_scanline(self) -> None:
@@ -138,41 +172,11 @@ class Chain(unittest.TestCase):
                 part = _part()
                 derived.ask(part, SETUP, words, 4)
                 state = _state(part)
-                for row in self._rows(part, first, count):
+                for row in _rows(part, first, count):
                     self._compare(state, row["line"], row)
                     checked += 1
 
         self.assertGreater(checked, 1000)
-
-    def _rows(self, part: Any, first: int, count: int) -> list[dict[str, int]]:
-        part.write(STREAM)
-        part.write(first & 0xFF)
-        part.write(first >> 8)
-        core = part.core
-        host = part.console
-        rows: list[dict[str, int]] = []
-        row: dict[str, int] | None = None
-        got: list[int] = []
-        wanted = {at: name for name, at in STAGES.items()}
-        for _ in range(3_000_000):
-            here = core.registers.pc
-            if here == LOOP:
-                if row is not None:
-                    rows.append(row)
-                row = {"line": derived.signed(core.stores.scratch[COUNTER])}
-            name = wanted.get(here)
-            if name is not None and row is not None:
-                row[name] = derived.signed(core.registers.word("a"))
-                if name == "reciprocal":
-                    row["exponent"] = derived.signed(core.registers.word("b"))
-                if name == "first":
-                    row["first exponent"] = derived.signed(core.registers.word("b"))
-            core.step()
-            if core.registers.sr.rqm:
-                got.append(host.read(0))
-                if len(got) >= count * 2:
-                    break
-        return [one for one in rows if len(one) == len(STAGES) + 3]
 
     def _compare(self, state: dict[int, int], line: int, row: dict[str, int]) -> None:
         raw = raster.product(state[raster.STEP], line) + state[raster.HORIZON]
@@ -198,9 +202,7 @@ class Chain(unittest.TestCase):
 class Answer(unittest.TestCase):
     @override
     def setUp(self) -> None:
-        why = _missing()
-        if why:
-            self.skipTest(why)
+        _require()
         self.table = derived.reciprocal(_part(), derived.NORMAL_LOW, derived.NORMAL_HIGH)
 
     def test_every_word_agrees_with_the_part(self) -> None:
@@ -236,5 +238,4 @@ class Answer(unittest.TestCase):
                 self.assertEqual(ours, recorded[(arguments, first)], f"{region} {arguments}")
 
 
-if __name__ == "__main__":
-    unittest.main()
+script.entry(__name__, unittest.main)
